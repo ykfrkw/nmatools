@@ -195,7 +195,7 @@ in every arm row, or where only one arm row has a value filled in.
 Three treatments (CBT-I, Combination, Pharmacotherapy) for chronic insomnia;
 4 binary outcomes (remission and dropout at long-term and post-treatment).
 
-> Furukawa TA, Sato H, Hirata N, et al. Combined mindfulness-based cognitive therapy and worry postponement training for generalized anxiety disorder: A randomized controlled trial. *(replace with actual W2I citation)*
+> Furukawa Y, Sakata M, Furukawa TA, Efthimiou O, Perlis M. Initial treatment choices for long-term remission of chronic insomnia disorder in adults: a systematic review and network meta-analysis. *Psychiatry Clin Neurosci*. 2024;78(11):646-653. https://doi.org/10.1111/pcn.13730
 
 ## References
 
