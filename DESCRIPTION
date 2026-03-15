@@ -1,0 +1,28 @@
+Package: nmatools
+Title: Network Meta-Analysis Tools
+Version: 0.1.0
+Authors@R:
+    person("Yuki", "Furukawa", role = c("aut", "cre"))
+Description: Wrapper functions for network meta-analysis using the netmeta package.
+    Provides one-stop functions for running NMA, saving outputs (text, RDS, CSV,
+    league tables), and generating trimmed, A4-ready forest plots with automatic
+    subnetwork detection and page splitting for large plots.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+    dplyr,
+    purrr,
+    tibble,
+    meta,
+    netmeta,
+    writexl,
+    magick,
+    grDevices,
+    utils,
+    rlang
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
