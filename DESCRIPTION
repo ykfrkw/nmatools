@@ -7,6 +7,9 @@ Description: Wrapper functions for network meta-analysis using the netmeta packa
     Provides one-stop functions for running NMA, saving outputs (text, RDS, CSV,
     league tables), and generating trimmed, A4-ready forest plots with automatic
     subnetwork detection and page splitting for large plots.
+    Also includes cinema(), an interactive Shiny GUI for assessing confidence
+    in NMA results using CINeMA (Nikolakopoulou et al. 2020) and ROB-MEN
+    (Chiocchia et al. 2021).
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -22,7 +25,15 @@ Imports:
     magick,
     grDevices,
     utils,
-    rlang
+    rlang,
+    shiny,
+    DT,
+    plotly,
+    shinycssloaders,
+    readxl,
+    readr,
+    stringr,
+    tidyr
 Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
