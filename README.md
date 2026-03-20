@@ -55,6 +55,44 @@ All outputs are written to `./outputs/remission_lt/`:
 
 Large plots are automatically split into `_p1.pdf`, `_p2.pdf`, … to fit A4.
 
+## Interactive GUI (CINeMA + ROB-MEN)
+
+`cinema()` launches a Shiny application for interactive assessment of confidence
+in NMA results, implementing:
+
+- **CINeMA** (Nikolakopoulou et al. 2020) — six-domain confidence framework
+- **ROB-MEN** (Chiocchia et al. 2021) — risk of bias due to missing evidence
+
+```r
+library(nmatools)
+
+# Launch with no data — upload via the GUI
+cinema()
+
+# Pre-load data directly from R
+d <- load_w2i()
+cinema(d, format = "binary", effect_measure = "OR")
+```
+
+### Supported input formats
+
+| `format` | Required columns | Typical use |
+|----------|-----------------|-------------|
+| `"binary"` | studlab / treat / n / event | Counts data (OR, RR) |
+| `"continuous"` | studlab / treat / n / mean / sd | Continuous outcomes (SMD, MD) |
+| `"pairwise"` | studlab / t1 / t2 / y / se | Pre-computed effects |
+
+Column names are case-insensitive and trimmed automatically.
+
+### Modules
+
+| Module | Function |
+|--------|----------|
+| A — Data Input | Upload CSV/Excel or inject `data` directly |
+| B — CINeMA | Domains D1–D6 with auto-algorithm; manual override |
+| C — ROB-MEN | Pairwise + final rating tables; syncs to CINeMA D2 |
+| D — Dashboard | Forest plot, league table, CINeMA summary, CSV/PNG export |
+
 ## Multiple outcomes
 
 ```r
@@ -79,7 +117,7 @@ run_nma_batch(
     path            = "./outputs"
   )
 )
-# → outputs/ 以下に4つのサブディレクトリが作成される
+# → outputs/ automatically creates 4 sub directories
 ```
 
 ## Overriding defaults
@@ -188,6 +226,7 @@ in every arm row, or where only one arm row has a value filled in.
 | `plot_transitivity()` | Transitivity assessment plots |
 | `load_w2i()` | Load bundled W2I sample data |
 | `create_nma_project()` | Scaffold project directory structure |
+| `cinema()` | Interactive GUI for CINeMA + ROB-MEN assessment |
 
 ## Sample data
 
@@ -210,6 +249,14 @@ Three treatments (CBT-I, Combination, Pharmacotherapy) for chronic insomnia;
 **meta** (pairwise meta-analysis and forest plots):
 
 > Schwarzer G, Carpenter JR, Rücker G (2015). *Meta-Analysis with R*. Springer. https://doi.org/10.1007/978-3-319-21416-0
+
+**CINeMA** (confidence in NMA):
+
+> Nikolakopoulou A, Higgins JPT, Papakonstantinou T, et al. CINeMA: An approach for assessing confidence in the results of a network meta-analysis. *PLoS Med*. 2020;17(4):e1003082. https://doi.org/10.1371/journal.pmed.1003082
+
+**ROB-MEN** (risk of bias due to missing evidence):
+
+> Chiocchia V, Nikolakopoulou A, Higgins JPT, et al. ROB-MEN: a tool to assess the risk of bias due to missing evidence in network meta-analysis. *BMC Med*. 2021;19:304. https://doi.org/10.1186/s12916-021-02166-3
 
 If you use nmatools in published research, please also cite the above packages directly:
 
