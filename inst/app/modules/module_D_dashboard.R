@@ -101,14 +101,14 @@ moduleD_ui <- function(id) {
     wellPanel(
       h4("Export"),
       fluidRow(
-        column(4,
+        column(3,
           h5(icon("file-csv"), " CSV"),
           p(em("All domains, override reasons, and network estimates.")),
           downloadButton(ns("dl_csv"), "Download CSV",
                          class = "btn btn-outline-secondary btn-block",
                          icon  = icon("file-csv"))
         ),
-        column(4,
+        column(3,
           h5(icon("file-excel"), " Excel (.xlsx)"),
           p(em("Color-coded workbook (openxlsx).")),
           if (.HAS_OPENXLSX) {
@@ -122,12 +122,25 @@ moduleD_ui <- function(id) {
                 code('install.packages("openxlsx")'))
           }
         ),
-        column(4,
+        column(3,
           h5(icon("image"), " Forest Plot (PNG)"),
           p(em("NMA estimates with CINeMA confidence colors.")),
           downloadButton(ns("dl_forest"), "Download PNG",
                          class = "btn btn-outline-primary btn-block",
                          icon  = icon("image"))
+        ),
+        column(3,
+          h5(icon("file-csv"), " netmetaviz CSV"),
+          p(em("CINeMA results in {netmetaviz} format.")),
+          downloadButton(ns("dl_nmv_csv"), "Download CINeMA results CSV",
+                         class = "btn btn-outline-info btn-block",
+                         icon  = icon("file-csv")),
+          tags$div(
+            style = "margin-top:8px;",
+            actionButton(ns("save_to_env"), "Save to R environment",
+                         class = "btn btn-outline-dark btn-sm btn-block",
+                         icon  = icon("r-project"))
+          )
         )
       )
     ),
@@ -163,6 +176,62 @@ moduleD_server <- function(id, cinema_module, robmen_module,
 
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    # ------------------------------------------------------------------
+    # Helper: compute total N per treatment from pairwise data
+    # ------------------------------------------------------------------
+    compute_trt_n <- function(df_raw) {
+      if (is.null(df_raw)) return(NULL)
+      has_n1n2 <- all(c("n1", "n2") %in% names(df_raw))
+      has_n    <- "n" %in% names(df_raw) && any(!is.na(df_raw$n))
+      if (!has_n1n2 && !has_n) return(NULL)
+
+      if (has_n1n2) {
+        trt_n <- dplyr::bind_rows(
+          data.frame(trt = df_raw$t1, n = df_raw$n1, stringsAsFactors = FALSE),
+          data.frame(trt = df_raw$t2, n = df_raw$n2, stringsAsFactors = FALSE)
+        )
+      } else {
+        trt_n <- data.frame(
+          trt = c(df_raw$t1, df_raw$t2),
+          n   = c(df_raw$n / 2, df_raw$n / 2),
+          stringsAsFactors = FALSE
+        )
+      }
+      trt_n %>%
+        filter(!is.na(n)) %>%
+        group_by(trt) %>%
+        summarise(total_n = sum(n, na.rm = TRUE), .groups = "drop") %>%
+        { stats::setNames(.$total_n, .$trt) }
+    }
+
+    # ------------------------------------------------------------------
+    # Helper: build netmetaviz-compatible data frame
+    # ------------------------------------------------------------------
+    nmv_cinema_df <- reactive({
+      merged <- cinema_merged()
+      req(!is.null(merged))
+
+      data.frame(
+        Comparison                    = gsub(" vs ", ":", merged$comparison),
+        `Number of studies`           = merged$n_studies,
+        `Within-study bias`           = merged$within_study_bias,
+        `Reporting bias`              = merged$reporting_bias,
+        Indirectness                  = merged$indirectness,
+        Imprecision                   = merged$imprecision,
+        Heterogeneity                 = merged$heterogeneity,
+        Incoherence                   = merged$incoherence,
+        `Confidence rating`           = ifelse(nzchar(merged$confidence),
+                                               merged$confidence,
+                                               merged$suggested_confidence),
+        `Reason(s) for downgrading`   = ifelse(
+          "downgrade_reason" %in% names(merged),
+          merged$downgrade_reason, ""
+        ),
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+      )
+    })
 
     # ------------------------------------------------------------------
     # Active colour palette (switches between classic and pastel)
@@ -711,6 +780,9 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                      (nma_settings_r()$small_value_desirable %||% "desirable")
                    else "desirable"
 
+      # Per-treatment total N
+      trt_n <- compute_trt_n(cr$df)
+
       # P-scores for sorting
       p_scores_obj <- tryCatch(netrank(net, small.values = small_val),
                                error = function(e) NULL)
@@ -742,10 +814,6 @@ moduleD_server <- function(id, cinema_module, robmen_module,
           t1_c      = strsplit(comparison, " vs ")[[1]][1],
           t2_c      = strsplit(comparison, " vs ")[[1]][2],
           is_ref_t1 = !is.null(ref) && nzchar(ref) && (t1_c == ref),
-          # Label: treatment name only (no "vs ref")
-          # TE.random[i,j] = effect of i vs j (netmeta convention).
-          # When ref = t1: show t2 vs t1 → negate TE (which is t1 vs t2).
-          # When ref = t2: show t1 vs t2 → use TE directly.
           label     = if (is_ref_t1) t2_c else t1_c,
           TE_log    = if (is_ref_t1) -TE     else TE,
           lo_log    = if (is_ref_t1) -upper  else lower,
@@ -756,11 +824,15 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         ) %>%
         ungroup()
 
+      # Add per-treatment N to labels
+      if (!is.null(trt_n)) {
+        plot_df <- plot_df %>%
+          mutate(label_n = paste0(label, " (N=", trt_n[label], ")"))
+      } else {
+        plot_df <- plot_df %>% mutate(label_n = label)
+      }
+
       # Sort: largest TE at top (y_pos = n).
-      # desirable   (lower=better): high P-score = small TE → desc(p_score) → small TE first
-      #             → y_pos=1 = bottom; large TE last → top ✓
-      # undesirable (higher=better): high P-score = large TE → asc(p_score) → small TE first
-      #             → y_pos=1 = bottom; large TE last → top ✓
       if (!is.null(p_scores) && length(p_scores) > 0) {
         plot_df <- plot_df %>% mutate(p_score = p_scores[label])
         plot_df <- if (small_val == "undesirable")
@@ -774,7 +846,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       plot_df <- plot_df %>%
         mutate(
           y_pos      = seq_len(n()),
-          label      = factor(label, levels = label),
+          label_n    = factor(label_n, levels = label_n),
           conf_final = factor(conf_final,
                               levels = c("High", "Moderate", "Low", "Very low", "Not set")),
           p_score_lbl = if (!is.null(p_scores))
@@ -812,7 +884,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                    shape = 22, size = 4.5, stroke = 0.3, colour = "grey20") +
         scale_colour_manual(values = conf_col_map, name = "CINeMA confidence",
                             aesthetics = c("colour", "fill"), drop = FALSE) +
-        scale_y_continuous(breaks = plot_df$y_pos, labels = plot_df$label,
+        scale_y_continuous(breaks = plot_df$y_pos, labels = plot_df$label_n,
                            expand = expansion(add = 0.7)) +
         labs(x = x_label, y = NULL,
              title = paste0("NMA Forest Plot",
@@ -1002,6 +1074,9 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                        (nma_settings_r()$small_value_desirable %||% "desirable")
                      else "desirable"
 
+        # Per-treatment total N
+        trt_n <- compute_trt_n(cr$df)
+
         # P-scores for sorting
         p_scores_obj <- tryCatch(netrank(net, small.values = small_val),
                                  error = function(e) NULL)
@@ -1033,7 +1108,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
             t1_c      = strsplit(comparison, " vs ")[[1]][1],
             t2_c      = strsplit(comparison, " vs ")[[1]][2],
             is_ref_t1 = !is.null(ref) && nzchar(ref) && (t1_c == ref),
-            label     = if (is_ref_t1) t2_c else t1_c,  # treatment name only
+            label     = if (is_ref_t1) t2_c else t1_c,
             TE_log    = if (is_ref_t1) TE    else -TE,
             lo_log    = if (is_ref_t1) lower else -upper,
             hi_log    = if (is_ref_t1) upper else -lower,
@@ -1042,6 +1117,14 @@ moduleD_server <- function(id, cinema_module, robmen_module,
             hi_disp   = if (is_ratio) exp(hi_log) else hi_log
           ) %>%
           ungroup()
+
+        # Add per-treatment N to labels
+        if (!is.null(trt_n)) {
+          plot_df <- plot_df %>%
+            mutate(label_n = paste0(label, " (N=", trt_n[label], ")"))
+        } else {
+          plot_df <- plot_df %>% mutate(label_n = label)
+        }
 
         # Sort: largest TE at top (same logic as inline plot)
         if (!is.null(p_scores) && length(p_scores) > 0) {
@@ -1057,7 +1140,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         plot_df <- plot_df %>%
           mutate(
             y_pos      = seq_len(n()),
-            label      = factor(label, levels = label),
+            label_n    = factor(label_n, levels = label_n),
             conf_final = factor(conf_final,
                                 levels = c("High", "Moderate", "Low", "Very low", "Not set")),
             ci_text    = paste0(sprintf("%.2f", TE_disp),
@@ -1087,7 +1170,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                     hjust = 0, size = 3.4, colour = "grey25") +
           scale_colour_manual(values = conf_col_map, name = "CINeMA confidence",
                               aesthetics = c("colour", "fill"), drop = FALSE) +
-          scale_y_continuous(breaks = plot_df$y_pos, labels = plot_df$label,
+          scale_y_continuous(breaks = plot_df$y_pos, labels = plot_df$label_n,
                              expand = expansion(add = 0.7)) +
           coord_cartesian(clip = "off") +
           labs(
@@ -1096,7 +1179,8 @@ moduleD_server <- function(id, cinema_module, robmen_module,
             title   = paste0("NMA Forest Plot — vs. ", ref_lbl,
                              "  [sorted by P-score, small value = ", small_val, "]"),
             caption = paste0("Squares = NMA point estimates; bars = 95% CI;",
-                             " color = CINeMA confidence level")
+                             " color = CINeMA confidence level;",
+                             " N = total randomized per treatment")
           ) +
           theme_minimal(base_size = 13) +
           theme(
@@ -1116,6 +1200,42 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                dpi = 300, device = "png")
       }
     )
+
+    # ------------------------------------------------------------------
+    # DOWNLOAD: netmetaviz-compatible CSV
+    # ------------------------------------------------------------------
+    output$dl_nmv_csv <- downloadHandler(
+      filename = function() {
+        paste0("cinema_netmetaviz_", format(Sys.Date(), "%Y%m%d"), ".csv")
+      },
+      content = function(file) {
+        df <- tryCatch(nmv_cinema_df(), error = function(e) NULL)
+        req(!is.null(df))
+        write.csv(df, file, row.names = FALSE, na = "")
+      }
+    )
+
+    # ------------------------------------------------------------------
+    # ACTION: Save CINeMA data frame to R global environment
+    # ------------------------------------------------------------------
+    observeEvent(input$save_to_env, {
+      df <- tryCatch(nmv_cinema_df(), error = function(e) NULL)
+      if (is.null(df)) {
+        showNotification("No CINeMA results to save.", type = "warning")
+        return()
+      }
+      var_name <- "cinema_results"
+      assign(var_name, df, envir = .GlobalEnv)
+      showNotification(
+        tagList(
+          icon("check-circle", class = "text-success"),
+          strong(paste0(" Saved as '", var_name, "' in R global environment.")),
+          tags$br(),
+          "Access it with: ", code(var_name)
+        ),
+        type = "message", duration = 8
+      )
+    })
 
   })
 }
