@@ -2,7 +2,8 @@ Package: nmatools
 Title: Network Meta-Analysis Tools
 Version: 0.1.0
 Authors@R:
-    person("Yuki", "Furukawa", role = c("aut", "cre"))
+    person("Yuki", "Furukawa", email = "furukawa.y.psy@gmail.com",
+           role = c("aut", "cre"))
 Description: Wrapper functions for network meta-analysis using the netmeta package.
     Provides one-stop functions for running NMA, saving outputs (text, RDS, CSV,
     league tables), and generating trimmed, A4-ready forest plots with automatic
