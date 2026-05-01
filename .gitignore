@@ -3,6 +3,19 @@
 # Based on github/gitignore R.gitignore + standard R package conventions
 # =============================================================================
 
+# ── Security: credentials & secrets (standard block) ─────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+credentials*.json
+secrets/
+.secret
+
 # ── R session artifacts ───────────────────────────────────────────────────────
 .Rhistory
 .Rapp.history

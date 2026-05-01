@@ -35,7 +35,7 @@
 #' \dontrun{
 #' d <- load_w2i()
 #'
-#' # ── Example 1: multiple binary outcomes ──────────────────────────────────
+#' # Example 1: multiple binary outcomes
 #' params_list <- list(
 #'   list(outcome = "remission_lt",  event = "r",            small.values = "undesirable"),
 #'   list(outcome = "dropout_lt",    event = "n_dropout",    small.values = "desirable"),
@@ -56,7 +56,7 @@
 #'   )
 #' )
 #'
-#' # ── Example 2: binary + continuous mixed ─────────────────────────────────
+#' # Example 2: binary + continuous mixed
 #' # Specify different column names and sm per outcome in params_list.
 #' params_mixed <- list(
 #'   list(

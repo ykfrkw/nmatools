@@ -27,9 +27,12 @@
 #'   `netmeta::netsplit()`.
 #' @param a4_rows_per_page Estimated max rows per A4 page for large plots.
 #'   Default: `45`.
+#' @param funnel_min_studies Minimum number of studies (k) per pairwise
+#'   comparison required to draw a contour-enhanced funnel plot.
+#'   Default: `10L`.
 #' @param trim Trim whitespace from output PDFs via `magick`. Default: `TRUE`.
 #' @param trim_fuzz Fuzz parameter for `magick::image_trim()`. Default: `30L`.
-#' @param .subnet_label Internal — subnetwork label appended to file names.
+#' @param .subnet_label Internal -- subnetwork label appended to file names.
 #'
 #' @return Invisibly, the fitted `netmeta`/`netmetabin` object, or `NULL` when
 #'   subnetworks are detected.
@@ -85,7 +88,7 @@ netmetawrap <- function(
     .subnet_label      = NULL
 ) {
 
-  # ── 0. NSE → string (must run before any evaluation of column args) ─────────
+  # -- 0. NSE -> string (must run before any evaluation of column args) ---------
   studlab  <- .nse_col(substitute(studlab))
   treat    <- .nse_col(substitute(treat))
   n        <- .nse_col(substitute(n))
@@ -93,7 +96,7 @@ netmetawrap <- function(
   mean_col <- .nse_col(substitute(mean_col))
   sd_col   <- .nse_col(substitute(sd_col))
 
-  # ── 1. Validate ─────────────────────────────────────────────────────────────
+  # -- 1. Validate -------------------------------------------------------------
   is_binary     <- !is.null(event) && is.null(mean_col)
   is_continuous <- is.null(event)  && !is.null(mean_col) && !is.null(sd_col)
   if (!is_binary && !is_continuous) {
@@ -102,7 +105,7 @@ netmetawrap <- function(
     )
   }
 
-  # ── 2. Output directory ──────────────────────────────────────────────────────
+  # -- 2. Output directory ------------------------------------------------------
   dir_suffix <- if (!is.null(.subnet_label)) paste0("_subnet_", .subnet_label) else ""
   file_label <- paste0(outcome, dir_suffix)
   output_dir <- file.path(path, file_label)
@@ -110,11 +113,11 @@ netmetawrap <- function(
 
   message("[ netmetawrap ] Starting: ", file_label)
 
-  # ── 3. Arm-level data preparation ──────────────────────────────────────────
+  # -- 3. Arm-level data preparation ------------------------------------------
   df <- .prepare_data(data, studlab, treat, n, event, mean_col, sd_col,
                       is_binary)
 
-  # ── 4. Save data CSV ────────────────────────────────────────────────────────
+  # -- 4. Save data CSV --------------------------------------------------------
   df_multi <- df |>
     dplyr::group_by(studlab) |>
     dplyr::filter(dplyr::n() >= 2L) |>
@@ -125,7 +128,7 @@ netmetawrap <- function(
     row.names = FALSE
   )
 
-  # ── 5. Pairwise conversion ──────────────────────────────────────────────────
+  # -- 5. Pairwise conversion --------------------------------------------------
   if (is_binary) {
     df_pw <- meta::pairwise(
       data    = df,
@@ -151,12 +154,12 @@ netmetawrap <- function(
     )
   }
 
-  # ── 6. Subnetwork detection ─────────────────────────────────────────────────
+  # -- 6. Subnetwork detection -------------------------------------------------
   net_conn <- netmeta::netconnection(df_pw)
   if (net_conn$n.subnets > 1L) {
     message(
       "[ netmetawrap ] ", net_conn$n.subnets,
-      " subnetworks detected — running each separately."
+      " subnetworks detected -- running each separately."
     )
     subnet_map <- tibble::tibble(
       studlab = net_conn$studlab,
@@ -211,13 +214,13 @@ netmetawrap <- function(
     return(invisible(NULL))
   }
 
-  # ── 7. Auto reference group ─────────────────────────────────────────────────
+  # -- 7. Auto reference group -------------------------------------------------
   if (is.null(reference.group)) {
     reference.group <- .auto_reference(df)
     message("[ netmetawrap ] Auto-selected reference group: ", reference.group)
   }
 
-  # ── 8. Run netmeta / netmetabin ─────────────────────────────────────────────
+  # -- 8. Run netmeta / netmetabin ---------------------------------------------
   if (is_binary) {
     default_nm <- list(
       sm              = sm,
@@ -247,17 +250,17 @@ netmetawrap <- function(
     )
   }
 
-  # ── 9. Save RDS + text summary ──────────────────────────────────────────────
+  # -- 9. Save RDS + text summary ----------------------------------------------
   saveRDS(net_meta,
           file.path(output_dir, paste0("netmeta_", file_label, ".rds")))
-  capture.output(
+  utils::capture.output(
     print(net_meta),
     file = file.path(output_dir, paste0("netmeta_", file_label, ".txt"))
   )
 
-  # ── 10. Consistency tests ────────────────────────────────────────────────────
+  # -- 10. Consistency tests ----------------------------------------------------
   # Global (design-based decomposition)
-  capture.output(
+  utils::capture.output(
     print(netmeta::decomp.design(net_meta)),
     file = file.path(output_dir, paste0("global_test_", file_label, ".txt"))
   )
@@ -267,12 +270,12 @@ netmetawrap <- function(
     netmeta::netsplit,
     c(list(net_meta), utils::modifyList(list(prediction = TRUE), netsplit_args))
   )
-  capture.output(
+  utils::capture.output(
     print(ns_obj),
     file = file.path(output_dir, paste0("local_test_", file_label, ".txt"))
   )
 
-  # ── 11. League table ─────────────────────────────────────────────────────────
+  # -- 11. League table ---------------------------------------------------------
   league <- netmeta::netleague(
     net_meta,
     digits    = 2L,
@@ -287,7 +290,7 @@ netmetawrap <- function(
     path = file.path(output_dir, paste0("leaguetable_", file_label, ".xlsx"))
   )
 
-  # ── 12. Shared plot setup ────────────────────────────────────────────────────
+  # -- 12. Shared plot setup ----------------------------------------------------
   n_trts         <- length(net_meta$trts)
   forest_w       <- .calc_forest_width(net_meta)
   forest_h_ref   <- .calc_forest_height(n_trts)
@@ -299,12 +302,12 @@ netmetawrap <- function(
   effective_leftcols <- forest_args$leftcols %||% default_leftcols
   add_rows           <- .calc_add_rows(net_meta, effective_leftcols)
 
-  # Sort direction: Pscore ascending = large value on top (undesirable → lower is better = sort DESC)
+  # Sort direction: Pscore ascending = large value on top (undesirable -> lower is better = sort DESC)
   # forest.netmeta sorts so that the treatment at the top has the LARGEST sortvar.
-  # Pscore: high = better (for "desirable" small.values, high Pscore = bad → sort ASC)
+  # Pscore: high = better (for "desirable" small.values, high Pscore = bad -> sort ASC)
   sort_var <- if (small.values == "desirable") quote(-Pscore) else quote(Pscore)
 
-  # ── 13. Netgraph ─────────────────────────────────────────────────────────────
+  # -- 13. Netgraph -------------------------------------------------------------
   .save_plot(
     file      = file.path(output_dir, paste0("netgraph_", file_label, ".pdf")),
     width     = 10,
@@ -330,7 +333,7 @@ netmetawrap <- function(
     }
   )
 
-  # ── 14. Forest plot vs reference (PlotForestPlots.R style) ───────────────────
+  # -- 14. Forest plot vs reference (PlotForestPlots.R style) -------------------
   default_forest <- list(
     smlab                    = paste0(outcome, "\n(Random Effects Model)"),
     leftcols                 = default_leftcols,
@@ -349,7 +352,7 @@ netmetawrap <- function(
     expr      = do.call(meta::forest, c(list(net_meta), merged_forest))
   )
 
-  # ── 15. Netpairwise forest ───────────────────────────────────────────────────
+  # -- 15. Netpairwise forest ---------------------------------------------------
   np_obj <- do.call(
     netmeta::netpairwise,
     c(list(net_meta),
@@ -376,7 +379,7 @@ netmetawrap <- function(
     trim_fuzz   = trim_fuzz
   )
 
-  # ── 16. Netsplit forest ──────────────────────────────────────────────────────
+  # -- 16. Netsplit forest ------------------------------------------------------
   .save_netsplit_paged(
     ns_obj      = ns_obj,
     forest_args = forest_args,
@@ -388,7 +391,7 @@ netmetawrap <- function(
     trim_fuzz   = trim_fuzz
   )
 
-  # ── 17. Contour-enhanced funnel plots (pairs with ≥ funnel_min_studies) ──────
+  # -- 17. Contour-enhanced funnel plots (pairs with >= funnel_min_studies) ------
   # Extract pairwise comparison objects from np_obj; guard against non-meta elements.
   np_valid <- Filter(function(m) is.list(m) && !is.null(m[["k"]]), np_obj)
   funnel_pairs <- Filter(function(m) m[["k"]] >= funnel_min_studies, np_valid)
@@ -432,7 +435,7 @@ netmetawrap <- function(
     }
   }
 
-  # ── 18. Direct evidence contributions (netcontrib) ───────────────────────────
+  # -- 18. Direct evidence contributions (netcontrib) ---------------------------
   tryCatch({
     nc_obj <- netmeta::netcontrib(net_meta, method = "random")
     nc_w   <- max(8, n_trts * 1.5)

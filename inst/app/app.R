@@ -21,7 +21,7 @@ library(netmeta)
 library(meta)
 library(shinycssloaders)
 
-source("modules/utils.R")            # 共通定数・ヘルパー（最初に読み込む）
+source("modules/utils.R")            # shared constants and helpers (load first)
 source("modules/module_A_data_input.R")
 source("modules/module_B_cinema.R")
 source("modules/module_C_robmen.R")

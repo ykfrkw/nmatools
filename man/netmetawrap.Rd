@@ -69,11 +69,15 @@ The function creates \verb{\{path\}/\{outcome\}/} automatically.}
 \item{a4_rows_per_page}{Estimated max rows per A4 page for large plots.
 Default: \code{45}.}
 
+\item{funnel_min_studies}{Minimum number of studies (k) per pairwise
+comparison required to draw a contour-enhanced funnel plot.
+Default: \code{10L}.}
+
 \item{trim}{Trim whitespace from output PDFs via \code{magick}. Default: \code{TRUE}.}
 
 \item{trim_fuzz}{Fuzz parameter for \code{magick::image_trim()}. Default: \code{30L}.}
 
-\item{.subnet_label}{Internal — subnetwork label appended to file names.}
+\item{.subnet_label}{Internal -- subnetwork label appended to file names.}
 }
 \value{
 Invisibly, the fitted \code{netmeta}/\code{netmetabin} object, or \code{NULL} when

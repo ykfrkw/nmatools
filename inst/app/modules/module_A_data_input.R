@@ -1157,7 +1157,7 @@ convert_continuous <- function(df, sm) {
   result <- pw %>%
     rename(t1 = treat1, t2 = treat2, y = TE, se = seTE) %>%
     mutate(n = n1 + n2) %>%
-    select(studlab, t1, t2, y, se, n)
+    select(studlab, t1, t2, y, se, n, n1, n2)
 
   rob_map <- df %>%
     group_by(studlab) %>% slice(1) %>% ungroup() %>%
@@ -1201,7 +1201,7 @@ convert_binary <- function(df, sm) {
   result <- pw %>%
     rename(t1 = treat1, t2 = treat2, y = TE, se = seTE) %>%
     mutate(n = n1 + n2) %>%
-    select(studlab, t1, t2, y, se, n)
+    select(studlab, t1, t2, y, se, n, n1, n2)
 
   rob_map <- df %>%
     group_by(studlab) %>% slice(1) %>% ungroup() %>%
@@ -1237,7 +1237,9 @@ convert_pairwise <- function(df) {
     make_ordered_factors()
 
   if ("n1" %in% names(df) && "n2" %in% names(df)) {
-    df$n <- as.integer(df$n1) + as.integer(df$n2)
+    df$n1 <- as.integer(df$n1)
+    df$n2 <- as.integer(df$n2)
+    df$n  <- df$n1 + df$n2
   } else if (!"n" %in% names(df)) {
     df$n <- NA_integer_
   }

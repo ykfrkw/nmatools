@@ -33,7 +33,7 @@ netmetawrap(
   reference.group = "Pharmacotherapy",
   small.values    = "undesirable"
 )
-# → outputs/remission_lt/ に結果が出力される
+# → results are written to outputs/remission_lt/
 ```
 
 All outputs are written to `./outputs/remission_lt/`:
@@ -217,6 +217,95 @@ For studies with ≥ 2 arms, the covariate value per study is computed as:
 This handles datasets where study-level characteristics are stored redundantly
 in every arm row, or where only one arm row has a value filled in.
 
+## Visualizations
+
+A suite of publication-quality visualizations for `netmeta` results. Run
+`?<function>` for full argument lists, or see [sample_viz.R](sample_viz.R)
+for a walkthrough that exercises every option.
+
+| Function | Output | Coloring basis |
+|---|---|---|
+| `color_league()` | `.xlsx` | CINeMA confidence / Schneider-Thoma 2026 / solid |
+| `color_league_multi()` | `.xlsx` (multi-sheet) | Same as above, across outcomes |
+| `color_forest()` | plot (side effect) | CINeMA confidence vs reference |
+| `color_netgraph()` | plot (side effect) | CINeMA confidence per edge |
+| `kilim()` | `.xlsx` / `.docx` | Signed p-value gradient / Schneider-Thoma 2026 |
+| `vitruvian()` | `ggplot` / `.png` / `.pdf` / `.svg` | Signed p-value gradient |
+| `min_context()` | data frame | — (statistical grouping) |
+| `part_context()` | data frame | — (clinical-threshold grouping) |
+
+```r
+library(nmatools)
+
+# Build netmeta objects from the bundled W2I sample data
+net   <- build_w2i_netmeta("remission_lt")
+ci_fp <- w2i_cinema_path()
+
+# League table colored by CINeMA confidence
+color_league(x = net, cinema = ci_fp, file = "league.xlsx")
+
+# Forest plot with CI squares colored by CINeMA confidence
+color_forest(x = net, cinema = ci_fp)
+```
+
+### `color_league()` palettes
+
+| `palette_type` | Behavior |
+|---|---|
+| `"pastel"` (default) | CINeMA confidence ratings, pastel backgrounds |
+| `"classic"` | CINeMA confidence ratings, vivid backgrounds (white text) |
+| `"colorblind"` | CINeMA confidence ratings, Okabe-Ito palette |
+| `"SchneiderThoma2026"` | CI vs trivial range (Blue / Yellow / Orange / White). Requires `trivial_range`. |
+| `"solid"` | Single fill across all off-diagonal cells (no CINeMA used) |
+
+`color_league()` also supports dual-outcome (`x2`) and quad-outcome (`x3`,
+`x4`) layouts that pack multiple outcomes into one sheet, plus per-outcome
+CINeMA files via `cinema2`, `cinema3`, `cinema4`. CINeMA CSV exports from the
+[CINeMA web tool](https://cinema.ispm.unibe.ch/) are accepted directly; both
+`"A:B"` and `"B:A"` comparison labels are matched automatically.
+
+### `kilim()` and `vitruvian()` palettes
+
+For multi-outcome plots, both functions accept:
+
+- `palette = "GrYlRd"` — green / yellow / red continuous gradient over the
+  signed p-value (recommended for Vitruvian plots).
+- `palette = "GrRd"` — green / white / red continuous gradient (recommended
+  for Kilim Excel output).
+- `palette = "SchneiderThoma2026"` — categorical 4-color scheme (Blue,
+  Yellow, Orange, White) based on the relationship between the 95% CI and
+  `trivial_range`.
+
+`vitruvian()` plots absolute risks (binary outcomes via `cer`, continuous
+outcomes via `lnOR = pi/sqrt(3) * SMD`) on a per-treatment polar chart.
+Outcomes can be visually grouped via `group = ` so spokes from the same
+construct share an outer-ring color and an arc label.
+
+### Schneider-Thoma 2026 color scheme
+
+Categorical coloring based on the relationship between the 95% CI and a
+user-defined trivial-effects zone:
+
+| Color | Condition |
+|---|---|
+| Blue (`#4E88B4`) | Entire 95% CI within the trivial zone |
+| Yellow (`#FFD700`) | Point estimate beyond trivial; CI significant but overlaps trivial |
+| Orange (`#F08000`) | Point estimate AND entire CI beyond trivial |
+| White | All other cases (non-significant, mixed) |
+
+`trivial_range` must be on the same scale as the effect estimates: log scale
+for OR/RR/HR (e.g. `log(c(1/1.1, 1.1))`), raw scale for MD/SMD.
+
+### Evidence frameworks
+
+`min_context()` classifies treatments by significance vs reference and
+versus each other (Tikkinen et al. 2021). `part_context()` classifies by
+absolute effect against user-defined clinical thresholds
+(Brignardello-Petersen et al. 2020). Both attach optional CINeMA and
+N-based quality columns. Helpers `table_min_context()` and
+`table_min_context_multi()` produce ready-to-paste cross-tabulations to
+xlsx or docx.
+
 ## Functions
 
 | Function | Description |
@@ -225,14 +314,29 @@ in every arm row, or where only one arm row has a value filled in.
 | `run_nma_batch()` | Multi-outcome batch pipeline |
 | `plot_transitivity()` | Transitivity assessment plots |
 | `load_w2i()` | Load bundled W2I sample data |
+| `build_w2i_netmeta()` | Build a `netmeta` object from W2I sample data |
+| `w2i_cinema_path()` | Path to the bundled W2I CINeMA CSV |
 | `create_nma_project()` | Scaffold project directory structure |
 | `cinema()` | Interactive GUI for CINeMA + ROB-MEN assessment |
+| `color_league()` / `color_league_multi()` | Colored league tables |
+| `color_forest()` | Forest plot with CINeMA-colored CI squares |
+| `color_netgraph()` | Network graph with CINeMA-colored edges |
+| `kilim()` | Multi-outcome Kilim plot |
+| `vitruvian()` | Per-treatment polar plot of absolute effects |
+| `min_context()` / `table_min_context()` / `table_min_context_multi()` | Minimally contextualized evidence framework |
+| `part_context()` | Partially contextualized evidence framework |
+| `cinema_palette()` / `pval_palette()` | Built-in color palettes |
 
 ## Sample data
 
 `w2i_trials` — Arm-level data from Furukawa et al. (2024) W2I NMA.
 Three treatments (CBT-I, Combination, Pharmacotherapy) for chronic insomnia;
 4 binary outcomes (remission and dropout at long-term and post-treatment).
+
+```r
+d  <- load_w2i()                # arm-level trial data
+ci <- w2i_cinema_path()         # path to bundled CINeMA CSV (remission_lt only)
+```
 
 > Furukawa Y, Sakata M, Furukawa TA, Efthimiou O, Perlis M. Initial treatment choices for long-term remission of chronic insomnia disorder in adults: a systematic review and network meta-analysis. *Psychiatry Clin Neurosci*. 2024;78(11):646-653. https://doi.org/10.1111/pcn.13730
 
@@ -257,6 +361,14 @@ Three treatments (CBT-I, Combination, Pharmacotherapy) for chronic insomnia;
 **ROB-MEN** (risk of bias due to missing evidence):
 
 > Chiocchia V, Nikolakopoulou A, Higgins JPT, et al. ROB-MEN: a tool to assess the risk of bias due to missing evidence in network meta-analysis. *BMC Med*. 2021;19:304. https://doi.org/10.1186/s12916-021-02166-3
+
+**Visualization methods:**
+
+- **Kilim plot**: Seo M, Furukawa TA, Veroniki AA, et al. The Kilim plot: A tool for visualizing network meta-analysis results for multiple outcomes. *Res Synth Methods*. 2021;12(1):86–95. https://doi.org/10.1002/jrsm.1428
+- **Vitruvian plot**: Ostinelli EG, Efthimiou O, Naci H, et al. Vitruvian plot: a visualisation tool for multiple outcomes in network meta-analysis. *Evid Based Ment Health*. 2022;25(e1):e65–e70. https://doi.org/10.1136/ebmental-2022-300457
+- **Schneider-Thoma 2026 color scheme**: Schneider-Thoma J, Zhu Y, Qin M, et al. Comparative efficacy and tolerability of antidopaminergic and muscarinic antipsychotics for acute schizophrenia: a network meta-analysis. *Lancet*. 2026;407(10531):876–891. https://doi.org/10.1016/S0140-6736(25)02365-7
+- **Minimally contextualized framework**: Tikkinen KAO, Guyatt GH, Dening SM, et al. Drug effects and natural history of disease in minimally and partially contextualised evidence frameworks. *BMJ*. 2021;372:m3900. https://doi.org/10.1136/bmj.m3900
+- **Partially contextualized framework**: Brignardello-Petersen R, Izcovich A, Rochwerg B, et al. GRADE approach to drawing conclusions from a network meta-analysis using a partially contextualised framework. *BMJ*. 2020;371:m3907. https://doi.org/10.1136/bmj.m3907
 
 If you use nmatools in published research, please also cite the above packages directly:
 

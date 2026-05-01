@@ -1,16 +1,21 @@
 Package: nmatools
 Title: Network Meta-Analysis Tools
-Version: 0.1.0
+Version: 0.2.0
 Authors@R:
     person("Yuki", "Furukawa", email = "furukawa.y.psy@gmail.com",
            role = c("aut", "cre"))
-Description: Wrapper functions for network meta-analysis using the netmeta package.
-    Provides one-stop functions for running NMA, saving outputs (text, RDS, CSV,
-    league tables), and generating trimmed, A4-ready forest plots with automatic
-    subnetwork detection and page splitting for large plots.
-    Also includes cinema(), an interactive Shiny GUI for assessing confidence
-    in NMA results using CINeMA (Nikolakopoulou et al. 2020) and ROB-MEN
-    (Chiocchia et al. 2021).
+Description: Wrapper functions and visualization tools for network
+    meta-analysis using the 'netmeta' package. Provides one-stop pipelines
+    for running NMA, saving outputs (text, RDS, CSV, league tables), and
+    generating trimmed, A4-ready forest plots with automatic subnetwork
+    detection and page splitting for large plots. Also includes a Shiny
+    GUI ('cinema()') for assessing confidence in NMA results using CINeMA
+    (Nikolakopoulou et al. 2020) and ROB-MEN (Chiocchia et al. 2021), and
+    a suite of publication-ready visualizations: color-coded league tables,
+    forest plots and network graphs colored by CINeMA confidence, Kilim
+    plots (multi-outcome summary tables), Vitruvian plots (per-treatment
+    polar charts of absolute effects), and minimally / partially
+    contextualized evidence-classification tables.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -26,7 +31,17 @@ Imports:
     magick,
     grDevices,
     utils,
-    rlang,
+    ggplot2,
+    geomtextpath,
+    flextable,
+    officer,
+    openxlsx,
+    tools,
+    stats
+Suggests:
+    testthat (>= 3.0.0),
+    patchwork (>= 1.1.0),
+    rstudioapi,
     shiny,
     DT,
     plotly,
@@ -34,7 +49,6 @@ Imports:
     readxl,
     readr,
     stringr,
-    tidyr
-Suggests:
-    testthat (>= 3.0.0)
+    tidyr,
+    rlang
 Config/testthat/edition: 3

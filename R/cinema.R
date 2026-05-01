@@ -48,6 +48,15 @@ cinema <- function(data           = NULL,
                    effect_measure = c("SMD", "MD", "OR", "RR"),
                    launch         = TRUE) {
 
+  required <- c("shiny", "DT", "plotly", "shinycssloaders",
+                "readxl", "readr", "stringr", "tidyr", "rlang")
+  missing <- required[!vapply(required, requireNamespace,
+                              logical(1L), quietly = TRUE)]
+  if (length(missing))
+    stop("cinema() needs the following packages: ",
+         paste(missing, collapse = ", "),
+         ". Install them with install.packages().", call. = FALSE)
+
   app_dir <- system.file("app", package = "nmatools")
   if (!nzchar(app_dir) || !dir.exists(app_dir))
     stop("nmatools Shiny app not found. Try reinstalling the package.",

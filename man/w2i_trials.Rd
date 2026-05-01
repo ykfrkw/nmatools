@@ -9,7 +9,7 @@ A data frame with one row per treatment arm and columns:
 \describe{
 \item{id}{Study identifier (author + year)}
 \item{t}{Treatment: \code{"CBT-I"}, \code{"Combination"}, or \code{"Pharmacotherapy"}}
-\item{n}{Number of randomised participants}
+\item{n}{Number of randomized participants}
 \item{r}{Remission at long-term follow-up (event count)}
 \item{n_dropout}{Dropout at long-term follow-up (event count)}
 \item{r_pt}{Remission at post-treatment (event count)}

@@ -1,14 +1,14 @@
 # ============================================================
 # nmatools — Quick-Start Sample Script
 # ============================================================
-# 前提: nmatools.Rproj を開く → 作業ディレクトリが自動でパッケージルートになる
-# 使い方: このファイルを開き、Cmd+Enter で 1 行ずつ実行する
+# Setup: open nmatools.Rproj so the working directory is the package root.
+# Usage: open this file and run line-by-line with Cmd+Enter.
 # ============================================================
 
-# ── Step 1: パッケージを開発モードで読み込む ─────────────────────────────────
-devtools::load_all()   # インストール不要。R/ 以下のすべてを即座にロード
+# ── Step 1: load the package in development mode ────────────────────────────
+devtools::load_all()   # No install required; loads everything under R/.
 
-# ── Step 2: サンプルデータを確認する ─────────────────────────────────────────
+# ── Step 2: inspect the bundled sample data ─────────────────────────────────
 d <- load_w2i()
 head(d)
 # id            t    n  r  n_dropout  r_pt  n_dropout_pt  rob  indirectness
@@ -16,31 +16,31 @@ head(d)
 # Gross2011  Pharmacotherapy  10  4   2     5             1    L             1
 # ...
 
-# 列名・治療の確認
+# Column names and treatment counts
 colnames(d)
-table(d$t)   # 治療の種類と行数
+table(d$t)   # treatments and the number of arm rows per treatment
 
-# ── Step 3: 1 アウトカム（単発実行）────────────────────────────────────────
-# studlab = id のように列名をクォートなしで指定できる（meta::pairwise と同じ書き方）
+# ── Step 3: single outcome (one-shot run) ───────────────────────────────────
+# studlab = id works without quoting (same syntax as meta::pairwise()).
 netmetawrap(
   data            = d,
-  studlab         = id,              # 列名はクォートなしでOK
+  studlab         = id,              # unquoted column name is fine
   treat           = t,
-  outcome         = "remission_lt",  # 出力フォルダ名にも使われる
+  outcome         = "remission_lt",  # also used as the output folder name
   n               = n,
   event           = r,
   sm              = "OR",
   reference.group = "Pharmacotherapy",
-  small.values    = "undesirable",   # "desirable" = 小さいほど良い（dropout など）
-  path            = "./outputs"      # なければ自動作成。省略可（デフォルト）
+  small.values    = "undesirable",   # "desirable" = smaller is better (e.g. dropout)
+  path            = "./outputs"      # auto-created if missing; default if omitted
 )
-# → outputs/remission_lt/ に結果がまとめて出力される
+# → all results land under outputs/remission_lt/
 
-# ── Step 4: 複数アウトカムを一括実行（binary のみ）───────────────────────────
-# アウトカムごとに変わる引数だけ params_list に書く
-# 列名・sm など共通の引数は .default_args に一度だけ書く
+# ── Step 4: batch run across multiple outcomes (binary only) ────────────────
+# Put per-outcome arguments in params_list.
+# Put shared arguments (column names, sm, etc.) once in .default_args.
 params_list <- list(
-  # binary アウトカム: n + event + sm を指定
+  # binary outcomes: n + event + sm
   list(outcome = "remission_lt",  n = "n", event = "r",            sm = "OR", small.values = "undesirable"),
   list(outcome = "dropout_lt",    n = "n", event = "n_dropout",    sm = "OR", small.values = "desirable"),
   list(outcome = "remission_pt",  n = "n", event = "r_pt",         sm = "OR", small.values = "undesirable"),
@@ -51,17 +51,17 @@ run_nma_batch(
   params_list   = params_list,
   .default_args = list(
     data            = d,
-    studlab         = "id",          # 文字列でも可（do.call 経由のため）
+    studlab         = "id",          # strings also work (calls go through do.call)
     treat           = "t",
     reference.group = "Pharmacotherapy",
     path            = "./outputs"
   )
 )
-# → outputs/ 以下に 4 つのサブディレクトリが作成される
+# → outputs/ ends up with four sub-directories, one per outcome
 
-# ── Step 4b: binary + continuous 混在の場合 ───────────────────────────────────
-# continuous アウトカム: n + mean_col + sd_col + sm を指定する
-# （以下は架空のデータ例。実際のデータに合わせて列名を変更する）
+# ── Step 4b: mixed binary + continuous outcomes ─────────────────────────────
+# Continuous outcomes need n + mean_col + sd_col + sm.
+# (Columns below are illustrative; rename to match your data.)
 params_mixed <- list(
   list(
     outcome      = "remission",
@@ -71,7 +71,7 @@ params_mixed <- list(
     small.values = "undesirable"
   ),
   list(
-    outcome      = "sleep_efficiency",   # continuous アウトカム
+    outcome      = "sleep_efficiency",   # continuous outcome
     n            = "n_cont",
     mean_col     = "se_mean",
     sd_col       = "se_sd",
@@ -83,14 +83,14 @@ params_mixed <- list(
 # run_nma_batch(
 #   params_list   = params_mixed,
 #   .default_args = list(
-#     data    = my_data,              # 実際のデータフレームに置き換え
+#     data    = my_data,              # replace with your real data frame
 #     studlab = "study",
 #     treat   = "treatment",
 #     path    = "./outputs"
 #   )
 # )
 
-# ── Step 5: 引数のカスタマイズ例 ─────────────────────────────────────────────
+# ── Step 5: overriding default arguments ────────────────────────────────────
 netmetawrap(
   data            = d,
   studlab         = id,
@@ -102,15 +102,21 @@ netmetawrap(
   reference.group = "Pharmacotherapy",
   small.values    = "undesirable",
   path            = "./outputs",
-  # forest() へ渡す引数を上書き
+  # override arguments passed to forest()
   forest_args = list(
     leftcols = c("studlab", "n.trts")
   ),
-  # netmetabin() / netmeta() へ渡す引数を上書き
+  # override arguments passed to netmetabin() / netmeta()
   netmeta_args = list(
-    incr = 0.5   # continuity correction を 0.001 → 0.5 に変更
+    incr = 0.5   # raise the continuity correction from 0.001 to 0.5
   )
 )
 
-# ── Step 6: 出力フォルダを開く ────────────────────────────────────────────────
-system("open outputs")   # macOS: Finder で outputs/ を開く
+# ── Step 6: open the output folder ──────────────────────────────────────────
+system("open outputs")   # macOS: opens outputs/ in Finder
+
+# ============================================================
+# See sample_viz.R for examples of the visualization functions
+# (color_league, color_forest, color_netgraph, kilim, vitruvian,
+# min_context, part_context).
+# ============================================================
