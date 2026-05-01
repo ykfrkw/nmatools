@@ -386,16 +386,16 @@ pval_to_color_gradient <- function(signed_pv, trivial = NULL, palette = "GrYlRd"
 #' Assign colours using the SchneiderThoma2026 scheme
 #'
 #' Categorical colour assignment based on the relationship between effect
-#' size, 95\% CI, and a user-defined trivial (very small) effects range:
+#' size, 95% CI, and a user-defined trivial (very small) effects range:
 #' \itemize{
 #'   \item \strong{Blue} (\code{#4E88B4}): point estimate \emph{and} entire
-#'     95\% CI fall within the very small effects range.
+#'     95% CI fall within the very small effects range.
 #'   \item \strong{Yellow} (\code{#FFD700}): point estimate is outside the
-#'     very small effects range, the 95\% CI does not include the value of no
-#'     difference (statistically significant), but the 95\% CI still overlaps
+#'     very small effects range, the 95% CI does not include the value of no
+#'     difference (statistically significant), but the 95% CI still overlaps
 #'     with the very small effects range.
 #'   \item \strong{Orange} (\code{#F08000}): point estimate \emph{and} the
-#'     95\% CI entirely exclude the very small effects range (i.e., the CI
+#'     95% CI entirely exclude the very small effects range (i.e., the CI
 #'     is fully beyond the trivial threshold).
 #'   \item \strong{White} (\code{#FFFFFF}): all other cases (e.g.
 #'     non-significant results, or trivial range not supplied).
@@ -406,8 +406,8 @@ pval_to_color_gradient <- function(signed_pv, trivial = NULL, palette = "GrYlRd"
 #' The null value (no difference) is always 0 on this scale.
 #'
 #' @param te Numeric vector of point estimates.
-#' @param lo Numeric vector of lower 95\% CI bounds.
-#' @param hi Numeric vector of upper 95\% CI bounds.
+#' @param lo Numeric vector of lower 95% CI bounds.
+#' @param hi Numeric vector of upper 95% CI bounds.
 #' @param trivial_range Numeric vector \code{c(lo_thresh, hi_thresh)} defining
 #'   the very small effects range. \code{NULL} returns white for all cells.
 #' @return A list with:
@@ -526,12 +526,14 @@ pval_legend_ggplot <- function(base_size = 7, palette = "GrYlRd") {
 
 #' Format a single estimate + CI as a two-line string
 #'
-#' Returns a string like \code{"1.16\n(0.68; 1.97)"}.
+#' Returns a string with the point estimate on the first line and the CI
+#' on the second line, e.g. \code{1.16} on one line followed by
+#' \code{(0.68; 1.97)} on the next.
 #'
 #' @param est Point estimate (numeric).
 #' @param lower Lower CI bound (numeric).
 #' @param upper Upper CI bound (numeric).
-#' @param fmt sprintf format string (default \code{"%.2f"}).
+#' @param fmt sprintf format string (default `"\%.2f"`).
 #' @return Character string.
 #' @keywords internal
 format_ci_cell <- function(est, lower, upper, fmt = "%.2f") {

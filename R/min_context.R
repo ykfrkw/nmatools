@@ -24,9 +24,9 @@
 #' \code{n_quality} column based on the total number of participants in all
 #' trials that include each treatment:
 #' \itemize{
-#'   \item \code{"Low"}      — N < \code{n_thresholds[1]}
-#'   \item \code{"Moderate"} — \code{n_thresholds[1]} ≤ N < \code{n_thresholds[2]}
-#'   \item \code{"High"}     — N ≥ \code{n_thresholds[2]}
+#'   \item \code{"Low"}      - N < \code{n_thresholds[1]}
+#'   \item \code{"Moderate"} - \code{n_thresholds[1]} \eqn{\le} N < \code{n_thresholds[2]}
+#'   \item \code{"High"}     - N \eqn{\ge} \code{n_thresholds[2]}
 #' }
 #' The default thresholds are \code{c(100, 400)}.
 #'

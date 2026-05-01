@@ -36,7 +36,7 @@
 #'   \code{"zscore"}, or \code{"custom"}.
 #' @param sort_order Custom order vector (used when \code{sort_by = "custom"}).
 #' @param treat_labels Named character vector for renaming treatments.
-#' @param show_ci Show 95\% CI? (default \code{TRUE}).
+#' @param show_ci Show 95% CI? (default \code{TRUE}).
 #' @param common Logical. Use common-effects model? Default \code{FALSE} = random-effects model.
 #' @param fixed Deprecated. Use \code{common} instead.
 #' @param reference Reference treatment for sorting (taken from first

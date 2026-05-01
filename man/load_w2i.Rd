@@ -14,6 +14,13 @@ Convenience function that reads the bundled W2I CSV and returns it as a
 data frame. Equivalent to accessing the \code{w2i_trials} lazy-data object but
 ensures the CSV is read fresh from \verb{inst/extdata/}.
 }
+\details{
+The matching CINeMA confidence ratings for the long-term remission outcome
+are bundled at:
+\preformatted{system.file("extdata", "w2i_cinema.csv", package = "nmatools")}
+Pass that path (or \code{read.csv()} of it) to functions accepting a \code{cinema}
+argument such as \code{\link[=color_league]{color_league()}}, \code{\link[=color_forest]{color_forest()}}, or \code{\link[=color_netgraph]{color_netgraph()}}.
+}
 \examples{
 d <- load_w2i()
 head(d)
