@@ -123,7 +123,7 @@ color_netgraph <- function(x,
   # Drop defaults that resolved to NULL (e.g., N data unavailable)
   defaults <- defaults[!vapply(defaults, is.null, logical(1L))]
   # User-supplied ... takes priority over defaults
-  merged_args <- modifyList(defaults, list(...))
+  merged_args <- utils::modifyList(defaults, list(...))
 
   # ---- 6. Call netgraph ----
   invisible(do.call(netmeta::netgraph, c(list(x = x, col = edge_colors), merged_args)))

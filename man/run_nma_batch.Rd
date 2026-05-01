@@ -45,7 +45,7 @@ Unquoted names work only with the direct \code{netmetawrap()} call.
 \dontrun{
 d <- load_w2i()
 
-# ── Example 1: multiple binary outcomes ──────────────────────────────────
+# Example 1: multiple binary outcomes
 params_list <- list(
   list(outcome = "remission_lt",  event = "r",            small.values = "undesirable"),
   list(outcome = "dropout_lt",    event = "n_dropout",    small.values = "desirable"),
@@ -66,7 +66,7 @@ run_nma_batch(
   )
 )
 
-# ── Example 2: binary + continuous mixed ─────────────────────────────────
+# Example 2: binary + continuous mixed
 # Specify different column names and sm per outcome in params_list.
 params_mixed <- list(
   list(

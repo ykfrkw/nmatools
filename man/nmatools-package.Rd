@@ -21,7 +21,7 @@ league table (XLSX)
 }
 }
 \author{
-\strong{Maintainer}: Yuki Furukawa \email{furukawa.y.psy@gmail.com} (\href{https://orcid.org/0000-0002-0897-8339}{ORCID})
+\strong{Maintainer}: Yuki Furukawa \email{furukawa.y.psy@gmail.com}
 
 }
 \keyword{internal}

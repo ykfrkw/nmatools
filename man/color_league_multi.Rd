@@ -35,6 +35,13 @@ frame applied to all outcomes, or a named list with the same names as
 
 \item{palette, palette_type, header_bg}{Colour settings passed to each sheet.}
 
+\item{trivial_range}{Numeric vector \code{c(lo, hi)} on the log scale
+(for OR/RR/HR) or raw scale (for MD/SMD). Required when
+\code{palette_type = "SchneiderThoma2026"}.}
+
+\item{fill_color}{Hex colour applied to all off-diagonal cells when
+\code{palette_type = "solid"} (default \code{"#E2EFDA"}, light green).}
+
 \item{file}{Output \code{.xlsx} path (default \code{"color_league_multi.xlsx"}).}
 }
 \value{

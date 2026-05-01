@@ -3,8 +3,7 @@ Title: Network Meta-Analysis Tools
 Version: 0.2.0
 Authors@R:
     person("Yuki", "Furukawa", email = "furukawa.y.psy@gmail.com",
-           role = c("aut", "cre"),
-           comment = c(ORCID = "0000-0002-0897-8339"))
+           role = c("aut", "cre"))
 Description: Wrapper functions and visualization tools for network
     meta-analysis using the 'netmeta' package. Provides one-stop pipelines
     for running NMA, saving outputs (text, RDS, CSV, league tables), and
@@ -32,15 +31,6 @@ Imports:
     magick,
     grDevices,
     utils,
-    rlang,
-    shiny,
-    DT,
-    plotly,
-    shinycssloaders,
-    readxl,
-    readr,
-    stringr,
-    tidyr,
     ggplot2,
     geomtextpath,
     flextable,
@@ -50,5 +40,15 @@ Imports:
     stats
 Suggests:
     testthat (>= 3.0.0),
-    patchwork (>= 1.1.0)
+    patchwork (>= 1.1.0),
+    rstudioapi,
+    shiny,
+    DT,
+    plotly,
+    shinycssloaders,
+    readxl,
+    readr,
+    stringr,
+    tidyr,
+    rlang
 Config/testthat/edition: 3

@@ -67,6 +67,9 @@
 #'   fall back to the built-in palette.
 #' @param strip_color Fill colour for the treatment-label strip above each
 #'   panel (default \code{"#2c3e50"}).
+#' @param palette Colour scheme for the bars. One of \code{"GrYlRd"}
+#'   (default; green / yellow / red continuous gradient over the signed
+#'   p-value) or \code{"GrRd"} (green / white / red continuous gradient).
 #' @param show_legend Logical. Attach a p-value colour legend to the right of
 #'   the plot? Requires the \pkg{patchwork} package. Default \code{TRUE}.
 #' @param file Output file path. \code{NULL} returns the ggplot object.

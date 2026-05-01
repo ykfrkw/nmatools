@@ -245,6 +245,11 @@ color_league <- function(x,
 #' @param sort_by,sort_order,treat_labels,digits,bracket,separator,wrap_ci,common
 #'   Passed to each sheet. See \code{\link{color_league}()} for details.
 #' @param palette,palette_type,header_bg Colour settings passed to each sheet.
+#' @param trivial_range Numeric vector \code{c(lo, hi)} on the log scale
+#'   (for OR/RR/HR) or raw scale (for MD/SMD). Required when
+#'   \code{palette_type = "SchneiderThoma2026"}.
+#' @param fill_color Hex colour applied to all off-diagonal cells when
+#'   \code{palette_type = "solid"} (default \code{"#E2EFDA"}, light green).
 #' @param file Output \code{.xlsx} path (default \code{"color_league_multi.xlsx"}).
 #' @return Invisibly returns the \code{openxlsx} workbook object.
 #' @export

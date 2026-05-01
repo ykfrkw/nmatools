@@ -64,6 +64,12 @@ disables trivial-effect highlighting.}
 \item{reference}{Reference treatment for sorting (taken from first
 outcome if not specified).}
 
+\item{palette}{Colour scheme for cell fills. One of \code{"GrRd"} (default;
+green / white / red gradient over the signed p-value),
+\code{"GrYlRd"} (green / yellow / red gradient), or
+\code{"SchneiderThoma2026"} (4-colour categorical scheme based on the
+95\% CI relative to \code{trivial_range}; \code{trivial_range} required).}
+
 \item{file}{Output file path (must end in \code{.xlsx}).}
 }
 \value{
