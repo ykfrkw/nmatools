@@ -115,18 +115,9 @@ moduleB_ui <- function(id) {
           conditionalPanel(
             condition = "input.d1_method == 'sens'",
             ns        = ns,
-            fluidRow(
-              column(6,
-                numericInput(ns("sens_dom_thresh"),
-                             "Dominance threshold (high-RoB weight share)",
-                             value = 0.60, min = 0.5, max = 0.95, step = 0.05)
-              ),
-              column(6,
-                numericInput(ns("sens_inf_thresh"),
-                             "Inflation threshold (relative |TE| change)",
-                             value = 0.10, min = 0.0, max = 0.5, step = 0.05)
-              )
-            )
+            numericInput(ns("sens_inf_thresh"),
+                         "Inflation threshold (relative |TE| change)",
+                         value = 0.10, min = 0.0, max = 0.5, step = 0.05)
           )
         )
       )
@@ -170,8 +161,6 @@ moduleB_server <- function(id, processed_data,
           updateSelectInput(session, "agg_rule",        selected = s$agg_rule)
         if (!is.null(s$d1_method))
           updateSelectInput(session, "d1_method",       selected = s$d1_method)
-        if (!is.null(s$sens_dom_thresh) && !is.na(s$sens_dom_thresh))
-          updateNumericInput(session, "sens_dom_thresh", value   = s$sens_dom_thresh)
         if (!is.null(s$sens_inf_thresh) && !is.na(s$sens_inf_thresh))
           updateNumericInput(session, "sens_inf_thresh", value   = s$sens_inf_thresh)
       }, ignoreNULL = TRUE, ignoreInit = TRUE)
@@ -345,12 +334,9 @@ moduleB_server <- function(id, processed_data,
       d1_method <- if (isTRUE(input$d1_method == "sens")) "sens" else "contrib"
       if (d1_method == "sens") {
         # Sensitivity-based: judge each direct comparison via excl-high-RoB flowchart
-        dom_t <- if (is.null(input$sens_dom_thresh) || is.na(input$sens_dom_thresh))
-                   0.60 else input$sens_dom_thresh
         inf_t <- if (is.null(input$sens_inf_thresh) || is.na(input$sens_inf_thresh))
                    0.10 else input$sens_inf_thresh
         d1 <- compute_domain1_wsb_sens(comps, contrib, df,
-                                       dom_threshold = dom_t,
                                        inf_threshold = inf_t,
                                        small_values  = NULL)
       } else {
@@ -1192,7 +1178,6 @@ compute_domain1_wsb <- function(comps, contrib, direct_rob, rule = "average") {
 # level, so network roll-up is a pure severity-max).
 # ----------------------------------------------------------------------------
 compute_domain1_wsb_sens <- function(comps, contrib, df,
-                                     dom_threshold = 0.60,
                                      inf_threshold = 0.10,
                                      small_values  = NULL) {
   comp_labels <- paste(comps$t1, comps$t2, sep = " vs ")
@@ -1217,7 +1202,6 @@ compute_domain1_wsb_sens <- function(comps, contrib, df,
       rob_vec       = as.character(sub$rob),
       te_vec        = sub$TE,
       se_vec        = sub$seTE,
-      dom_threshold = dom_threshold,
       inf_threshold = inf_threshold,
       small_values  = small_values
     )

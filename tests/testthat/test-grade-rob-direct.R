@@ -56,8 +56,8 @@ test_that("only high-RoB studies returns conservative 'some_concerns'", {
   )
 })
 
-test_that("dominance threshold gates the rate-down (low share of high-RoB returns 'no')", {
-  # Single high-RoB study with weight ~5% — well under the 60% dominance threshold.
+test_that("small inflation under threshold returns 'no'", {
+  # One high-RoB study with tiny IV weight (~1%); pooled |TE| barely changes.
   expect_equal(
     judge_rob_direct_sens(
       rob_vec = c("high",  "low",  "low",  "low",  "low"),
