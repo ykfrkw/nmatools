@@ -91,7 +91,7 @@ moduleB_ui <- function(id) {
                        value = 0.2, step = 0.05, min = 0.001)
         ),
         column(4,
-          selectInput(ns("agg_rule"), "D1 / D3 aggregation rule",
+          selectInput(ns("agg_rule"), "D3 (Indirectness) aggregation rule",
             choices = c(
               "Average (contribution-weighted mean)" = "average",
               "Majority (largest contribution share)" = "majority",
@@ -101,6 +101,35 @@ moduleB_ui <- function(id) {
           )
         )
       ),
+      fluidRow(
+        column(6,
+          selectInput(ns("d1_method"), "D1 (Study limitations) judgment method",
+            choices = c(
+              "Contribution-weighted (default)"        = "contrib",
+              "Sensitivity-based (excl. high-RoB)"     = "sens"
+            ),
+            selected = "contrib"
+          )
+        ),
+        column(6,
+          conditionalPanel(
+            condition = "input.d1_method == 'sens'",
+            ns        = ns,
+            fluidRow(
+              column(6,
+                numericInput(ns("sens_dom_thresh"),
+                             "Dominance threshold (high-RoB weight share)",
+                             value = 0.60, min = 0.5, max = 0.95, step = 0.05)
+              ),
+              column(6,
+                numericInput(ns("sens_inf_thresh"),
+                             "Inflation threshold (relative |TE| change)",
+                             value = 0.10, min = 0.0, max = 0.5, step = 0.05)
+              )
+            )
+          )
+        )
+      )
     ),
 
     hr(),
@@ -139,6 +168,12 @@ moduleB_server <- function(id, processed_data,
           updateNumericInput(session, "delta",          value    = s$delta)
         if (!is.null(s$agg_rule))
           updateSelectInput(session, "agg_rule",        selected = s$agg_rule)
+        if (!is.null(s$d1_method))
+          updateSelectInput(session, "d1_method",       selected = s$d1_method)
+        if (!is.null(s$sens_dom_thresh) && !is.na(s$sens_dom_thresh))
+          updateNumericInput(session, "sens_dom_thresh", value   = s$sens_dom_thresh)
+        if (!is.null(s$sens_inf_thresh) && !is.na(s$sens_inf_thresh))
+          updateNumericInput(session, "sens_inf_thresh", value   = s$sens_inf_thresh)
       }, ignoreNULL = TRUE, ignoreInit = TRUE)
     }
 
@@ -306,16 +341,30 @@ moduleB_server <- function(id, processed_data,
       model_type <- if (input$model_type == "random") "random" else "common"
       comp_labels <- paste(comps$t1, comps$t2, sep = " vs ")
 
-      # Domain 1: Within-study bias (contribution-weighted ROB)
-      rob_score  <- c("low" = 0, "some concerns" = 1, "high" = 2)
-      df$rob_num <- rob_score[as.character(df$rob)]
-      direct_rob <- bind_rows(
-        df %>% mutate(comp_label = paste(t1, t2, sep = ":")),
-        df %>% mutate(comp_label = paste(t2, t1, sep = ":"))
-      ) %>%
-        group_by(comp_label) %>%
-        summarise(mean_rob = mean(rob_num, na.rm = TRUE), .groups = "drop")
-      d1 <- compute_domain1_wsb(comps, contrib, direct_rob, input$agg_rule)
+      # Domain 1: Within-study bias
+      d1_method <- if (isTRUE(input$d1_method == "sens")) "sens" else "contrib"
+      if (d1_method == "sens") {
+        # Sensitivity-based: judge each direct comparison via excl-high-RoB flowchart
+        dom_t <- if (is.null(input$sens_dom_thresh) || is.na(input$sens_dom_thresh))
+                   0.60 else input$sens_dom_thresh
+        inf_t <- if (is.null(input$sens_inf_thresh) || is.na(input$sens_inf_thresh))
+                   0.10 else input$sens_inf_thresh
+        d1 <- compute_domain1_wsb_sens(comps, contrib, df,
+                                       dom_threshold = dom_t,
+                                       inf_threshold = inf_t,
+                                       small_values  = NULL)
+      } else {
+        # Contribution-weighted ROB (default)
+        rob_score  <- c("low" = 0, "some concerns" = 1, "high" = 2)
+        df$rob_num <- rob_score[as.character(df$rob)]
+        direct_rob <- bind_rows(
+          df %>% mutate(comp_label = paste(t1, t2, sep = ":")),
+          df %>% mutate(comp_label = paste(t2, t1, sep = ":"))
+        ) %>%
+          group_by(comp_label) %>%
+          summarise(mean_rob = mean(rob_num, na.rm = TRUE), .groups = "drop")
+        d1 <- compute_domain1_wsb(comps, contrib, direct_rob, input$agg_rule)
+      }
 
       # Domain 2: Reporting bias (from ROB-MEN or "Not assessed")
       # lookup_robmen_rating() tries both "A vs B" and "B vs A" orderings.
@@ -1125,6 +1174,73 @@ compute_domain1_wsb <- function(comps, contrib, direct_rob, rule = "average") {
       if (is.na(s)) NA_real_ else floor(s + 0.5) + 1
     })
     aggregate_wsb(scores, contr, rule)
+  })
+
+  data.frame(comparison = comp_labels, domain1 = results,
+             stringsAsFactors = FALSE)
+}
+
+# judge_rob_direct_sens() lives in inst/app/modules/_d1_sens_judge.R so it
+# can be sourced standalone from tests without loading shiny/DT/plotly.
+# app.R sources that file before this one.
+
+# ----------------------------------------------------------------------------
+# Domain 1 (Sensitivity-based, network level): apply judge_rob_direct_sens()
+# to each direct comparison, then roll up to network comparisons via the
+# existing aggregate_wsb() with rule="highest" (the agg_rule UI input is
+# intentionally ignored here — direction is already encoded at the direct
+# level, so network roll-up is a pure severity-max).
+# ----------------------------------------------------------------------------
+compute_domain1_wsb_sens <- function(comps, contrib, df,
+                                     dom_threshold = 0.60,
+                                     inf_threshold = 0.10,
+                                     small_values  = NULL) {
+  comp_labels <- paste(comps$t1, comps$t2, sep = " vs ")
+  cm <- get_contrib_matrix(contrib)
+  if (is.null(cm)) {
+    return(data.frame(comparison = comp_labels,
+                      domain1    = rep("Not assessed", nrow(comps)),
+                      stringsAsFactors = FALSE))
+  }
+
+  num_map  <- c(no = 1L, some_concerns = 2L, serious = 3L)
+  judgments <- new.env(hash = TRUE, parent = emptyenv())
+  pairs_tab <- unique(rbind(
+    data.frame(a = df$t1, b = df$t2, stringsAsFactors = FALSE),
+    data.frame(a = df$t2, b = df$t1, stringsAsFactors = FALSE)
+  ))
+  for (i in seq_len(nrow(pairs_tab))) {
+    a <- pairs_tab$a[i]; b <- pairs_tab$b[i]
+    sub <- df[(df$t1 == a & df$t2 == b) | (df$t1 == b & df$t2 == a), , drop = FALSE]
+    if (nrow(sub) == 0) next
+    j <- judge_rob_direct_sens(
+      rob_vec       = as.character(sub$rob),
+      te_vec        = sub$TE,
+      se_vec        = sub$seTE,
+      dom_threshold = dom_threshold,
+      inf_threshold = inf_threshold,
+      small_values  = small_values
+    )
+    judgments[[paste(a, b, sep = ":")]] <- j
+  }
+
+  results <- sapply(seq_len(nrow(comps)), function(i) {
+    row_idx <- find_cm_row(cm, comps$t1[i], comps$t2[i])
+    if (is.na(row_idx)) return("Not assessed")
+    contr <- cm[row_idx, ]; contr <- contr[contr > 0.001]
+    if (length(contr) == 0) return("Not assessed")
+    scores <- sapply(names(contr), function(lbl) {
+      j <- judgments[[lbl]]
+      if (is.null(j)) {
+        # Try reverse ordering "B:A"
+        parts <- strsplit(lbl, ":", fixed = TRUE)[[1]]
+        if (length(parts) == 2) {
+          j <- judgments[[paste(parts[2], parts[1], sep = ":")]]
+        }
+      }
+      if (is.null(j)) NA_real_ else as.numeric(num_map[[j]])
+    })
+    aggregate_wsb(scores, contr, rule = "highest")
   })
 
   data.frame(comparison = comp_labels, domain1 = results,

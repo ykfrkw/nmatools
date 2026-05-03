@@ -22,6 +22,7 @@ library(meta)
 library(shinycssloaders)
 
 source("modules/utils.R")            # shared constants and helpers (load first)
+source("modules/_d1_sens_judge.R")   # pure RoB sensitivity flowchart (used by Module B)
 source("modules/module_A_data_input.R")
 source("modules/module_B_cinema.R")
 source("modules/module_C_robmen.R")
