@@ -6,11 +6,12 @@
 # standalone file (rather than inlined in module_B_cinema.R) so the pure
 # function can be tested without loading shiny/DT/plotly etc.
 #
-# Mirrors pmatools::assess_rob's flowchart at the pairwise level:
+# Mirrors pmatools::assess_rob's direction-and-magnitude check at the
+# pairwise level (without the dominance gate — every comparison with at
+# least one high-RoB study is checked):
 #
-#   "no"            — high-RoB weight share below dom_threshold, OR excluding
-#                     high-RoB does not push effect favourably beyond
-#                     inf_threshold
+#   "no"            — excluding high-RoB does not push effect favourably
+#                     beyond inf_threshold
 #   "some_concerns" — high-RoB studies inflate |TE| by more than inf_threshold
 #                     (also returned conservatively when there is nothing to
 #                     compare against, e.g. all studies are high-RoB or
@@ -25,7 +26,6 @@
 # constrains direction.
 # =============================================================================
 judge_rob_direct_sens <- function(rob_vec, te_vec, se_vec,
-                                  dom_threshold = 0.60,
                                   inf_threshold = 0.10,
                                   small_values  = NULL) {
   is_high <- rob_vec == "high"
@@ -38,8 +38,6 @@ judge_rob_direct_sens <- function(rob_vec, te_vec, se_vec,
 
   w <- numeric(length(te_vec))
   w[ok] <- 1 / (se_vec[ok]^2)
-  prop_high <- sum(w[is_high & ok]) / sum(w[ok])
-  if (prop_high < dom_threshold) return("no")
 
   te_all <- weighted.mean(te_vec[ok],            w[ok])
   te_low <- weighted.mean(te_vec[ok & !is_high], w[ok & !is_high])
