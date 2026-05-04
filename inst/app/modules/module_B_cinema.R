@@ -44,26 +44,181 @@ CONFIDENCE_CHOICES <- c(
 )
 
 # --------------------------------------------------------------------------
-# UI FUNCTION
+# UI FUNCTIONS
 # --------------------------------------------------------------------------
-moduleB_ui <- function(id) {
+# Each CINeMA domain is a top-level tab in app.R; the six moduleB_d{1..6}_ui
+# functions below produce the per-tab content. They share a single
+# moduleB_server (one set of reactives) via Shiny module namespacing.
+# --------------------------------------------------------------------------
+
+moduleB_d1_ui <- function(id) {
   ns <- NS(id)
-
   tagList(
-    h3("CINeMA Analysis"),
-    p("Frequentist NMA via ", strong("netmeta"),
-      " with 6-domain CINeMA confidence assessment.",
-      " Effect measure, reference treatment, and effects model are configured",
-      " on the Configuration tab. Each domain tab below carries its own",
-      " judgement settings."),
+    uiOutput(ns("nma_error_banner")),
+    wellPanel(
+      fluidRow(
+        column(6,
+          selectInput(ns("d1_judgement"), "Judgement method",
+            choices = c(
+              "Average (contribution-weighted mean)"  = "average",
+              "Majority (largest contribution share)" = "majority",
+              "Highest (most severe contributor)"     = "highest",
+              "Sensitivity-based (excl. high-RoB)"    = "sens"
+            ),
+            selected = "average"
+          )
+        ),
+        column(6,
+          conditionalPanel(
+            condition = sprintf("input['%s'] == 'sens'", ns("d1_judgement")),
+            numericInput(ns("sens_inf_thresh"),
+                         "Inflation threshold (relative |TE| change)",
+                         value = 0.10, min = 0.0, max = 0.5, step = 0.05)
+          )
+        )
+      )
+    ),
+    uiOutput(ns("d1_debug_msg")),
+    h5("Contribution Chart (ROB by direct comparison)"),
+    plotlyOutput(ns("d1_contrib_chart"), height = "320px"),
+    br(),
+    p(strong("Algorithm (Nikolakopoulou 2020):"),
+      "ROB scores encoded as low=1, some concerns=2, high=3.",
+      "Three aggregation rules selectable above:",
+      strong("Average"), "\u2014 contribution-weighted mean;",
+      strong("Majority"), "\u2014 category with largest total weight;",
+      strong("Highest"), "\u2014 most severe ROB among non-negligible contributors."),
+    p(style = "color:#666; font-size:0.9em; margin-bottom:6px;",
+      "Each card shows ", strong("TE_all"), " (all studies) and ",
+      strong("TE excl. high-RoB"), ". Sensitivity-based judgement: ",
+      strong("Major concerns"), " if the sign flips between the two; ",
+      strong("No concerns"), " if CI overlap \u2265 80% of mean CI width ",
+      "(high-RoB studies do not change the conclusion); ",
+      strong("Some concerns"), " if CI overlap < 80% ", em("and"),
+      " (statistical significance changes ",
+      em("or"), " inflation > threshold); otherwise ",
+      strong("No concerns"), "."),
+    h5("Domain 1 Ratings \u2014 Auto-computed + Override"),
+    shinycssloaders::withSpinner(uiOutput(ns("d1_override_ui")),
+      type = 4, color = "#4472C4")
+  )
+}
 
-    hr(),
-    shinycssloaders::withSpinner(
-      uiOutput(ns("results_ui")),
-      type    = 4,
-      color   = "#4472C4",
-      caption = "Running NMA\u2026 (this may take a few seconds to a minute)"
-    )
+moduleB_d2_ui <- function(id) {
+  ns <- NS(id)
+  tagList(
+    uiOutput(ns("nma_error_banner")),
+    div(class = "alert alert-info",
+      icon("info-circle"),
+      " Run ROB-MEN \u2014 ROB-MEN ratings populate this domain automatically.",
+      " Or use the bulk buttons / per-comparison overrides below."),
+    div(style = "display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:12px;",
+      actionButton(ns("go_to_robmen"),
+        "Go to ROB-MEN",
+        class = "btn btn-info btn-sm",
+        icon  = icon("arrow-right")),
+      actionButton(ns("d2_set_all_no"), "Set all: No concerns",
+        class = "btn btn-success btn-sm"),
+      actionButton(ns("d2_set_all_some"), "Set all: Some concerns",
+        class = "btn btn-warning btn-sm"),
+      actionButton(ns("d2_set_all_major"), "Set all: Major concerns",
+        class = "btn btn-danger btn-sm")
+    ),
+    h5("Domain 2 Ratings \u2014 Auto-computed (from ROB-MEN) + Override"),
+    shinycssloaders::withSpinner(uiOutput(ns("d2_override_ui")),
+      type = 4, color = "#4472C4")
+  )
+}
+
+moduleB_d3_ui <- function(id) {
+  ns <- NS(id)
+  tagList(
+    uiOutput(ns("nma_error_banner")),
+    wellPanel(
+      fluidRow(
+        column(6,
+          selectInput(ns("d3_agg_rule"), "Aggregation rule",
+            choices = c(
+              "Average (contribution-weighted mean)"  = "average",
+              "Majority (largest contribution share)" = "majority",
+              "Highest (most severe contributor)"     = "highest"
+            ),
+            selected = "average"
+          )
+        )
+      )
+    ),
+    h5("Contribution Chart (indirectness by direct comparison)"),
+    plotlyOutput(ns("d3_contrib_chart"), height = "320px"),
+    br(),
+    p(strong("Algorithm:"),
+      "Same as D1 but using study-level indirectness ratings.",
+      "Requires 'indirectness' column in the input data."),
+    h5("Domain 3 Ratings \u2014 Auto-computed + Override"),
+    shinycssloaders::withSpinner(uiOutput(ns("d3_override_ui")),
+      type = 4, color = "#4472C4")
+  )
+}
+
+moduleB_d4_ui <- function(id) {
+  ns <- NS(id)
+  tagList(
+    uiOutput(ns("nma_error_banner")),
+    wellPanel(
+      fluidRow(
+        column(6,
+          numericInput(ns("delta"),
+            "Clinical threshold \u03b4 (ratio for OR/RR; effect size for SMD/MD)",
+            value = 0.2, step = 0.05, min = 0.001)
+        )
+      ),
+      p(style = "color:#666; font-size:0.9em; margin-bottom:0;",
+        strong("OR/RR:"), " enter \u03b4 on the ratio scale (e.g., 1.2)",
+        " \u2014 boundaries [1/\u03b4, \u03b4] are log-transformed internally. ",
+        strong("SMD/MD:"), " enter \u03b4 on the effect-size scale (e.g., 0.2).")
+    ),
+    p(strong("Algorithm:"), "\u03b4 defines zone boundaries \u00b1\u03b4.",
+      "Zone A = CI lies entirely in the beneficial direction.",
+      "Zone B = CI lies within the equivalence zone [\u2212\u03b4, +\u03b4].",
+      "Zone C = CI extends into the unfavourable direction.",
+      strong("No concerns:"), "Zone A or B.",
+      strong("Some concerns:"), "CI includes null but does not reach Zone C.",
+      strong("Major concerns:"), "CI extends into Zone C."),
+    shinycssloaders::withSpinner(uiOutput(ns("d4_cards")),
+      type = 4, color = "#4472C4")
+  )
+}
+
+moduleB_d5_ui <- function(id) {
+  ns <- NS(id)
+  tagList(
+    uiOutput(ns("nma_error_banner")),
+    p(strong("Algorithm:"),
+      "Count how many zone boundaries (\u00b1\u03b4) the CI and PrI each cross.",
+      "PrI crossings \u2212 CI crossings = 0 \u2192 No concerns; 1 \u2192 Some concerns; 2 \u2192 Major concerns.",
+      "Common-effects model: No concerns (\u03c4\u00b2 = 0)."),
+    shinycssloaders::withSpinner(uiOutput(ns("d5_cards")),
+      type = 4, color = "#4472C4")
+  )
+}
+
+moduleB_d6_ui <- function(id) {
+  ns <- NS(id)
+  tagList(
+    uiOutput(ns("nma_error_banner")),
+    p(strong("Algorithm (Nikolakopoulou 2020):"),
+      strong("Both direct & indirect evidence:"),
+      "SIDE p > 0.10 \u2192 No concerns; otherwise count zones shared by",
+      "the direct and indirect CIs (3 \u2192 No, 2 \u2192 Some, \u22641 \u2192 Major).",
+      strong("Only direct OR only indirect evidence:"),
+      "global design-by-treatment interaction test \u2014",
+      "p > 0.10 \u2192 No concerns; 0.05 < p \u2264 0.10 \u2192 Some concerns;",
+      "p \u2264 0.05 \u2192 Major concerns.",
+      strong("Closed loops absent (test cannot be computed):"),
+      "Major concerns.",
+      em("D6 is fully algorithm-driven. Override only when expert judgement differs.")),
+    shinycssloaders::withSpinner(uiOutput(ns("d6_cards")),
+      type = 4, color = "#4472C4")
   )
 }
 
@@ -445,196 +600,25 @@ moduleB_server <- function(id, processed_data,
     })
 
     # ------------------------------------------------------------------
-    # OUTPUT: main results UI — tabs ordered D1→D6→Estimates→Summary
+    # OUTPUT: NMA status / error banner — embedded at the top of every
+    # domain tab. Returns NULL when NMA succeeded and no run is required,
+    # otherwise renders an info or danger alert.
     # ------------------------------------------------------------------
-    output$results_ui <- renderUI({
+    output$nma_error_banner <- renderUI({
       res <- nma_result()
-      if (is.null(res)) return(NULL)
+      if (is.null(res)) {
+        return(div(class = "alert alert-info",
+                   icon("info-circle"),
+                   " Configure data and settings on the Configuration tab,",
+                   " then click Run Analysis to populate this domain."))
+      }
       if (!is.null(res$error) && is.null(res$net)) {
         return(div(class = "alert alert-danger",
                    icon("exclamation-triangle"),
                    strong(" NMA Error: "), res$error))
       }
-
-      tagList(
-        # Prevent page scroll-to-top when switching CINeMA domain tabs
-        tags$script(HTML(sprintf("
-          $(document).on('click', '#%s .nav-tabs a', function(e) {
-            e.preventDefault();
-            var scrollY = window.scrollY;
-            $(this).tab('show');
-            window.scrollTo(0, scrollY);
-          });
-        ", ns("cinema_tabs")))),
-
-        tabsetPanel(id = ns("cinema_tabs"),
-
-          # ---- D1: Within-study bias ---------------------------------
-          tabPanel(value = "d1_within_study_bias", "D1: Within-study Bias",
-            br(),
-            wellPanel(
-              fluidRow(
-                column(6,
-                  selectInput(ns("d1_judgement"), "Judgement method",
-                    choices = c(
-                      "Average (contribution-weighted mean)"  = "average",
-                      "Majority (largest contribution share)" = "majority",
-                      "Highest (most severe contributor)"     = "highest",
-                      "Sensitivity-based (excl. high-RoB)"    = "sens"
-                    ),
-                    selected = isolate(input$d1_judgement) %||% "average"
-                  )
-                ),
-                column(6,
-                  conditionalPanel(
-                    condition = sprintf("input['%s'] == 'sens'", ns("d1_judgement")),
-                    numericInput(ns("sens_inf_thresh"),
-                                 "Inflation threshold (relative |TE| change)",
-                                 value = isolate(input$sens_inf_thresh) %||% 0.10,
-                                 min = 0.0, max = 0.5, step = 0.05)
-                  )
-                )
-              )
-            ),
-            uiOutput(ns("d1_debug_msg")),
-            h5("Contribution Chart (ROB by direct comparison)"),
-            plotlyOutput(ns("d1_contrib_chart"), height = "320px"),
-            br(),
-            p(strong("Algorithm (Nikolakopoulou 2020):"),
-              "ROB scores encoded as low=1, some concerns=2, high=3.",
-              "Three aggregation rules selectable above:",
-              strong("Average"), "— contribution-weighted mean;",
-              strong("Majority"), "— category with largest total weight;",
-              strong("Highest"), "— most severe ROB among non-negligible contributors."),
-            p(style = "color:#666; font-size:0.9em; margin-bottom:6px;",
-              "Each card shows ", strong("TE_all"), " (all studies) and ",
-              strong("TE excl. high-RoB"), ". Sensitivity-based judgement: ",
-              strong("Major concerns"), " if the sign flips between the two; ",
-              strong("No concerns"), " if CI overlap ≥ 80% of mean CI width ",
-              "(high-RoB studies do not change the conclusion); ",
-              strong("Some concerns"), " if CI overlap < 80% ", em("and"),
-              " (statistical significance changes ",
-              em("or"), " inflation > threshold); otherwise ",
-              strong("No concerns"), "."),
-            h5("Domain 1 Ratings — Auto-computed + Override"),
-            uiOutput(ns("d1_override_ui"))
-          ),
-
-          # ---- D2: Reporting bias ------------------------------------
-          tabPanel(
-            value = "d2_reporting_bias",
-            title = tagList(
-              "D2: Reporting Bias",
-              tags$small(
-                style = "color:#888; font-size:0.8em; margin-left:4px;",
-                "\u2190 Module C"
-              )
-            ),
-            br(),
-            div(class = "alert alert-info",
-                icon("info-circle"),
-                " Run Module C (ROB-MEN) — ROB-MEN ratings populate this domain automatically.",
-                " Or use the bulk buttons / per-comparison overrides below."),
-            div(style = "display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:12px;",
-              actionButton(ns("go_to_robmen"),
-                "Go to Module C (ROB-MEN)",
-                class = "btn btn-info btn-sm",
-                icon  = icon("arrow-right")),
-              actionButton(ns("d2_set_all_no"), "Set all: No concerns",
-                class = "btn btn-success btn-sm"),
-              actionButton(ns("d2_set_all_some"), "Set all: Some concerns",
-                class = "btn btn-warning btn-sm"),
-              actionButton(ns("d2_set_all_major"), "Set all: Major concerns",
-                class = "btn btn-danger btn-sm")
-            ),
-            h5("Domain 2 Ratings — Auto-computed (from ROB-MEN) + Override"),
-            uiOutput(ns("d2_override_ui"))
-          ),
-
-          # ---- D3: Indirectness --------------------------------------
-          tabPanel(value = "d3_indirectness", "D3: Indirectness",
-            br(),
-            wellPanel(
-              fluidRow(
-                column(6,
-                  selectInput(ns("d3_agg_rule"), "Aggregation rule",
-                    choices = c(
-                      "Average (contribution-weighted mean)"  = "average",
-                      "Majority (largest contribution share)" = "majority",
-                      "Highest (most severe contributor)"     = "highest"
-                    ),
-                    selected = isolate(input$d3_agg_rule) %||% "average"
-                  )
-                )
-              )
-            ),
-            h5("Contribution Chart (indirectness by direct comparison)"),
-            plotlyOutput(ns("d3_contrib_chart"), height = "320px"),
-            br(),
-            p(strong("Algorithm:"),
-              "Same as D1 but using study-level indirectness ratings.",
-              "Requires 'indirectness' column in the input data."),
-            h5("Domain 3 Ratings — Auto-computed + Override"),
-            uiOutput(ns("d3_override_ui"))
-          ),
-
-          # ---- D4: Imprecision ---------------------------------------
-          tabPanel("D4: Imprecision",
-            br(),
-            wellPanel(
-              fluidRow(
-                column(6,
-                  numericInput(ns("delta"),
-                    "Clinical threshold \u03b4 (ratio for OR/RR; effect size for SMD/MD)",
-                    value = isolate(input$delta) %||% 0.2,
-                    step = 0.05, min = 0.001)
-                )
-              ),
-              p(style = "color:#666; font-size:0.9em; margin-bottom:0;",
-                strong("OR/RR:"), " enter \u03b4 on the ratio scale (e.g., 1.2)",
-                " \u2014 boundaries [1/\u03b4, \u03b4] are log-transformed internally. ",
-                strong("SMD/MD:"), " enter \u03b4 on the effect-size scale (e.g., 0.2).")
-            ),
-            p(strong("Algorithm:"), "\u03b4 defines zone boundaries \u00b1\u03b4.",
-              "Zone A = CI lies entirely in the beneficial direction.",
-              "Zone B = CI lies within the equivalence zone [\u2212\u03b4, +\u03b4].",
-              "Zone C = CI extends into the unfavourable direction.",
-              strong("No concerns:"), "Zone A or B.",
-              strong("Some concerns:"), "CI includes null but does not reach Zone C.",
-              strong("Major concerns:"), "CI extends into Zone C."),
-            uiOutput(ns("d4_cards"))
-          ),
-
-          # ---- D5: Heterogeneity -------------------------------------
-          tabPanel("D5: Heterogeneity",
-            br(),
-            p(strong("Algorithm:"),
-              "Count how many zone boundaries (\u00b1\u03b4) the CI and PrI each cross.",
-              "PrI crossings \u2212 CI crossings = 0 \u2192 No concerns; 1 \u2192 Some concerns; 2 \u2192 Major concerns.",
-              "Common-effects model: No concerns (\u03c4\u00b2 = 0)."),
-            uiOutput(ns("d5_cards"))
-          ),
-
-          # ---- D6: Incoherence ---------------------------------------
-          tabPanel("D6: Incoherence",
-            br(),
-            p(strong("Algorithm (Nikolakopoulou 2020):"),
-              strong("Both direct & indirect evidence:"),
-              "SIDE p > 0.10 \u2192 No concerns; otherwise count zones shared by",
-              "the direct and indirect CIs (3 \u2192 No, 2 \u2192 Some, \u22641 \u2192 Major).",
-              strong("Only direct OR only indirect evidence:"),
-              "global design-by-treatment interaction test \u2014",
-              "p > 0.10 \u2192 No concerns; 0.05 < p \u2264 0.10 \u2192 Some concerns;",
-              "p \u2264 0.05 \u2192 Major concerns.",
-              strong("Closed loops absent (test cannot be computed):"),
-              "Major concerns.",
-              em("D6 is fully algorithm-driven. Override only when expert judgement differs.")),
-            uiOutput(ns("d6_cards"))
-          )
-        )
-      )
+      NULL
     })
-
 
     # ------------------------------------------------------------------
     # OUTPUT: Confidence rating selectors
@@ -1209,15 +1193,13 @@ moduleB_server <- function(id, processed_data,
     # ------------------------------------------------------------------
     # RETURN
     # ------------------------------------------------------------------
-    go_to_domain1 <- function() {
-      updateTabsetPanel(session, "cinema_tabs", selected = "d1_within_study_bias")
-    }
-    go_to_domain2 <- function() {
-      updateTabsetPanel(session, "cinema_tabs", selected = "d2_reporting_bias")
-    }
-    go_to_domain3 <- function() {
-      updateTabsetPanel(session, "cinema_tabs", selected = "d3_indirectness")
-    }
+    # The CINeMA domains are now top-level navbar tabs (no inner tabset).
+    # These helpers are kept for API compatibility but are no-ops; cross-tab
+    # navigation is handled via the parent session's updateNavbarPage() —
+    # see app.R's go_to_cinema callback wiring.
+    go_to_domain1 <- function() invisible(NULL)
+    go_to_domain2 <- function() invisible(NULL)
+    go_to_domain3 <- function() invisible(NULL)
 
     return(list(
       cinema_results = cinema_results,
