@@ -187,6 +187,29 @@ compute_overall_robmen <- function(contrib_eval, sse_eval) {
   else                                "Some concerns"
 }
 
+# ----------------------------------------------------------------------------
+# Auto-judge ⑤a Contribution from the contribution matrix.
+# Mirrors Chiocchia 2021 Table 3 col 3 with NMA-direction-aware concerns:
+#   te > 0  (NMA favours t2): biased evidence favouring t2 is the concerning side
+#   te <= 0 (NMA favours t1): biased evidence favouring t1 is the concerning side
+# ----------------------------------------------------------------------------
+compute_auto_contrib <- function(te, pct_fav_t1, pct_fav_t2) {
+  p1 <- if (length(pct_fav_t1) == 0 || is.na(pct_fav_t1[1])) 0 else pct_fav_t1[1]
+  p2 <- if (length(pct_fav_t2) == 0 || is.na(pct_fav_t2[1])) 0 else pct_fav_t2[1]
+  if (p1 == 0 && p2 == 0) return("No substantial contribution from bias")
+  if (!is.na(te) && te > 0) {
+    p_concern <- p2; p_other <- p1
+  } else {
+    p_concern <- p1; p_other <- p2
+  }
+  if (p_concern - p_other > 15)
+    "Substantial contribution from bias – favouring one treatment"
+  else if (p1 > 15 && p2 > 15)
+    "Substantial contribution from bias – balanced"
+  else
+    "No substantial contribution from bias"
+}
+
 # Style badge for a rating value
 rating_badge <- function(val, bg_map = BIAS_BG) {
   bg <- bg_map[as.character(val)]
@@ -359,8 +382,14 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
 }
 
 # Build one <tr> for the ROB-MEN Table.
+# contrib_auto / sse_auto / robmen_auto are the algorithmic judgments that
+# pre-fill the three selectInputs so the user sees them in the same render
+# pass as the NMA / NMR effect cells.
 make_robmen_row <- function(ns, comp, te, lo, hi, pct_t1, pct_t2,
                             nmr_te = NA_real_, nmr_lo = NA_real_, nmr_hi = NA_real_,
+                            contrib_auto = "",
+                            sse_auto     = "",
+                            robmen_auto  = "",
                             bg = "white") {
   sid <- safe_id(comp)
   te_str <- if (!is.na(te)) {
@@ -408,17 +437,17 @@ make_robmen_row <- function(ns, comp, te, lo, hi, pct_t1, pct_t2,
     tags$td(style = pct_cell_style(pct_t2), pct_badge(pct_t2)),
     tags$td(style = "padding:4px 6px;",
       selectInput(ns(paste0("contrib_eval_", sid)), label = NULL,
-                  choices = CONTRIB_CHOICES, selected = "", width = "160px")
+                  choices = CONTRIB_CHOICES, selected = contrib_auto, width = "160px")
     ),
     tags$td(style = "padding:4px 8px; text-align:center; white-space:nowrap;", te_str),
     tags$td(style = "padding:4px 8px; text-align:center; white-space:nowrap;", nmr_str),
     tags$td(style = "padding:4px 6px;",
       selectInput(ns(paste0("sse_eval_", sid)), label = NULL,
-                  choices = SSE_CHOICES, selected = "", width = "160px")
+                  choices = SSE_CHOICES, selected = sse_auto, width = "160px")
     ),
     tags$td(style = "padding:4px 6px;",
       selectInput(ns(paste0("ov_robmen_", sid)), label = NULL,
-                  choices = ROBMEN_CHOICES, selected = "", width = "120px")
+                  choices = ROBMEN_CHOICES, selected = robmen_auto, width = "120px")
     )
   )
 }
@@ -1512,167 +1541,52 @@ moduleC_server <- function(id, processed_data, cinema_module,
     # ------------------------------------------------------------------
     # Set-all observers — ROB-MEN Table
     # ------------------------------------------------------------------
-    observeEvent(input$set_all_contrib_no, {
-      ne <- tryCatch(nma_estimates(), error = function(e) NULL)
-      if (is.null(ne)) return()
-      for (i in seq_len(nrow(ne)))
-        updateSelectInput(session,
-          paste0("contrib_eval_", safe_id(ne$comparison[i])),
-          selected = "No substantial contribution from bias")
-    })
-    observeEvent(input$set_all_sse_no, {
-      ne <- tryCatch(nma_estimates(), error = function(e) NULL)
-      if (is.null(ne)) return()
-      for (i in seq_len(nrow(ne)))
-        updateSelectInput(session,
-          paste0("sse_eval_", safe_id(ne$comparison[i])),
-          selected = "No evidence of small-study effects")
-    })
-
-    # ------------------------------------------------------------------
-    # Reactive auto-fill ⑤a: contribution evaluation
-    # Fires whenever pct_biased() changes and always overwrites with the
-    # latest auto value (no user-override guard) — user feedback: ⑤a must
-    # track the data, not snapshot the first auto value.
-    # ------------------------------------------------------------------
-    observe({
-      ne <- tryCatch(nma_estimates(), error = function(e) NULL)
-      pb <- tryCatch(pct_biased(),    error = function(e) NULL)
-      if (is.null(ne) || is.null(pb) || nrow(ne) == 0) return()
-      for (i in seq_len(nrow(ne))) {
-        sid    <- safe_id(ne$comparison[i])
-        pb_row <- pb %>% filter(comparison == ne$comparison[i])
-        if (nrow(pb_row) == 0) next
-        p1 <- if (is.na(pb_row$pct_fav_t1[1])) 0 else pb_row$pct_fav_t1[1]
-        p2 <- if (is.na(pb_row$pct_fav_t2[1])) 0 else pb_row$pct_fav_t2[1]
-        # Chiocchia 2021: |pct_t1 - pct_t2| > 15 pp -> favouring one treatment.
-        c_auto <- if (p1 == 0 && p2 == 0) {
-          "No substantial contribution from bias"
-        } else if (abs(p1 - p2) > 15) {
-          "Substantial contribution from bias \u2013 favouring one treatment"
-        } else {
-          "Substantial contribution from bias \u2013 balanced"
-        }
-        updateSelectInput(session, paste0("contrib_eval_", sid), selected = c_auto)
-      }
-    })
-
-    # ------------------------------------------------------------------
-    # Reactive auto-fill ⑤b: small-study effects evaluation
-    # Uses network_sse_df() sse_auto (CI-overlap logic from netmetaregression).
-    # Fires when network_sse_df changes and always overwrites with the latest
-    # auto value (no user-override guard) — same behaviour as ⑤a.
+    # Auto-fill ⑤a / ⑤b / ⑤ ROB-MEN rating in one observer.
+    #   - Initial render: make_row passes `selected = auto` directly into
+    #     each selectInput, so the judgments appear in the same render
+    #     pass as the NMA / NMR effect cells.
+    #   - On any reactive change (pct_biased, network_sse_df,
+    #     nma_estimates), Shiny's input restoration would otherwise pin
+    #     the cell to a stale user-side value; this observer always
+    #     overwrites with the latest auto value via updateSelectInput,
+    #     so the table tracks the data.
+    # User override is intentionally not preserved — feedback was that
+    # ⑤a / ⑤b must always reflect the current data.
     # ------------------------------------------------------------------
     observe({
       ne  <- tryCatch(nma_estimates(),  error = function(e) NULL)
+      pb  <- tryCatch(pct_biased(),     error = function(e) NULL)
       nmr <- tryCatch(network_sse_df(), error = function(e) NULL)
-      if (is.null(ne) || is.null(nmr) || nrow(ne) == 0 || nrow(nmr) == 0) return()
-      for (i in seq_len(nrow(ne))) {
-        sid     <- safe_id(ne$comparison[i])
-        nmr_row <- nmr %>% filter(comparison == ne$comparison[i])
-        if (nrow(nmr_row) == 0) next
-        s_auto <- nmr_row$sse_auto[1]
-        if (!nzchar(s_auto)) next
-        updateSelectInput(session, paste0("sse_eval_", sid), selected = s_auto)
-      }
-    })
-
-    # ------------------------------------------------------------------
-    # Reactive auto-fill ⑤ final judgement
-    # When both ⑤a and ⑤b are filled (by auto or user), compute overall.
-    # Skips comparisons where overall has already been set.
-    # ------------------------------------------------------------------
-    observe({
-      ne <- tryCatch(nma_estimates(), error = function(e) NULL)
       if (is.null(ne) || nrow(ne) == 0) return()
       for (i in seq_len(nrow(ne))) {
-        sid    <- safe_id(ne$comparison[i])
-        ov_cur <- isolate(input[[paste0("ov_robmen_", sid)]])
-        if (!is.null(ov_cur) && nzchar(ov_cur)) next  # already set by user
+        sid <- safe_id(ne$comparison[i])
 
-        c_val <- input[[paste0("contrib_eval_", sid)]]
-        s_val <- input[[paste0("sse_eval_", sid)]]
-        if (is.null(c_val) || !nzchar(c_val) ||
-            is.null(s_val) || !nzchar(s_val)) next
-        ov_auto <- compute_overall_robmen(c_val, s_val)
+        # ⑤a Contribution
+        p1 <- 0; p2 <- 0
+        if (!is.null(pb)) {
+          pb_row <- pb %>% filter(comparison == ne$comparison[i])
+          if (nrow(pb_row) > 0) {
+            p1 <- if (is.na(pb_row$pct_fav_t1[1])) 0 else pb_row$pct_fav_t1[1]
+            p2 <- if (is.na(pb_row$pct_fav_t2[1])) 0 else pb_row$pct_fav_t2[1]
+          }
+        }
+        c_auto <- compute_auto_contrib(ne$te[i], p1, p2)
+        updateSelectInput(session, paste0("contrib_eval_", sid), selected = c_auto)
+
+        # ⑤b Small-study effects (fall back to "No evidence" when NMR
+        # cannot be computed, so the cell always carries a judgment)
+        s_auto <- "No evidence of small-study effects"
+        if (!is.null(nmr) && nrow(nmr) > 0) {
+          nmr_row <- nmr %>% filter(comparison == ne$comparison[i])
+          if (nrow(nmr_row) > 0 && nzchar(nmr_row$sse_auto[1]))
+            s_auto <- nmr_row$sse_auto[1]
+        }
+        updateSelectInput(session, paste0("sse_eval_", sid), selected = s_auto)
+
+        # ⑤ ROB-MEN rating
+        ov_auto <- compute_overall_robmen(c_auto, s_auto)
         updateSelectInput(session, paste0("ov_robmen_", sid), selected = ov_auto)
       }
-    })
-
-    # ------------------------------------------------------------------
-    # Auto-compute overall ROB-MEN ratings
-    # ------------------------------------------------------------------
-    observeEvent(input$calc_overall_robmen, {
-      ne <- tryCatch(nma_estimates(), error = function(e) NULL)
-      if (is.null(ne)) return()
-      pb <- tryCatch(pct_biased(), error = function(e) NULL)
-
-      computed_ov <- character(nrow(ne))  # store computed ratings for D2 sync
-
-      for (i in seq_len(nrow(ne))) {
-        sid   <- safe_id(ne$comparison[i])
-
-        # Auto-compute "Evaluation of contribution" (Chiocchia 2021, 15 pp threshold).
-        # Concerning direction = same as NMA estimate direction.
-        #   te > 0  (t2 better) → biased evidence favouring t2 (pct_fav_t2) is concerning
-        #   te <= 0 (t1 better) → biased evidence favouring t1 (pct_fav_t1) is concerning
-        #
-        # Mapping to official CONTRIB_CHOICES (Chiocchia 2021 Table 3 col 3):
-        #   |p_concern - p_other| > 15 pp  → "Substantial contribution – favouring NMA result"
-        #   both p1 > 15 AND p2 > 15       → "Substantial contribution – balanced"
-        #     (substantial bias in both directions: may cancel out)
-        #   otherwise                       → "No substantial contribution from bias"
-        c_val <- input[[paste0("contrib_eval_", sid)]]
-        if (is.null(c_val) || !nzchar(c_val)) {
-          pb_row <- if (!is.null(pb)) pb %>% filter(comparison == ne$comparison[i]) else NULL
-          if (!is.null(pb_row) && nrow(pb_row) > 0) {
-            te_i  <- ne$te[i]
-            p1    <- if (is.na(pb_row$pct_fav_t1[1])) 0 else pb_row$pct_fav_t1[1]
-            p2    <- if (is.na(pb_row$pct_fav_t2[1])) 0 else pb_row$pct_fav_t2[1]
-            if (!is.na(te_i) && te_i > 0) {
-              p_concern <- p2; p_other <- p1
-            } else {
-              p_concern <- p1; p_other <- p2
-            }
-            c_val <- if (p_concern - p_other > 15) {
-              "Substantial contribution from bias \u2013 favouring one treatment"
-            } else if (p1 > 15 && p2 > 15) {
-              "Substantial contribution from bias \u2013 balanced"
-            } else {
-              "No substantial contribution from bias"
-            }
-          } else {
-            c_val <- "No substantial contribution from bias"
-          }
-          updateSelectInput(session, paste0("contrib_eval_", sid), selected = c_val)
-        }
-
-        s_val <- input[[paste0("sse_eval_", sid)]]
-        if (is.null(s_val) || !nzchar(s_val)) {
-          # Auto-suggest small-study effects from NMR when not yet set by user
-          nmr_df  <- tryCatch(network_sse_df(), error = function(e) NULL)
-          nmr_row <- if (!is.null(nmr_df))
-                       nmr_df %>% filter(comparison == ne$comparison[i])
-                     else
-                       NULL
-          s_val <- if (!is.null(nmr_row) && nrow(nmr_row) > 0 &&
-                       nzchar(nmr_row$sse_auto[1])) {
-            nmr_row$sse_auto[1]
-          } else {
-            "No evidence of small-study effects"
-          }
-          updateSelectInput(session, paste0("sse_eval_", sid), selected = s_val)
-        }
-
-        ov_val <- compute_overall_robmen(c_val, s_val)
-        computed_ov[i] <- ov_val
-        updateSelectInput(session, paste0("ov_robmen_", sid), selected = ov_val)
-      }
-
-      # NOTE: Do NOT auto-push to Domain 2 here. Auto-pushing would
-      # invalidate cinema_results() and re-render robmen_main_ui mid-edit,
-      # disrupting the user's flow. Use the explicit "Update CINeMA Domain 2"
-      # button (send_to_cinema) below the ④⑤ table.
     })
 
     # ------------------------------------------------------------------
@@ -1994,10 +1908,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
               class = "btn btn-xs btn-link", style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
               title = "Decision guide")),
           tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal;",
-            HTML("\u226515 pp diff \u2192 Substantial")),
-          div(style = "margin-top:4px;",
-            actionButton(ns("set_all_contrib_no"), "set all \u2192 No substantial",
-              class = "btn btn-xs btn-warning", style = "font-size:0.75em;"))),
+            HTML("\u226515 pp diff \u2192 Substantial"))),
         tags$th(style = paste0(th_style, "text-align:center;"),
           div(HTML("NMA effect")),
           tags$small(style = "font-weight:normal; opacity:0.85; white-space:normal;",
@@ -2013,19 +1924,13 @@ moduleC_server <- function(id, processed_data, cinema_module,
               class = "btn btn-xs btn-link", style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
               title = "Decision guide")),
           tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal;",
-            HTML("Compare NMA vs NMR")),
-          div(style = "margin-top:4px;",
-            actionButton(ns("set_all_sse_no"), "set all \u2192 No evidence",
-              class = "btn btn-xs btn-warning", style = "font-size:0.75em;"))),
+            HTML("Compare NMA vs NMR"))),
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("⑤ ROB-MEN rating"),
             actionButton(ns("info_robmen_alg"), label = icon("question-circle"),
               class = "btn btn-xs btn-link", style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
-              title = "Algorithm (Table 5)")),
-          div(style = "margin-top:4px;",
-            actionButton(ns("calc_overall_robmen"), "calculate overall",
-              class = "btn btn-xs btn-warning", style = "font-size:0.75em;")))
+              title = "Algorithm (Table 5)")))
       )
 
       robmen_grp_header <- function(label) {
@@ -2048,12 +1953,14 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
         # Primary: use network-level NMR (netmetaregression, has CIs)
         nmr_te <- nmr_lo <- nmr_hi <- NA_real_
+        sse_a  <- ""
         if (!is.null(nmr_df) && nrow(nmr_df) > 0) {
           nmr_row <- nmr_df %>% filter(comparison == comp)
           if (nrow(nmr_row) > 0) {
             nmr_te <- nmr_row$nmr_te[1]
             nmr_lo <- nmr_row$nmr_lo[1]
             nmr_hi <- nmr_row$nmr_hi[1]
+            sse_a  <- if (nzchar(nmr_row$sse_auto[1])) nmr_row$sse_auto[1] else ""
           }
         }
         # Fallback: pairwise Egger's nmr_te with CI
@@ -2067,9 +1974,21 @@ moduleC_server <- function(id, processed_data, cinema_module,
           }
         }
 
+        # Algorithmic judgments — pre-fill so they appear together with the
+        # NMA / NMR effect cells in the same render pass. When NMR cannot
+        # be computed (e.g. tau²=0 boundary, insufficient df) sse_a falls
+        # back to "No evidence of small-study effects" so the cell still
+        # carries an interpretable judgment instead of "(auto)".
+        c_a <- compute_auto_contrib(ne$te[i], p1, p2)
+        if (!nzchar(sse_a)) sse_a <- "No evidence of small-study effects"
+        ov_a <- compute_overall_robmen(c_a, sse_a)
+
         make_robmen_row(ns, comp,
                         ne$te[i], ne$lo[i], ne$hi[i], p1, p2,
                         nmr_te = nmr_te, nmr_lo = nmr_lo, nmr_hi = nmr_hi,
+                        contrib_auto = c_a,
+                        sse_auto     = sse_a,
+                        robmen_auto  = ov_a,
                         bg = if (i %% 2 == 0) "#fafafa" else "white")
       }
 
