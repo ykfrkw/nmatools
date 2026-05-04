@@ -88,7 +88,7 @@ OVERALL_PW_CHOICES <- c(
   "Suspected bias"
 )
 CONTRIB_CHOICES <- c(
-  "(select)"                    = "",
+  "(auto)"                      = "",
   "No substantial"              = "No substantial contribution from bias",
   "Substantial \u2013 balanced" = "Substantial contribution from bias \u2013 balanced",
   "Substantial \u2013 favouring one" = "Substantial contribution from bias \u2013 favouring one treatment"
@@ -96,7 +96,7 @@ CONTRIB_CHOICES <- c(
 # Chiocchia 2021: SSE direction matters for the final rating algorithm (Table 5).
 # "Reinforcing biased contribution" = bias and SSE reinforce each other (High risk).
 SSE_CHOICES <- c(
-  "(select)"                    = "",
+  "(auto)"                      = "",
   "No evidence of SSE"          = "No evidence of small-study effects",
   "Evidence \u2013 reinforcing" = "Evidence of small-study effects \u2013 reinforcing biased contribution",
   "Evidence \u2013 not reinforcing" = "Evidence of small-study effects \u2013 not reinforcing biased contribution"
@@ -905,14 +905,13 @@ moduleC_server <- function(id, processed_data, cinema_module,
                            line  = list(width = 2),
                            hoverinfo = "none",
                            showlegend = FALSE) %>%
-              # Point estimates coloured by ROB
+              # Point estimates: neutral colour. RoB is shown in CINeMA Domain 1
+              # and would only add visual noise to a forest plot whose purpose is
+              # to read effect direction and small-study patterns.
               add_markers(data = study_df,
                           x = ~y_can, y = ~y_pos,
-                          color = ~rob,
-                          colors = c("low"           = "#5cb85c",
-                                     "some concerns" = "#f0ad4e",
-                                     "high"          = "#d9534f"),
-                          marker = list(size = 9),
+                          marker = list(size = 9, color = "#666666"),
+                          showlegend = FALSE,
                           text   = ~tip, hoverinfo = "text") %>%
               # Pooled: diamond
               add_polygons(
@@ -1532,20 +1531,24 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
     # ------------------------------------------------------------------
     # Reactive auto-fill ⑤a: contribution evaluation
-    # Fires whenever pct_biased() changes; skips comparisons already rated.
+    # Fires whenever pct_biased() changes. Skips comparisons the user has
+    # already overridden (matches the behaviour of the SSE auto-fill below
+    # and of Module B's auto+override pattern). To revert to auto, reset
+    # the dropdown to "(auto)".
     # ------------------------------------------------------------------
     observe({
       ne <- tryCatch(nma_estimates(), error = function(e) NULL)
       pb <- tryCatch(pct_biased(),    error = function(e) NULL)
       if (is.null(ne) || is.null(pb) || nrow(ne) == 0) return()
       for (i in seq_len(nrow(ne))) {
-        sid    <- safe_id(ne$comparison[i])
+        sid   <- safe_id(ne$comparison[i])
+        c_cur <- isolate(input[[paste0("contrib_eval_", sid)]])
+        if (!is.null(c_cur) && nzchar(c_cur)) next  # user override: keep
         pb_row <- pb %>% filter(comparison == ne$comparison[i])
         if (nrow(pb_row) == 0) next
         p1 <- if (is.na(pb_row$pct_fav_t1[1])) 0 else pb_row$pct_fav_t1[1]
         p2 <- if (is.na(pb_row$pct_fav_t2[1])) 0 else pb_row$pct_fav_t2[1]
-        # Chiocchia 2021: |pct_t1 - pct_t2| > 15 pp → favouring one treatment.
-        # No guard for "already set" — always reflects the current pct values.
+        # Chiocchia 2021: |pct_t1 - pct_t2| > 15 pp -> favouring one treatment.
         c_auto <- if (p1 == 0 && p2 == 0) {
           "No substantial contribution from bias"
         } else if (abs(p1 - p2) > 15) {
