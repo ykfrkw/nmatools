@@ -50,80 +50,12 @@ moduleB_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    h3("Step 2: CINeMA Analysis"),
+    h3("CINeMA Analysis"),
     p("Frequentist NMA via ", strong("netmeta"),
       " with 6-domain CINeMA confidence assessment.",
-      "All pairwise comparisons are shown and can be independently rated."),
-
-    wellPanel(
-      h4("NMA Settings"),
-      fluidRow(
-        column(4,
-          selectInput(ns("effect_measure"), "Effect measure",
-            choices = c(
-              "Standardised mean difference (SMD)" = "SMD",
-              "Mean difference (MD)"               = "MD",
-              "Odds ratio (OR)"                    = "OR",
-              "Risk ratio (RR)"                    = "RR"
-            ),
-            selected = "SMD"
-          )
-        ),
-        column(4, uiOutput(ns("ref_treatment_ui"))),
-        column(4,
-          selectInput(ns("model_type"), "Effects model",
-            choices = c("Random effects" = "random",
-                        "Common effects" = "common"),
-            selected = "random"
-          )
-        )
-      ),
-      h4("Imprecision / Heterogeneity / Incoherence Settings"),
-      p("Clinical threshold \u03b4: defines zone boundaries.",
-        "Zone A = CI lies entirely in the beneficial direction (beyond \u03b4).",
-        "Zone B = CI lies within the equivalence zone [\u22121/\u03b4, +\u03b4] (or [\u2212\u03b4, +\u03b4] for SMD/MD).",
-        "Zone C = CI extends into the unfavourable direction.",
-        strong("OR/RR: enter \u03b4 on the ratio scale (e.g., 1.2). Boundaries [1/\u03b4, \u03b4] are log-transformed internally."),
-        "SMD/MD: enter \u03b4 on the effect-size scale (e.g., 0.2)."),
-      fluidRow(
-        column(4,
-          numericInput(ns("delta"), "Clinical threshold \u03b4 (ratio for OR/RR; effect size for SMD/MD)",
-                       value = 0.2, step = 0.05, min = 0.001)
-        ),
-        column(4,
-          selectInput(ns("d3_agg_rule"), "D3 (Indirectness) aggregation rule",
-            choices = c(
-              "Average (contribution-weighted mean)" = "average",
-              "Majority (largest contribution share)" = "majority",
-              "Highest (most severe contributor)"     = "highest"
-            ),
-            selected = "average"
-          )
-        ),
-        column(4,
-          selectInput(ns("d1_judgement"), "D1 (Study limitations) judgement",
-            choices = c(
-              "Average (contribution-weighted mean)"  = "average",
-              "Majority (largest contribution share)" = "majority",
-              "Highest (most severe contributor)"     = "highest",
-              "Sensitivity-based (excl. high-RoB)"    = "sens"
-            ),
-            selected = "average"
-          )
-        )
-      ),
-      fluidRow(
-        column(6,
-          conditionalPanel(
-            condition = "input.d1_judgement == 'sens'",
-            ns        = ns,
-            numericInput(ns("sens_inf_thresh"),
-                         "Inflation threshold (relative |TE| change)",
-                         value = 0.10, min = 0.0, max = 0.5, step = 0.05)
-          )
-        )
-      )
-    ),
+      " Effect measure, reference treatment, and effects model are configured",
+      " on the Configuration tab. Each domain tab below carries its own",
+      " judgement settings."),
 
     hr(),
     shinycssloaders::withSpinner(
@@ -147,21 +79,48 @@ moduleB_server <- function(id, processed_data,
     ns <- session$ns
 
     # ------------------------------------------------------------------
-    # Sync Module B inputs from Module A's nma_settings when run fires
+    # Settings accessors — single source of truth is Module A's
+    # nma_settings reactive. Effect measure / reference treatment /
+    # model type are configured on the Configuration tab; δ lives on
+    # the D4 tab; D1 and D3 judgement controls live in their own tabs.
     # ------------------------------------------------------------------
+    cur_settings <- function() {
+      tryCatch(nma_settings(), error = function(e) NULL)
+    }
+    sm_get <- function() {
+      s <- cur_settings()
+      em <- if (!is.null(s)) s$effect_measure else NULL
+      em %||% "SMD"
+    }
+    mt_get <- function() {
+      s <- cur_settings()
+      mt <- if (!is.null(s)) s$model_type else NULL
+      mt %||% "random"
+    }
+    ref_get <- function() {
+      s <- cur_settings()
+      r <- if (!is.null(s)) s$ref_treatment else NULL
+      r
+    }
+    delta_get <- function() {
+      d <- input$delta
+      if (is.null(d) || is.na(d)) {
+        s <- cur_settings()
+        d <- if (!is.null(s)) s$delta else NULL
+      }
+      d %||% 0.2
+    }
+
+    # Sync D-tab judgement inputs from Module A's nma_settings when run
+    # fires (legacy keys kept for backwards compatibility).
     if (!is.null(nma_settings)) {
       observeEvent(run_trigger(), {
-        s <- tryCatch(nma_settings(), error = function(e) NULL)
+        s <- cur_settings()
         if (is.null(s)) return()
-        if (!is.null(s$effect_measure))
-          updateSelectInput(session, "effect_measure", selected = s$effect_measure)
-        if (!is.null(s$model_type))
-          updateSelectInput(session, "model_type",     selected = s$model_type)
         if (!is.null(s$delta) && !is.na(s$delta))
           updateNumericInput(session, "delta",          value    = s$delta)
         if (!is.null(s$agg_rule)) {
           updateSelectInput(session, "d3_agg_rule",     selected = s$agg_rule)
-          # Legacy: agg_rule applied to D1 as well; keep that behaviour
           updateSelectInput(session, "d1_judgement",    selected = s$agg_rule)
         }
         if (!is.null(s$d3_agg_rule))
@@ -224,23 +183,6 @@ moduleB_server <- function(id, processed_data,
     })
 
     # ------------------------------------------------------------------
-    # Dynamic reference treatment UI
-    # ------------------------------------------------------------------
-    output$ref_treatment_ui <- renderUI({
-      res <- processed_data()
-      req(!is.null(res), !is.null(res$data))
-      df       <- res$data
-      all_trts <- sort(unique(c(df$t1, df$t2)))
-      # Use Module A's setting if available, else fallback to "placebo" or first
-      a_ref <- tryCatch(nma_settings()$ref_treatment, error = function(e) NULL)
-      default <- if (!is.null(a_ref) && a_ref %in% all_trts) a_ref
-                 else if ("placebo" %in% all_trts) "placebo"
-                 else all_trts[1]
-      selectInput(ns("ref_treatment"), "Reference treatment (for NMA anchor)",
-                  choices = all_trts, selected = default)
-    })
-
-    # ------------------------------------------------------------------
     # NMA computation — fires on local button OR Module A run_trigger
     # ------------------------------------------------------------------
     run_counter <- reactiveVal(0)
@@ -255,18 +197,12 @@ moduleB_server <- function(id, processed_data,
       req(!is.null(res), !is.null(res$data), nrow(res$data) > 0)
       df  <- res$data
 
-      # Settings from Module A take precedence over Module B's local inputs:
-      # updateSelectInput() fires in the same event cycle as the NMA run, so
-      # input$effect_measure may still hold its previous value here.
-      s <- tryCatch(nma_settings(), error = function(e) NULL)
-      sm_use <- (if (!is.null(s)) s$effect_measure else NULL) %||%
-                input$effect_measure %||% "SMD"
-      mt_use <- (if (!is.null(s)) s$model_type else NULL) %||%
-                input$model_type %||% "random"
+      # All NMA-level settings come from Module A's Configuration tab.
+      sm_use <- sm_get()
+      mt_use <- mt_get()
 
-      ref_trt <- input$ref_treatment
-      if (is.null(ref_trt) || !nzchar(ref_trt))
-        ref_trt <- if (!is.null(s)) (s$ref_treatment %||% df$t1[1]) else df$t1[1]
+      ref_trt <- ref_get()
+      if (is.null(ref_trt) || !nzchar(ref_trt)) ref_trt <- df$t1[1]
       req(ref_trt %in% c(df$t1, df$t2))
 
       withProgress(message = "Running NMA...", value = 0.2, {
@@ -344,7 +280,7 @@ moduleB_server <- function(id, processed_data,
       nsplit     <- res$nsplit
       df         <- res$df
       comps      <- comps_df()
-      model_type <- if (input$model_type == "random") "random" else "common"
+      model_type <- if (mt_get() == "random") "random" else "common"
       comp_labels <- paste(comps$t1, comps$t2, sep = " vs ")
 
       # Domain 1: Within-study bias — single dropdown selects the rule
@@ -388,8 +324,9 @@ moduleB_server <- function(id, processed_data,
 
       # Domains 4-6 — for OR/RR, delta is entered as a ratio (e.g. 1.2) and must be
       # log-transformed because netmeta stores effects on the log scale internally.
-      is_ratio_em <- input$effect_measure %in% c("OR", "RR")
-      delta_used  <- if (is_ratio_em) log(input$delta) else input$delta
+      is_ratio_em <- sm_get() %in% c("OR", "RR")
+      delta_in    <- delta_get()
+      delta_used  <- if (is_ratio_em) log(delta_in) else delta_in
       d4 <- compute_domain4_imprecision(comps, net, model_type, delta_used)
       d5 <- compute_domain5_heterogeneity(comps, net, model_type, delta_used)
       d6 <- compute_domain6_incoherence(comps, nsplit, net, delta_used)
@@ -535,6 +472,30 @@ moduleB_server <- function(id, processed_data,
           # ---- D1: Within-study bias ---------------------------------
           tabPanel(value = "d1_within_study_bias", "D1: Within-study Bias",
             br(),
+            wellPanel(
+              fluidRow(
+                column(6,
+                  selectInput(ns("d1_judgement"), "Judgement method",
+                    choices = c(
+                      "Average (contribution-weighted mean)"  = "average",
+                      "Majority (largest contribution share)" = "majority",
+                      "Highest (most severe contributor)"     = "highest",
+                      "Sensitivity-based (excl. high-RoB)"    = "sens"
+                    ),
+                    selected = isolate(input$d1_judgement) %||% "average"
+                  )
+                ),
+                column(6,
+                  conditionalPanel(
+                    condition = sprintf("input['%s'] == 'sens'", ns("d1_judgement")),
+                    numericInput(ns("sens_inf_thresh"),
+                                 "Inflation threshold (relative |TE| change)",
+                                 value = isolate(input$sens_inf_thresh) %||% 0.10,
+                                 min = 0.0, max = 0.5, step = 0.05)
+                  )
+                )
+              )
+            ),
             uiOutput(ns("d1_debug_msg")),
             h5("Contribution Chart (ROB by direct comparison)"),
             plotlyOutput(ns("d1_contrib_chart"), height = "320px"),
@@ -593,6 +554,20 @@ moduleB_server <- function(id, processed_data,
           # ---- D3: Indirectness --------------------------------------
           tabPanel(value = "d3_indirectness", "D3: Indirectness",
             br(),
+            wellPanel(
+              fluidRow(
+                column(6,
+                  selectInput(ns("d3_agg_rule"), "Aggregation rule",
+                    choices = c(
+                      "Average (contribution-weighted mean)"  = "average",
+                      "Majority (largest contribution share)" = "majority",
+                      "Highest (most severe contributor)"     = "highest"
+                    ),
+                    selected = isolate(input$d3_agg_rule) %||% "average"
+                  )
+                )
+              )
+            ),
             h5("Contribution Chart (indirectness by direct comparison)"),
             plotlyOutput(ns("d3_contrib_chart"), height = "320px"),
             br(),
@@ -606,7 +581,21 @@ moduleB_server <- function(id, processed_data,
           # ---- D4: Imprecision ---------------------------------------
           tabPanel("D4: Imprecision",
             br(),
-            p(strong("Clinical threshold (\u03b4):"), "defines zone boundaries \u00b1\u03b4.",
+            wellPanel(
+              fluidRow(
+                column(6,
+                  numericInput(ns("delta"),
+                    "Clinical threshold \u03b4 (ratio for OR/RR; effect size for SMD/MD)",
+                    value = isolate(input$delta) %||% 0.2,
+                    step = 0.05, min = 0.001)
+                )
+              ),
+              p(style = "color:#666; font-size:0.9em; margin-bottom:0;",
+                strong("OR/RR:"), " enter \u03b4 on the ratio scale (e.g., 1.2)",
+                " \u2014 boundaries [1/\u03b4, \u03b4] are log-transformed internally. ",
+                strong("SMD/MD:"), " enter \u03b4 on the effect-size scale (e.g., 0.2).")
+            ),
+            p(strong("Algorithm:"), "\u03b4 defines zone boundaries \u00b1\u03b4.",
               "Zone A = CI lies entirely in the beneficial direction.",
               "Zone B = CI lies within the equivalence zone [\u2212\u03b4, +\u03b4].",
               "Zone C = CI extends into the unfavourable direction.",
@@ -907,7 +896,7 @@ moduleB_server <- function(id, processed_data,
                               error = function(e) NULL)
       sm_val <- pick_sm(cr$net$sm)
       if (is.na(sm_val)) sm_val <- pick_sm(sm_settings)
-      if (is.na(sm_val)) sm_val <- pick_sm(input$effect_measure)
+      if (is.na(sm_val)) sm_val <- pick_sm(sm_get())
       if (is.na(sm_val)) sm_val <- ""
       inf_t  <- if (is.null(input$sens_inf_thresh) || is.na(input$sens_inf_thresh))
                   0.10 else input$sens_inf_thresh
@@ -1062,9 +1051,10 @@ moduleB_server <- function(id, processed_data,
       ad <- auto_domains();   req(!is.null(ad))
       n  <- nrow(ad$comps)
       te_df <- cr$te_df
-      em        <- input$effect_measure %||% "SMD"
+      em        <- sm_get()
       is_ratio  <- em %in% c("OR", "RR")
-      delta <- if (is_ratio) log(input$delta) else input$delta
+      delta_in  <- delta_get()
+      delta <- if (is_ratio) log(delta_in) else delta_in
       fmt_est   <- function(x) if (is_ratio) round(exp(x), 3) else round(x, 3)
       est_label <- if (is_ratio) em else "NMA estimate"
       ci_unit   <- if (is_ratio) paste0(" (", em, " scale)") else ""
@@ -1095,9 +1085,10 @@ moduleB_server <- function(id, processed_data,
       n   <- nrow(ad$comps)
       net    <- ad$net
       has_pri <- !is.null(net$lower.predict) && is.matrix(net$lower.predict)
-      em_d5      <- input$effect_measure %||% "SMD"
+      em_d5      <- sm_get()
       is_ratio_5 <- em_d5 %in% c("OR", "RR")
-      delta  <- if (is_ratio_5) log(input$delta) else input$delta
+      delta_in_5 <- delta_get()
+      delta  <- if (is_ratio_5) log(delta_in_5) else delta_in_5
       fv5        <- function(x) if (is_ratio_5 && !is.na(x)) round(exp(x), 3) else round(x, 3)
       ci_unit_5  <- if (is_ratio_5) paste0(" (", em_d5, ")") else ""
 
@@ -1130,7 +1121,7 @@ moduleB_server <- function(id, processed_data,
       ad     <- auto_domains();   req(!is.null(ad))
       n      <- nrow(ad$comps)
       nsplit <- ad$nsplit
-      em_d6      <- input$effect_measure %||% "SMD"
+      em_d6      <- sm_get()
       is_ratio_6 <- em_d6 %in% c("OR", "RR")
       fv6        <- function(x) if (is_ratio_6 && !is.na(x)) round(exp(x), 3) else round(x, 3)
       ci_unit_6  <- if (is_ratio_6) paste0(" (", em_d6, ")") else ""
