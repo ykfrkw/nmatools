@@ -91,7 +91,7 @@ moduleB_ui <- function(id) {
                        value = 0.2, step = 0.05, min = 0.001)
         ),
         column(4,
-          selectInput(ns("agg_rule"), "D3 (Indirectness) aggregation rule",
+          selectInput(ns("d3_agg_rule"), "D3 (Indirectness) aggregation rule",
             choices = c(
               "Average (contribution-weighted mean)" = "average",
               "Majority (largest contribution share)" = "majority",
@@ -99,21 +99,23 @@ moduleB_ui <- function(id) {
             ),
             selected = "average"
           )
+        ),
+        column(4,
+          selectInput(ns("d1_judgement"), "D1 (Study limitations) judgement",
+            choices = c(
+              "Average (contribution-weighted mean)"  = "average",
+              "Majority (largest contribution share)" = "majority",
+              "Highest (most severe contributor)"     = "highest",
+              "Sensitivity-based (excl. high-RoB)"    = "sens"
+            ),
+            selected = "average"
+          )
         )
       ),
       fluidRow(
         column(6,
-          selectInput(ns("d1_method"), "D1 (Study limitations) judgment method",
-            choices = c(
-              "Contribution-weighted (default)"        = "contrib",
-              "Sensitivity-based (excl. high-RoB)"     = "sens"
-            ),
-            selected = "contrib"
-          )
-        ),
-        column(6,
           conditionalPanel(
-            condition = "input.d1_method == 'sens'",
+            condition = "input.d1_judgement == 'sens'",
             ns        = ns,
             numericInput(ns("sens_inf_thresh"),
                          "Inflation threshold (relative |TE| change)",
@@ -157,10 +159,17 @@ moduleB_server <- function(id, processed_data,
           updateSelectInput(session, "model_type",     selected = s$model_type)
         if (!is.null(s$delta) && !is.na(s$delta))
           updateNumericInput(session, "delta",          value    = s$delta)
-        if (!is.null(s$agg_rule))
-          updateSelectInput(session, "agg_rule",        selected = s$agg_rule)
-        if (!is.null(s$d1_method))
-          updateSelectInput(session, "d1_method",       selected = s$d1_method)
+        if (!is.null(s$agg_rule)) {
+          updateSelectInput(session, "d3_agg_rule",     selected = s$agg_rule)
+          # Legacy: agg_rule applied to D1 as well; keep that behaviour
+          updateSelectInput(session, "d1_judgement",    selected = s$agg_rule)
+        }
+        if (!is.null(s$d3_agg_rule))
+          updateSelectInput(session, "d3_agg_rule",     selected = s$d3_agg_rule)
+        if (!is.null(s$d1_judgement))
+          updateSelectInput(session, "d1_judgement",    selected = s$d1_judgement)
+        if (!is.null(s$d1_method) && identical(s$d1_method, "sens"))
+          updateSelectInput(session, "d1_judgement",    selected = "sens")
         if (!is.null(s$sens_inf_thresh) && !is.na(s$sens_inf_thresh))
           updateNumericInput(session, "sens_inf_thresh", value   = s$sens_inf_thresh)
       }, ignoreNULL = TRUE, ignoreInit = TRUE)
@@ -245,11 +254,19 @@ moduleB_server <- function(id, processed_data,
       res <- processed_data()
       req(!is.null(res), !is.null(res$data), nrow(res$data) > 0)
       df  <- res$data
+
+      # Settings from Module A take precedence over Module B's local inputs:
+      # updateSelectInput() fires in the same event cycle as the NMA run, so
+      # input$effect_measure may still hold its previous value here.
+      s <- tryCatch(nma_settings(), error = function(e) NULL)
+      sm_use <- (if (!is.null(s)) s$effect_measure else NULL) %||%
+                input$effect_measure %||% "SMD"
+      mt_use <- (if (!is.null(s)) s$model_type else NULL) %||%
+                input$model_type %||% "random"
+
       ref_trt <- input$ref_treatment
-      if (is.null(ref_trt) || !nzchar(ref_trt)) {
-        s <- tryCatch(nma_settings(), error = function(e) NULL)
+      if (is.null(ref_trt) || !nzchar(ref_trt))
         ref_trt <- if (!is.null(s)) (s$ref_treatment %||% df$t1[1]) else df$t1[1]
-      }
       req(ref_trt %in% c(df$t1, df$t2))
 
       withProgress(message = "Running NMA...", value = 0.2, {
@@ -263,9 +280,9 @@ moduleB_server <- function(id, processed_data,
             treat2   = df$t2,
             studlab  = df$studlab,
             reference.group     = ref_trt,
-            sm                  = input$effect_measure,
-            common              = (input$model_type == "common"),
-            random              = (input$model_type == "random"),
+            sm                  = sm_use,
+            common              = (mt_use == "common"),
+            random              = (mt_use == "random"),
             details.chkmultiarm = FALSE
           ),
           error = function(e) { net_err <<- conditionMessage(e); NULL }
@@ -330,18 +347,16 @@ moduleB_server <- function(id, processed_data,
       model_type <- if (input$model_type == "random") "random" else "common"
       comp_labels <- paste(comps$t1, comps$t2, sep = " vs ")
 
-      # Domain 1: Within-study bias
-      d1_method <- if (isTRUE(input$d1_method == "sens")) "sens" else "contrib"
-      if (d1_method == "sens") {
-        # Sensitivity-based: judge each direct comparison via excl-high-RoB flowchart
+      # Domain 1: Within-study bias — single dropdown selects the rule
+      d1_choice <- input$d1_judgement %||% "average"
+      if (identical(d1_choice, "sens")) {
         inf_t <- if (is.null(input$sens_inf_thresh) || is.na(input$sens_inf_thresh))
                    0.10 else input$sens_inf_thresh
         d1 <- compute_domain1_wsb_sens(comps, contrib, df,
                                        inf_threshold = inf_t,
                                        small_values  = NULL)
       } else {
-        # Contribution-weighted ROB (default, per-study)
-        d1 <- compute_domain1_wsb(comps, contrib, df, input$agg_rule)
+        d1 <- compute_domain1_wsb(comps, contrib, df, d1_choice)
       }
 
       # Domain 2: Reporting bias (from ROB-MEN or "Not assessed")
@@ -363,7 +378,8 @@ moduleB_server <- function(id, processed_data,
 
       # Domain 3: Indirectness (contribution-weighted)
       d3 <- if ("indirectness" %in% names(df)) {
-        compute_domain3_indirectness(comps, contrib, df, input$agg_rule)
+        compute_domain3_indirectness(comps, contrib, df,
+                                     input$d3_agg_rule %||% "average")
       } else {
         data.frame(comparison = comp_labels,
                    domain3    = rep("Not assessed", nrow(comps)),
@@ -529,6 +545,16 @@ moduleB_server <- function(id, processed_data,
               strong("Average"), "— contribution-weighted mean;",
               strong("Majority"), "— category with largest total weight;",
               strong("Highest"), "— most severe ROB among non-negligible contributors."),
+            p(style = "color:#666; font-size:0.9em; margin-bottom:6px;",
+              "Each card shows ", strong("TE_all"), " (all studies) and ",
+              strong("TE excl. high-RoB"), ". Sensitivity-based judgement: ",
+              strong("Major concerns"), " if the sign flips between the two; ",
+              strong("No concerns"), " if CI overlap ≥ 80% of mean CI width ",
+              "(high-RoB studies do not change the conclusion); ",
+              strong("Some concerns"), " if CI overlap < 80% ", em("and"),
+              " (statistical significance changes ",
+              em("or"), " inflation > threshold); otherwise ",
+              strong("No concerns"), "."),
             h5("Domain 1 Ratings — Auto-computed + Override"),
             uiOutput(ns("d1_override_ui"))
           ),
@@ -550,7 +576,7 @@ moduleB_server <- function(id, processed_data,
                 " Or use the bulk buttons / per-comparison overrides below."),
             div(style = "display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:12px;",
               actionButton(ns("go_to_robmen"),
-                "→ Go to Module C (ROB-MEN)",
+                "Go to Module C (ROB-MEN)",
                 class = "btn btn-info btn-sm",
                 icon  = icon("arrow-right")),
               actionButton(ns("d2_set_all_no"), "Set all: No concerns",
@@ -594,8 +620,8 @@ moduleB_server <- function(id, processed_data,
           tabPanel("D5: Heterogeneity",
             br(),
             p(strong("Algorithm:"),
-              "Count how many zone boundaries (\u00b1\u03b4) the CI and PI each cross.",
-              "PI crossings \u2212 CI crossings = 0 \u2192 No concerns; 1 \u2192 Some concerns; 2 \u2192 Major concerns.",
+              "Count how many zone boundaries (\u00b1\u03b4) the CI and PrI each cross.",
+              "PrI crossings \u2212 CI crossings = 0 \u2192 No concerns; 1 \u2192 Some concerns; 2 \u2192 Major concerns.",
               "Common-effects model: No concerns (\u03c4\u00b2 = 0)."),
             uiOutput(ns("d5_cards"))
           ),
@@ -603,11 +629,16 @@ moduleB_server <- function(id, processed_data,
           # ---- D6: Incoherence ---------------------------------------
           tabPanel("D6: Incoherence",
             br(),
-            p(strong("Algorithm (Nikolakopoulou 2020 two-step):"),
-              strong("Step 1:"), "SIDE p > 0.10 \u2192 No concerns.",
-              strong("Step 2"), "(p \u2264 0.10): count zones shared by the direct and indirect CIs.",
-              "3 \u2192 No concerns; 2 \u2192 Some concerns; \u22641 \u2192 Major concerns.",
-              "No direct evidence: global design-by-treatment test (decomp.design) used.",
+            p(strong("Algorithm (Nikolakopoulou 2020):"),
+              strong("Both direct & indirect evidence:"),
+              "SIDE p > 0.10 \u2192 No concerns; otherwise count zones shared by",
+              "the direct and indirect CIs (3 \u2192 No, 2 \u2192 Some, \u22641 \u2192 Major).",
+              strong("Only direct OR only indirect evidence:"),
+              "global design-by-treatment interaction test \u2014",
+              "p > 0.10 \u2192 No concerns; 0.05 < p \u2264 0.10 \u2192 Some concerns;",
+              "p \u2264 0.05 \u2192 Major concerns.",
+              strong("Closed loops absent (test cannot be computed):"),
+              "Major concerns.",
               em("D6 is fully algorithm-driven. Override only when expert judgement differs.")),
             uiOutput(ns("d6_cards"))
           )
@@ -851,10 +882,143 @@ moduleB_server <- function(id, processed_data,
     # ------------------------------------------------------------------
     output$d1_override_ui <- renderUI({
       ad <- auto_domains(); req(!is.null(ad))
+      cr <- cinema_results(); req(!is.null(cr))
       comp_labels <- paste(ad$comps$t1, ad$comps$t2, sep = " vs ")
-      render_override_ui(ns, "ov_d1", comp_labels, ad$d1$domain1,
-                         evidence_types = ad$evidence_type,
-                         reason_prefix = "reason_d1")
+
+      df <- cr$df
+      # processed_data uses y/se (not TE/seTE) for the pairwise effect/SE.
+      te_col <- if ("TE"   %in% names(df)) "TE"   else if ("y"  %in% names(df)) "y"  else NA_character_
+      se_col <- if ("seTE" %in% names(df)) "seTE" else if ("se" %in% names(df)) "se" else NA_character_
+      need_ok <- !is.na(te_col) && !is.na(se_col) &&
+                 all(c("t1", "t2", "rob") %in% names(df))
+      if (!need_ok) {
+        return(render_override_ui(ns, "ov_d1", comp_labels, ad$d1$domain1,
+                                  evidence_types = ad$evidence_type,
+                                  reason_prefix = "reason_d1"))
+      }
+      pick_sm <- function(x) {
+        if (is.null(x)) return(NA_character_)
+        v <- suppressWarnings(as.character(x))
+        if (length(v) == 0) return(NA_character_)
+        v <- v[1]
+        if (is.na(v) || !nzchar(v)) NA_character_ else v
+      }
+      sm_settings <- tryCatch(nma_settings()$effect_measure,
+                              error = function(e) NULL)
+      sm_val <- pick_sm(cr$net$sm)
+      if (is.na(sm_val)) sm_val <- pick_sm(sm_settings)
+      if (is.na(sm_val)) sm_val <- pick_sm(input$effect_measure)
+      if (is.na(sm_val)) sm_val <- ""
+      inf_t  <- if (is.null(input$sens_inf_thresh) || is.na(input$sens_inf_thresh))
+                  0.10 else input$sens_inf_thresh
+
+      sens_extra <- function(i) {
+        out <- tryCatch({
+          t1 <- ad$comps$t1[i]; t2 <- ad$comps$t2[i]
+          sub <- df[(df$t1 == t1 & df$t2 == t2) |
+                    (df$t1 == t2 & df$t2 == t1), , drop = FALSE]
+          if (nrow(sub) == 0)
+            return(p(style = "margin:4px 0; color:#666;",
+                     em("No direct evidence — judgement carried over from contributing comparisons.")))
+
+          te_raw     <- sub[[te_col]]
+          se_raw     <- sub[[se_col]]
+          te_aligned <- ifelse(sub$t1 == t1, te_raw, -te_raw)
+          v <- judge_rob_direct_sens_v(
+            rob_vec       = as.character(sub$rob),
+            te_vec        = te_aligned,
+            se_vec        = se_raw,
+            inf_threshold = inf_t,
+            small_values  = NULL
+          )
+
+          n_high <- sum(as.character(sub$rob) == "high", na.rm = TRUE)
+          te_all_lo <- if (!is.na(v$te_all) && !is.na(v$se_all))
+                         v$te_all - 1.96 * v$se_all else NA_real_
+          te_all_hi <- if (!is.na(v$te_all) && !is.na(v$se_all))
+                         v$te_all + 1.96 * v$se_all else NA_real_
+          te_low_lo <- if (!is.na(v$te_low) && !is.na(v$se_low))
+                         v$te_low - 1.96 * v$se_low else NA_real_
+          te_low_hi <- if (!is.na(v$te_low) && !is.na(v$se_low))
+                         v$te_low + 1.96 * v$se_low else NA_real_
+
+          te_all_str <- format_te_ci(v$te_all, te_all_lo, te_all_hi, sm_val)
+          te_low_str <- format_te_ci(v$te_low, te_low_lo, te_low_hi, sm_val)
+
+          flag_inflation <- !is.na(v$inflation) && v$inflation >= inf_t
+          flag_flip      <- isTRUE(v$sign_flip)
+
+          infl_text <- if (flag_flip) {
+            tags$span(
+              title = "Sign reversal: pooled TE flips when high-RoB studies are excluded",
+              style = "background:#f8d7da; color:#721c24; padding:1px 6px;
+                       border-radius:3px; font-weight:bold;",
+              "sign flip ⚠")
+          } else if (is.na(v$inflation)) {
+            tags$span(style = "color:#888;", "—")
+          } else {
+            pct <- sprintf("%+.1f%%", v$inflation * 100)
+            if (flag_inflation)
+              tags$span(
+                title = paste0("Inflation ≥ ", round(inf_t * 100), "% threshold"),
+                style = "background:#fff3cd; color:#856404; padding:1px 6px;
+                         border-radius:3px; font-weight:bold;",
+                pct, " ⚠")
+            else
+              tags$span(style = "color:#198754;", pct)
+          }
+
+          # Conclusion-change indicators
+          flip_badge <- if (isTRUE(v$sign_flip))
+            tags$span(style = "background:#f8d7da; color:#721c24;
+                      padding:1px 6px; border-radius:3px; font-weight:bold;
+                      margin-left:6px;", "sign flip")
+          else NULL
+          sig_badge <- if (isTRUE(v$sig_changed))
+            tags$span(style = "background:#fff3cd; color:#856404;
+                      padding:1px 6px; border-radius:3px; font-weight:bold;
+                      margin-left:6px;", "significance change")
+          else NULL
+
+          ovlp_text <- if (!is.na(v$overlap_ratio))
+            paste0(sprintf("%.0f%%", v$overlap_ratio * 100), " of mean CI width")
+          else "—"
+          ovlp_color <- if (!is.na(v$overlap_ratio) && v$overlap_ratio >= 0.8)
+            "#198754" else "#856404"
+
+          tagList(
+            p(style = "margin:2px 0;",
+              "TE_all (k = ", nrow(sub), "): ", strong(te_all_str)),
+            p(style = "margin:2px 0;",
+              "TE excl. high-RoB (k = ",
+              max(nrow(sub) - n_high, 0L), "): ",
+              if (is.na(v$te_low)) tags$span(style = "color:#888;", "—")
+              else strong(te_low_str)),
+            p(style = "margin:2px 0;",
+              "Inflation: ", infl_text,
+              tags$span(style = "color:#666; margin-left:10px;",
+                        "CI overlap: ",
+                        tags$span(style = paste0("color:", ovlp_color, ";"),
+                                  ovlp_text)),
+              flip_badge, sig_badge)
+          )
+        }, error = function(e)
+          p(style = "margin:4px 0; color:#888; font-size:0.85em;",
+            em(paste("Sensitivity TE not computed:", conditionMessage(e)))))
+        out
+      }
+
+      render_domain_cards(
+        n              = nrow(ad$comps),
+        comps          = ad$comps,
+        evidence_type  = ad$evidence_type,
+        auto_vals      = ad$d1$domain1,
+        ns_func        = ns,
+        ov_prefix      = "ov_d1",
+        card_extra     = sens_extra,
+        reason_prefix  = "reason_d1",
+        selected_vals  = ad$d1$domain1
+      )
     })
 
     # ------------------------------------------------------------------
@@ -930,7 +1094,7 @@ moduleB_server <- function(id, processed_data,
       ad  <- auto_domains();   req(!is.null(ad))
       n   <- nrow(ad$comps)
       net    <- ad$net
-      has_pi <- !is.null(net$lower.predict) && is.matrix(net$lower.predict)
+      has_pri <- !is.null(net$lower.predict) && is.matrix(net$lower.predict)
       em_d5      <- input$effect_measure %||% "SMD"
       is_ratio_5 <- em_d5 %in% c("OR", "RR")
       delta  <- if (is_ratio_5) log(input$delta) else input$delta
@@ -943,15 +1107,15 @@ moduleB_server <- function(id, processed_data,
           t1i <- ad$comps$t1[i]; t2i <- ad$comps$t2[i]
           lo_ci <- tryCatch(net$lower.random[t1i, t2i], error = function(e) NA_real_)
           hi_ci <- tryCatch(net$upper.random[t1i, t2i], error = function(e) NA_real_)
-          lo_pi <- if (has_pi) tryCatch(net$lower.predict[t1i, t2i], error = function(e) NA_real_) else NA_real_
-          hi_pi <- if (has_pi) tryCatch(net$upper.predict[t1i, t2i], error = function(e) NA_real_) else NA_real_
+          lo_pri <- if (has_pri) tryCatch(net$lower.predict[t1i, t2i], error = function(e) NA_real_) else NA_real_
+          hi_pri <- if (has_pri) tryCatch(net$upper.predict[t1i, t2i], error = function(e) NA_real_) else NA_real_
           tagList(
             if (!is.na(lo_ci)) p(style = "margin:2px 0;",
               "95% CI", ci_unit_5, ": [", fv5(lo_ci), ", ", fv5(hi_ci), "]"),
-            if (!is.na(lo_pi)) p(style = "margin:2px 0;",
-              "95% PI", ci_unit_5, ": [", fv5(lo_pi), ", ", fv5(hi_pi), "]"),
+            if (!is.na(lo_pri)) p(style = "margin:2px 0;",
+              "95% PrI", ci_unit_5, ": [", fv5(lo_pri), ", ", fv5(hi_pri), "]"),
             p(style = "margin:2px 0; font-style:italic; font-size:0.9em;",
-              heterogeneity_zone_text(lo_ci, hi_ci, lo_pi, hi_pi, delta))
+              heterogeneity_zone_text(lo_ci, hi_ci, lo_pri, hi_pri, delta))
           )
         },
         reason_prefix = "reason_d5"
@@ -993,8 +1157,18 @@ moduleB_server <- function(id, processed_data,
             )
           )
 
+          path_str  <- ad$d6$d6_path[i] %||% ""
+          path_p    <- ad$d6$d6_p[i]
+          path_text <- if (nzchar(path_str)) {
+            p_part <- if (!is.na(path_p))
+              paste0(" (p = ", format(round(path_p, 3), nsmall = 3), ")") else ""
+            p(style = "margin:2px 0; color:#555;",
+              em("Decision route: "), path_str, p_part)
+          } else NULL
+
           if (is.null(nsplit)) {
-            return(tagList(rating_badge_ui, p(em("Node-splitting not available."))))
+            return(tagList(rating_badge_ui, path_text,
+                           p(em("Node-splitting not available."))))
           }
           t1i  <- ad$comps$t1[i]; t2i <- ad$comps$t2[i]
           lbls <- nsplit$comparison
@@ -1002,11 +1176,11 @@ moduleB_server <- function(id, processed_data,
                         lbls == paste(t2i, t1i, sep = ":"))
 
           if (cr$merged$evidence_type[i] == "indirect") {
-            return(tagList(rating_badge_ui,
+            return(tagList(rating_badge_ui, path_text,
                            p(em("No direct evidence — global test used for D6."))))
           }
           if (length(idx) == 0) {
-            return(tagList(rating_badge_ui,
+            return(tagList(rating_badge_ui, path_text,
                            p(em("No node-splitting result for this pair."))))
           }
 
@@ -1023,6 +1197,7 @@ moduleB_server <- function(id, processed_data,
 
           tagList(
             rating_badge_ui,
+            path_text,
             p(style = "margin:2px 0;",
               "NMA 95% CI", ci_unit_6, ": [", fv6(nma_lo), ", ", fv6(nma_hi), "]"),
             if (!is.na(d_lo)) p(style = "margin:2px 0;",
@@ -1238,6 +1413,11 @@ compute_domain1_wsb_sens <- function(comps, contrib, df,
                       stringsAsFactors = FALSE))
   }
 
+  # processed_data exposes the pairwise effect under "y"/"se" (Module A
+  # convention); netmeta-style pairs use "TE"/"seTE". Pick whichever exists.
+  te_col <- if ("TE"   %in% names(df)) "TE"   else if ("y"  %in% names(df)) "y"  else NA_character_
+  se_col <- if ("seTE" %in% names(df)) "seTE" else if ("se" %in% names(df)) "se" else NA_character_
+
   num_map  <- c(no = 1L, some_concerns = 2L, serious = 3L)
   judgments <- new.env(hash = TRUE, parent = emptyenv())
   pairs_tab <- unique(rbind(
@@ -1248,10 +1428,12 @@ compute_domain1_wsb_sens <- function(comps, contrib, df,
     a <- pairs_tab$a[i]; b <- pairs_tab$b[i]
     sub <- df[(df$t1 == a & df$t2 == b) | (df$t1 == b & df$t2 == a), , drop = FALSE]
     if (nrow(sub) == 0) next
+    te_vec <- if (!is.na(te_col)) sub[[te_col]] else rep(NA_real_, nrow(sub))
+    se_vec <- if (!is.na(se_col)) sub[[se_col]] else rep(NA_real_, nrow(sub))
     j <- judge_rob_direct_sens(
       rob_vec       = as.character(sub$rob),
-      te_vec        = sub$TE,
-      se_vec        = sub$seTE,
+      te_vec        = te_vec,
+      se_vec        = se_vec,
       inf_threshold = inf_threshold,
       small_values  = small_values
     )
@@ -1308,7 +1490,7 @@ compute_domain3_indirectness <- function(comps, contrib, df, rule = "average") {
 }
 
 # ----------------------------------------------------------------------------
-# count_zone_crossings: count how many zone boundaries (±delta) a CI or PI crosses.
+# count_zone_crossings: count how many zone boundaries (±delta) a CI or PrI crosses.
 # ----------------------------------------------------------------------------
 count_zone_crossings <- function(lo, hi, delta) {
   if (any(is.na(c(lo, hi, delta))) || delta <= 0) return(0L)
@@ -1367,7 +1549,7 @@ compute_domain4_imprecision <- function(comps, net, model_type, delta) {
 
 # ----------------------------------------------------------------------------
 # Domain 5: Heterogeneity — zone crossing (Nikolakopoulou 2020)
-#   PI crossings − CI crossings = 0 → No concerns
+#   PrI crossings − CI crossings = 0 → No concerns
 #                               = 1 → Some concerns
 #                               = 2 → Major concerns
 #   Common-effects model: No concerns (τ² = 0)
@@ -1392,12 +1574,12 @@ compute_domain5_heterogeneity <- function(comps, net, model_type, delta) {
     ci_cross <- count_zone_crossings(lo_ci, hi_ci, delta)
     if (!has_predict) return(rating_map[min(ci_cross + 1L, 3L)])
 
-    lo_pi <- tryCatch(net$lower.predict[comps$t1[i], comps$t2[i]], error = function(e) NA_real_)
-    hi_pi <- tryCatch(net$upper.predict[comps$t1[i], comps$t2[i]], error = function(e) NA_real_)
-    if (any(is.na(c(lo_pi, hi_pi)))) return(rating_map[min(ci_cross + 1L, 3L)])
+    lo_pri <- tryCatch(net$lower.predict[comps$t1[i], comps$t2[i]], error = function(e) NA_real_)
+    hi_pri <- tryCatch(net$upper.predict[comps$t1[i], comps$t2[i]], error = function(e) NA_real_)
+    if (any(is.na(c(lo_pri, hi_pri)))) return(rating_map[min(ci_cross + 1L, 3L)])
 
-    pi_cross <- count_zone_crossings(lo_pi, hi_pi, delta)
-    diff     <- max(0L, pi_cross - ci_cross)
+    pri_cross <- count_zone_crossings(lo_pri, hi_pri, delta)
+    diff     <- max(0L, pri_cross - ci_cross)
     rating_map[min(diff + 1L, 3L)]
   })
 
@@ -1415,45 +1597,71 @@ compute_domain5_heterogeneity <- function(comps, net, model_type, delta) {
 compute_domain6_incoherence <- function(comps, nsplit, net, delta) {
   comp_labels <- paste(comps$t1, comps$t2, sep = " vs ")
 
-  global_rating <- tryCatch({
+  # ----------------------------------------------------------------
+  # Global rating via design-by-treatment interaction test (decomp.design).
+  # Closed-loop absent or test cannot be computed → Major concerns
+  # (CINeMA spec; cannot rule out incoherence without a test).
+  # Returns list(rating, p, path) so the per-comparison loop can surface
+  # the underlying judgement route in the UI.
+  # ----------------------------------------------------------------
+  global_info <- tryCatch({
     decomp <- decomp.design(net)
-    # Q.inc.random is a data.frame; use [[ ]] to extract scalar, not [ ] which returns a df
-    extract_p <- function(obj) {
-      for (nm in c("p", "pval", "p.value", "Pval")) {
-        v <- suppressWarnings(as.numeric(obj[[nm]]))
-        if (length(v) > 0 && !is.na(v[1])) return(v[1])
+    q_obj  <- decomp$Q.inc.random
+    if (is.null(q_obj)) {
+      list(rating = "Major concerns", p = NA_real_,
+           path = "closed loops absent")
+    } else {
+      extract_p <- function(obj) {
+        for (nm in c("p", "pval", "p.value", "Pval")) {
+          v <- suppressWarnings(as.numeric(obj[[nm]]))
+          if (length(v) > 0 && !is.na(v[1])) return(v[1])
+        }
+        NA_real_
       }
-      NA_real_
+      p <- extract_p(q_obj)
+      r <- if (is.na(p))           "Major concerns"
+           else if (p > 0.10)      "No concerns"
+           else if (p > 0.05)      "Some concerns"
+           else                    "Major concerns"
+      list(rating = r, p = p, path = "global design-by-treatment test")
     }
-    p <- extract_p(decomp$Q.inc.random)
-    if (is.na(p)) "Not assessed"
-    else if (p > 0.10) "No concerns"
-    else if (p > 0.05) "Some concerns"
-    else               "Major concerns"
-  }, error = function(e) "Not assessed")
+  }, error = function(e) list(rating = "Major concerns", p = NA_real_,
+                              path = "closed loops absent"))
+  global_rating <- global_info$rating
 
-  results <- sapply(seq_len(nrow(comps)), function(i) {
-    if (is.null(nsplit)) return(global_rating)
+  safe_val <- function(x) {
+    v <- tryCatch(x, error = function(e) NA_real_)
+    if (length(v) == 0) NA_real_ else v
+  }
+
+  global_row <- function() list(rating = global_info$rating,
+                                p = global_info$p, path = global_info$path)
+
+  results_list <- lapply(seq_len(nrow(comps)), function(i) {
+    if (is.null(nsplit)) return(global_row())
 
     t1   <- comps$t1[i]; t2 <- comps$t2[i]
     lbls <- nsplit$comparison
     idx  <- which(lbls == paste(t1, t2, sep = ":") |
                   lbls == paste(t2, t1, sep = ":"))
+    if (length(idx) == 0) return(global_row())
 
-    if (length(idx) == 0) return(global_rating)
+    d_te <- safe_val(nsplit$direct.random$TE[idx[1]])
+    i_te <- safe_val(nsplit$indirect.random$TE[idx[1]])
+    has_direct   <- !is.na(d_te)
+    has_indirect <- !is.na(i_te)
 
-    # netmeta v3.x: SIDE p-values are in compare.random$p, not p.value.random
+    if (!(has_direct && has_indirect)) return(global_row())
+
     p_side <- tryCatch({
       v <- nsplit$compare.random$p[idx[1]]
       if (length(v) == 0) NA_real_ else as.numeric(v)
     }, error = function(e) NA_real_)
-    if (is.na(p_side)) return(global_rating)
-    if (p_side > 0.10) return("No concerns")
+    if (is.na(p_side))
+      return(global_row())
+    if (p_side > 0.10)
+      return(list(rating = "No concerns", p = p_side, path = "SIDE test"))
 
-    safe_val <- function(x) {
-      v <- tryCatch(x, error = function(e) NA_real_)
-      if (length(v) == 0) NA_real_ else v
-    }
     d_lo <- safe_val(nsplit$direct.random$lower[idx[1]])
     d_hi <- safe_val(nsplit$direct.random$upper[idx[1]])
     i_lo <- safe_val(nsplit$indirect.random$lower[idx[1]])
@@ -1461,14 +1669,22 @@ compute_domain6_incoherence <- function(comps, nsplit, net, delta) {
 
     n_common <- count_common_zones(d_lo, d_hi, i_lo, i_hi, delta)
 
-    if (is.na(n_common))    return("Some concerns")
-    if (n_common >= 3)      "No concerns"
-    else if (n_common == 2) "Some concerns"
-    else                    "Major concerns"
+    rating <- if (is.na(n_common))    "Some concerns"
+              else if (n_common >= 3) "No concerns"
+              else if (n_common == 2) "Some concerns"
+              else                    "Major concerns"
+    list(rating = rating, p = p_side, path = "SIDE test")
   })
 
-  data.frame(comparison = comp_labels, domain6 = unname(results),
-             stringsAsFactors = FALSE)
+  data.frame(
+    comparison = comp_labels,
+    domain6    = vapply(results_list, `[[`, character(1), "rating"),
+    d6_path    = vapply(results_list, `[[`, character(1), "path"),
+    d6_p       = vapply(results_list,
+                        function(x) as.numeric(x$p %||% NA_real_),
+                        numeric(1)),
+    stringsAsFactors = FALSE
+  )
 }
 
 # ----------------------------------------------------------------------------
@@ -1673,24 +1889,24 @@ imprecision_zone_text <- function(te, lo, hi, delta, is_ratio = FALSE) {
 }
 
 # ----------------------------------------------------------------------------
-# heterogeneity_zone_text: D5 zone description for CI and PI (δ notation)
+# heterogeneity_zone_text: D5 zone description for CI and PrI (δ notation)
 # ----------------------------------------------------------------------------
-heterogeneity_zone_text <- function(lo_ci, hi_ci, lo_pi, hi_pi, delta) {
+heterogeneity_zone_text <- function(lo_ci, hi_ci, lo_pri, hi_pri, delta) {
   if (any(is.na(c(lo_ci, hi_ci)))) return("CI unavailable.")
   d <- abs(delta)
   ci_cross <- count_zone_crossings(lo_ci, hi_ci, d)
 
-  if (is.na(lo_pi)) {
+  if (is.na(lo_pri)) {
     return(paste0("95% CI: [", round(lo_ci, 3), ", ", round(hi_ci, 3),
-                  "]. Prediction interval (PI) not available."))
+                  "]. Prediction interval (PrI) not available."))
   }
 
-  pi_cross <- count_zone_crossings(lo_pi, hi_pi, d)
+  pri_cross <- count_zone_crossings(lo_pri, hi_pri, d)
 
-  if (pi_cross <= ci_cross)
-    "CI and PI cross the same number of zones \u2014 limited clinical impact of heterogeneity."
-  else if (pi_cross - ci_cross == 1)
-    "PI crosses 1 more zone than CI \u2014 future trials may reach a different conclusion."
+  if (pri_cross <= ci_cross)
+    "CI and PrI cross the same number of zones \u2014 limited clinical impact of heterogeneity."
+  else if (pri_cross - ci_cross == 1)
+    "PrI crosses 1 more zone than CI \u2014 future trials may reach a different conclusion."
   else
-    "PI crosses 2 more zones than CI \u2014 heterogeneity allows both beneficial and harmful conclusions."
+    "PrI crosses 2 more zones than CI \u2014 heterogeneity allows both beneficial and harmful conclusions."
 }

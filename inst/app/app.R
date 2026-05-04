@@ -20,6 +20,34 @@ library(plotly)
 library(netmeta)
 library(meta)
 library(shinycssloaders)
+library(bslib)
+
+# shadcn-inspired bslib theme — Inter font, zinc palette, soft borders
+nma_theme <- bslib::bs_theme(
+  version       = 5,
+  base_font     = bslib::font_google("Inter"),
+  heading_font  = bslib::font_google("Inter"),
+  font_scale    = 0.95,
+  primary       = "#18181b",
+  secondary     = "#71717a",
+  success       = "#22c55e",
+  info          = "#3b82f6",
+  warning       = "#f59e0b",
+  danger        = "#ef4444",
+  bg            = "#ffffff",
+  fg            = "#09090b",
+  "border-radius"            = "0.5rem",
+  "border-radius-sm"         = "0.375rem",
+  "border-radius-lg"         = "0.75rem",
+  "card-border-color"        = "#e4e4e7",
+  "card-cap-bg"              = "#fafafa",
+  "btn-padding-y"            = "0.5rem",
+  "btn-padding-x"            = "1rem",
+  "input-border-color"       = "#e4e4e7",
+  "input-focus-border-color" = "#18181b",
+  "navbar-bg"                = "#ffffff",
+  "navbar-light-color"       = "#52525b"
+)
 
 source("modules/utils.R")            # shared constants and helpers (load first)
 source("modules/_d1_sens_judge.R")   # pure RoB sensitivity flowchart (used by Module B)
@@ -29,26 +57,27 @@ source("modules/module_C_robmen.R")
 source("modules/module_D_dashboard.R")
 
 ui <- fluidPage(
+  theme = nma_theme,
   titlePanel("NMA Evaluator: CINeMA + ROB-MEN"),
   tags$head(tags$style(HTML("
-    .alert { padding:10px; border-radius:4px; margin-bottom:10px; }
-    .alert-info    { background:#d1ecf1; border:1px solid #bee5eb;
-                     color:#0c5460; }
-    .alert-success { background:#d4edda; border:1px solid #c3e6cb;
-                     color:#155724; }
-    .alert-warning { background:#fff3cd; border:1px solid #ffeeba;
-                     color:#856404; }
-    .alert-danger  { background:#f8d7da; border:1px solid #f5c6cb;
-                     color:#721c24; }
+    .alert { padding:10px; border-radius:0.5rem; margin-bottom:10px; }
+    .alert-info    { background:#eff6ff; border:1px solid #bfdbfe;
+                     color:#1e40af; }
+    .alert-success { background:#f0fdf4; border:1px solid #bbf7d0;
+                     color:#166534; }
+    .alert-warning { background:#fffbeb; border:1px solid #fde68a;
+                     color:#92400e; }
+    .alert-danger  { background:#fef2f2; border:1px solid #fecaca;
+                     color:#991b1b; }
   "))),
 
   navbarPage(
     id    = "main_navbar",
     title = NULL,
-    tabPanel("A: Data Input", moduleA_ui("module_a")),
-    tabPanel("B: CINeMA",     moduleB_ui("module_b")),
-    tabPanel("C: ROB-MEN",    moduleC_ui("module_c")),
-    tabPanel("D: Dashboard",  moduleD_ui("module_d"))
+    tabPanel("Configuration",   moduleA_ui("module_a")),
+    tabPanel("CINeMA",          moduleB_ui("module_b")),
+    tabPanel("ROB-MEN",         moduleC_ui("module_c")),
+    tabPanel("Report",          moduleD_ui("module_d"))
   )
 )
 
@@ -77,7 +106,7 @@ make_server <- function(initial_data = NULL) {
                                initial_data = initial_data,
                                go_to_cinema = function() {
                                  updateNavbarPage(session, "main_navbar",
-                                                  selected = "B: CINeMA")
+                                                  selected = "CINeMA")
                                })
     cinema_b <- moduleB_server("module_b",
                                processed_data = data_a$processed_data,
@@ -85,7 +114,7 @@ make_server <- function(initial_data = NULL) {
                                run_trigger    = data_a$run_trigger,
                                go_to_robmen   = function() {
                                  updateNavbarPage(session, "main_navbar",
-                                                  selected = "C: ROB-MEN")
+                                                  selected = "ROB-MEN")
                                })
 
     robmen_c <- moduleC_server("module_c",
@@ -95,7 +124,7 @@ make_server <- function(initial_data = NULL) {
                                run_trigger    = data_a$run_trigger,
                                go_to_cinema   = function() {
                                  updateNavbarPage(session, "main_navbar",
-                                                  selected = "B: CINeMA")
+                                                  selected = "CINeMA")
                                })
     moduleD_server("module_d",
                    cinema_module  = cinema_b,
@@ -103,7 +132,7 @@ make_server <- function(initial_data = NULL) {
                    nma_settings_r = data_a$nma_settings,
                    go_to_cinema   = function() {
                      updateNavbarPage(session, "main_navbar",
-                                      selected = "B: CINeMA")
+                                      selected = "CINeMA")
                    })
   }
 }

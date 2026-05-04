@@ -29,7 +29,7 @@ moduleD_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    h3("Step 4: Dashboard & Export"),
+    h3("Report"),
 
     uiOutput(ns("status_msg")),
 

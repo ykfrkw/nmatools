@@ -252,17 +252,15 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
                 "0 (—)")
     )
   } else {
-    tags$td(style = "padding:4px 8px;",
-      div(style = "display:flex; align-items:center; gap:3px; white-space:nowrap;",
-        title = "Studies reporting this outcome: k (trials) and N (participants) — auto-filled from NMA data, editable",
-        numericInput(ns(paste0("n_direct_", sid)), label = NULL,
-                     value = if (!is.na(n_direct)) n_direct else NA,
-                     min = 0, step = 1, width = "60px"),
-        tags$span("("),
-        numericInput(ns(paste0("n_total_", sid)), label = NULL,
-                     value = if (!is.na(n_total)) n_total else NA,
-                     min = 0, step = 1, width = "80px"),
-        tags$span(")")
+    k_str <- if (!is.na(n_direct)) format(n_direct) else "—"
+    n_str <- if (!is.na(n_total))  format(n_total)  else "—"
+    tags$td(style = "padding:4px 8px; text-align:center;",
+      tags$span(
+        title = "Studies reporting this outcome: k (trials) and N (participants) — auto-derived from NMA data (read-only)",
+        style = paste0("background:#e9ecef; padding:3px 8px;",
+                       " border:1px solid #ced4da; border-radius:4px;",
+                       " font-size:0.9em; white-space:nowrap;"),
+        paste0(k_str, " (", n_str, ")")
       )
     )
   }
@@ -390,22 +388,19 @@ make_robmen_row <- function(ns, comp, te, lo, hi, pct_t1, pct_t2,
                             contrib_auto = "",
                             sse_auto     = "",
                             robmen_auto  = "",
+                            sm = "",
+                            bias_dir = "",
                             bg = "white") {
   sid <- safe_id(comp)
-  te_str <- if (!is.na(te)) {
-    paste0(round(te, 2), " [", round(lo, 2), ", ", round(hi, 2), "]")
-  } else "—"
+  te_str <- format_te_ci(te, lo, hi, sm)
 
   # NMR treatment effect at the smallest observed variance (from netmetaregression).
   nmr_str <- if (!is.na(nmr_te)) {
-    ci_part <- if (!is.na(nmr_lo) && !is.na(nmr_hi))
-      paste0(" [", round(nmr_lo, 2), ", ", round(nmr_hi, 2), "]")
-    else ""
     tags$span(
       title = paste0("NMR treatment effect at the smallest observed variance.",
                      " Compare to unadjusted NMA estimate to assess small-study effects."),
       style = "color:#495057;",
-      paste0(round(nmr_te, 2), ci_part)
+      format_te_ci(nmr_te, nmr_lo, nmr_hi, sm)
     )
   } else {
     tags$span(style = "color:#aaa; font-style:italic;", "—")
@@ -414,27 +409,44 @@ make_robmen_row <- function(ns, comp, te, lo, hi, pct_t1, pct_t2,
   # 15 pp threshold: highlight if |pct_t1 - pct_t2| > 15 (Chiocchia 2021)
   diff_pp    <- abs(pct_t1 - pct_t2)
   thresh_hit <- !is.na(diff_pp) && diff_pp > 15
-  pct_cell_style <- function(pct) {
+  # Direction-of-bias accent: mark the column that user-specified bias points to
+  bias_t1 <- identical(bias_dir, "t1")
+  bias_t2 <- identical(bias_dir, "t2")
+  pct_cell_style <- function(pct, is_t1) {
     base <- "padding:4px 8px; text-align:center;"
+    bias_hit <- (bias_t1 && is_t1) || (bias_t2 && !is_t1)
+    if (bias_hit)
+      base <- paste0(base, " border-left:4px solid #d97706;",
+                          " background:#fff7ed;")
     if (thresh_hit && pct == max(pct_t1, pct_t2))
-      paste0(base, " background:#fff3cd; font-weight:bold;")
+      paste0(base, " font-weight:bold;",
+             if (!bias_hit) " background:#fff3cd;" else "")
     else
       base
   }
-  pct_badge <- function(pct) {
-    val_str <- paste0(sprintf("%.1f", pct), "%")
+  pct_badge <- function(pct, is_t1) {
+    val_str  <- paste0(sprintf("%.1f", pct), "%")
+    bias_hit <- (bias_t1 && is_t1) || (bias_t2 && !is_t1)
+    extras <- list()
+    if (bias_hit)
+      extras[[length(extras) + 1L]] <- tags$span(
+        title = paste0("Direction of bias points to ",
+                       if (is_t1) "1st" else "2nd", " treatment"),
+        style = "margin-left:4px; color:#9a3412;",
+        HTML("&#10148;"))
     if (thresh_hit && pct == max(pct_t1, pct_t2))
-      tagList(val_str, tags$span(title = paste0("Difference = ", round(diff_pp, 1),
-        " pp > 15 pp threshold (Chiocchia 2021): may be 'Substantial contribution'"),
-        style = "margin-left:4px; color:#856404;", HTML("&#9888;")))
-    else
-      val_str
+      extras[[length(extras) + 1L]] <- tags$span(
+        title = paste0("Difference = ", round(diff_pp, 1),
+                       " pp > 15 pp threshold (Chiocchia 2021):",
+                       " may be 'Substantial contribution'"),
+        style = "margin-left:4px; color:#856404;", HTML("&#9888;"))
+    do.call(tagList, c(list(val_str), extras))
   }
 
   tags$tr(style = paste0("background:", bg, ";"),
     tags$td(style = "padding:4px 8px; white-space:nowrap;", strong(comp)),
-    tags$td(style = pct_cell_style(pct_t1), pct_badge(pct_t1)),
-    tags$td(style = pct_cell_style(pct_t2), pct_badge(pct_t2)),
+    tags$td(style = pct_cell_style(pct_t1, TRUE),  pct_badge(pct_t1, TRUE)),
+    tags$td(style = pct_cell_style(pct_t2, FALSE), pct_badge(pct_t2, FALSE)),
     tags$td(style = "padding:4px 6px;",
       selectInput(ns(paste0("contrib_eval_", sid)), label = NULL,
                   choices = CONTRIB_CHOICES, selected = contrib_auto, width = "160px")
@@ -1195,21 +1207,17 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
               if (!is.null(ov_val) && ov_val %in% c("Suspected bias", "Suspected substantial bias")) {
                 pct  <- contribs[col_nm] * 100
-                # Direction (Chiocchia 2021):
-                # Egger bias computed on y canonicalised to positive = parts[2] is better.
-                # Positive Egger bias → small studies favour parts[2].
-                # Check whether parts[2] aligns with ne$t2[i] (trt) or ne$t1[i] (ref).
-                eg_row   <- eg %>% filter(comp_key == ck)
-                bias_sgn <- if (nrow(eg_row) > 0 && !is.na(eg_row$egger_bias[1]))
-                              sign(eg_row$egger_bias[1]) else 0L
-                # Fallback: use manually entered direction when Egger's sign is unavailable
-                if (bias_sgn == 0) {
-                  dir_manual <- input[[paste0("bias_dir_", sid)]]
-                  if (!is.null(dir_manual) && nzchar(dir_manual)) {
-                    # "t1" = parts[1] favored; "t2" = parts[2] favored
-                    # Consistent with Egger sign: positive → parts[2] favored
-                    bias_sgn <- if (dir_manual == "t2") 1L else -1L
-                  }
+                # Direction priority: user-entered bias_dir (if any) overrides Egger.
+                # "t1" = parts[1] favored, "t2" = parts[2] favored.
+                # Convert to Egger-style sign convention: positive → parts[2] favored.
+                bias_sgn   <- 0L
+                dir_manual <- input[[paste0("bias_dir_", sid)]]
+                if (!is.null(dir_manual) && nzchar(dir_manual)) {
+                  bias_sgn <- if (dir_manual == "t2") 1L else -1L
+                } else {
+                  eg_row   <- eg %>% filter(comp_key == ck)
+                  if (nrow(eg_row) > 0 && !is.na(eg_row$egger_bias[1]))
+                    bias_sgn <- sign(eg_row$egger_bias[1])
                 }
                 if (bias_sgn != 0) {
                   favored <- if (bias_sgn > 0) parts[2] else parts[1]
@@ -1286,18 +1294,27 @@ moduleC_server <- function(id, processed_data, cinema_module,
           sse_auto <- if (!ci_available || anyNA(c(nmr_te, nma_te)) || overlaps) {
             "No evidence of small-study effects"
           } else {
-            # NMR CI does NOT overlap NMA CI -> small-study effects present.
-            # Direction: if NMR is less extreme than NMA (closer to null) in the
-            # same direction NMA favours -> small studies are inflating the NMA
-            # estimate -> reinforcing the biased contribution.
-            nma_favors_t2 <- !is.na(nma_te) && nma_te > 0
-            sse_shrinks    <- !is.na(nmr_te) && abs(nmr_te) < abs(nma_te)
-            if (sse_shrinks && !is.na(nma_te) && sign(nmr_te) == sign(nma_te))
-              SSE_IN   # NMR closer to 0 -> small studies inflate NMA -> reinforcing
-            else if (is.na(nma_te) || is.na(nmr_te))
-              "No evidence of small-study effects"
-            else
-              SSE_NOT
+            # User-specified Direction of bias takes precedence over the legacy
+            # shrinkage heuristic. bias_dir = "t1" means bias pulls NMA toward
+            # t1; if NMR (bias-adjusted) moves toward t2 (delta > 0), the SSE
+            # reinforces the biased contribution. Symmetric for "t2".
+            sid_i    <- safe_id(comp)
+            bias_dir <- input[[paste0("bias_dir_", sid_i)]] %||% ""
+            delta    <- nmr_te - nma_te
+            if (nzchar(bias_dir) && bias_dir == "t1") {
+              if (sign(delta) > 0) SSE_IN else SSE_NOT
+            } else if (nzchar(bias_dir) && bias_dir == "t2") {
+              if (sign(delta) < 0) SSE_IN else SSE_NOT
+            } else {
+              # Fallback: legacy shrinkage-based heuristic
+              sse_shrinks <- !is.na(nmr_te) && abs(nmr_te) < abs(nma_te)
+              if (sse_shrinks && !is.na(nma_te) && sign(nmr_te) == sign(nma_te))
+                SSE_IN
+              else if (is.na(nma_te) || is.na(nmr_te))
+                "No evidence of small-study effects"
+              else
+                SSE_NOT
+            }
           }
 
           data.frame(comparison = comp,
@@ -1890,8 +1907,10 @@ moduleC_server <- function(id, processed_data, cinema_module,
                    pct_fav_t2 = numeric(0))
       })
       eg <- tryCatch(egger_df(), error = function(e) NULL)
+      sm_val <- tryCatch(cinema_res()$net$sm, error = function(e) "") %||% ""
 
       th_style <- "padding:6px 8px; text-align:left; white-space:normal;"
+      te_lab   <- te_col_label(sm_val)
 
       header_row <- tags$tr(style = "background:#6c3483; color:white; font-weight:bold;",
         tags$th(style = th_style, "NMA estimate"),
@@ -1912,11 +1931,11 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = paste0(th_style, "text-align:center;"),
           div(HTML("NMA effect")),
           tags$small(style = "font-weight:normal; opacity:0.85; white-space:normal;",
-            "TE [95% CI]", tags$br(), "unadjusted")),
+            te_lab, tags$br(), "unadjusted")),
         tags$th(style = paste0(th_style, "text-align:center;"),
           div(HTML("NMR effect")),
           tags$small(style = "font-weight:normal; opacity:0.85; white-space:normal;",
-            "TE [95% CI]", tags$br(), "adjusted")),
+            te_lab, tags$br(), "adjusted")),
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("⑤b Small-study effects"),
@@ -1983,12 +2002,15 @@ moduleC_server <- function(id, processed_data, cinema_module,
         if (!nzchar(sse_a)) sse_a <- "No evidence of small-study effects"
         ov_a <- compute_overall_robmen(c_a, sse_a)
 
+        bias_dir_val <- input[[paste0("bias_dir_", safe_id(comp))]] %||% ""
         make_robmen_row(ns, comp,
                         ne$te[i], ne$lo[i], ne$hi[i], p1, p2,
                         nmr_te = nmr_te, nmr_lo = nmr_lo, nmr_hi = nmr_hi,
                         contrib_auto = c_a,
                         sse_auto     = sse_a,
                         robmen_auto  = ov_a,
+                        sm = sm_val,
+                        bias_dir = bias_dir_val,
                         bg = if (i %% 2 == 0) "#fafafa" else "white")
       }
 

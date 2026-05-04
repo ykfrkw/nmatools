@@ -37,11 +37,7 @@ Imports:
     officer,
     openxlsx,
     tools,
-    stats
-Suggests:
-    testthat (>= 3.0.0),
-    patchwork (>= 1.1.0),
-    rstudioapi,
+    stats,
     shiny,
     DT,
     plotly,
@@ -50,5 +46,10 @@ Suggests:
     readr,
     stringr,
     tidyr,
-    rlang
+    rlang,
+    bslib
+Suggests:
+    testthat (>= 3.0.0),
+    patchwork (>= 1.1.0),
+    rstudioapi
 Config/testthat/edition: 3

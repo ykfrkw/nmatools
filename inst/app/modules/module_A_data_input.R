@@ -21,7 +21,8 @@
 #                  binary:     studlab / treat1 / n1 / event1 / treat2 / …
 #
 # ROB / INDIRECTNESS COLUMNS (all formats):
-#   Values must be "low", "some concerns", or "high" — OR mapped in Step 4.
+#   Values must be "low", "some concerns", or "high" — OR mapped in the
+#   ROB/Indirectness Value Mapping panel.
 #   If column is omitted, all rows default to "low".
 #
 # OUTPUT (unchanged API):
@@ -190,7 +191,7 @@ moduleA_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    h3("Step 1: Upload NMA Data"),
+    h3("1. Upload NMA Data"),
 
     # --- Upload section (always visible) ---
     wellPanel(
@@ -219,31 +220,33 @@ moduleA_ui <- function(id) {
     # --- Step 2: Format & Outcome Type (shown after raw data loaded) ---
     uiOutput(ns("step2_ui")),
 
-    # --- Step 3: Column Mapping (file uploads only) ---
+    # --- Column Mapping (sub-section of Step 2; file uploads only) ---
     uiOutput(ns("step3_col_map_ui")),
 
-    # --- Step 4: ROB / Indirectness Value Mapping (file uploads only) ---
+    # --- ROB / Indirectness Value Mapping (sub-section of Step 2;
+    #     only shown when non-standard values detected) ---
     uiOutput(ns("step4_rob_map_ui")),
 
     # --- Validation banner ---
     uiOutput(ns("validation_msg")),
 
-    # --- NMA Settings (shown after data is valid) ---
+    # --- Step 3: NMA Settings (shown after data is valid) ---
     uiOutput(ns("nma_settings_ui")),
 
-    # --- Run Analysis button ---
-    uiOutput(ns("run_analysis_ui")),
-
     hr(),
-    h4("Pairwise Data Preview"),
+    h4("4. Pairwise Data Preview"),
     p(
       "The table below shows data after conversion to pairwise format.",
-      "This is what Module B (CINeMA) and Module C (ROB-MEN) receive."
+      "This is what the CINeMA and ROB-MEN tabs receive."
     ),
     DTOutput(ns("data_preview")),
     hr(),
-    h4("Summary"),
-    verbatimTextOutput(ns("data_summary"))
+    h5("Summary"),
+    verbatimTextOutput(ns("data_summary")),
+
+    hr(),
+    h4("5. Run Analysis"),
+    uiOutput(ns("run_analysis_ui"))
   )
 }
 
@@ -402,7 +405,7 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
       })
 
       wellPanel(
-        h4("Step 2: Data Format & Outcome Type"),
+        h4("2. Data Format & Outcome Type"),
         div(
           class = "alert alert-info", style = "margin-bottom:10px;",
           icon("search"), " Auto-detected: ", strong(fmt_label), tags$br(),
@@ -488,7 +491,7 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
       }
 
       wellPanel(
-        h4("Step 3: Column Mapping"),
+        h5("Column Mapping"),
         p(style = "color:#555; font-size:0.9em; margin-bottom:10px;",
           "Map your file's column names to the required fields.",
           " Auto-matched where possible — correct if needed.",
@@ -625,7 +628,7 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
       }
 
       wellPanel(
-        h4("Step 4: ROB / Indirectness Value Mapping"),
+        h5("ROB / Indirectness Value Mapping"),
         p(style = "color:#555; font-size:0.9em;",
           "Non-standard values detected in your data.",
           " Assign each to the corresponding standard risk level,",
@@ -750,7 +753,7 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
         }
         if (any(req_cols == "(none)")) {
           return(list(data = NULL,
-                      error = "Please map all required columns (*) in Step 3.",
+                      error = "Please map all required columns (*) in the Column Mapping section.",
                       warning = NULL))
         }
 
@@ -778,7 +781,7 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
 
         if (any(c(studlab_col, t1_col, t2_col, y_col, se_col) == "(none)")) {
           return(list(data = NULL,
-                      error = "Please map all required columns (*) in Step 3.",
+                      error = "Please map all required columns (*) in the Column Mapping section.",
                       warning = NULL))
         }
 
@@ -795,7 +798,7 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
         studlab_col <- input$col_studlab %||% "(none)"
         if (studlab_col == "(none)") {
           return(list(data = NULL,
-                      error = "Please select the Study ID column in Step 3.",
+                      error = "Please select the Study ID column in the Column Mapping section.",
                       warning = NULL))
         }
 
@@ -872,12 +875,12 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
       if (is.null(input$data_format) || is.null(input$outcome_type)) {
         return(div(class = "alert alert-info",
                    icon("info-circle"),
-                   " Confirm the format and outcome type in Step 2 above."))
+                   " Confirm the format and outcome type in section 2 above."))
       }
       if (is.null(input$col_studlab)) {
         return(div(class = "alert alert-info",
                    icon("info-circle"),
-                   " Map your columns in Step 3 above."))
+                   " Map your columns in the Column Mapping section above."))
       }
 
       res <- tryCatch(processed_data(), error = function(e) {
@@ -958,10 +961,10 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
       delta_def <- if (cur_em %in% c("OR", "RR")) 1.2 else 0.2
 
       wellPanel(
-        h4("NMA Settings"),
+        h4("3. NMA Settings"),
         p(style = "color:#555; font-size:0.9em; margin-bottom:10px;",
-          "Configure analysis settings. These are applied in Step 2 (CINeMA)",
-          " and Step 3 (ROB-MEN)."),
+          "Configure analysis settings. These are applied to the CINeMA",
+          " and ROB-MEN tabs."),
         fluidRow(
           column(4,
             selectInput(ns("ref_treatment"), "Reference treatment",
@@ -1088,9 +1091,9 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
       showNotification(
         tagList(
           strong("Analysis started."), br(),
-          "\u2713 Step 1: Data validated", br(),
-          "\u2192 Step 2: NMA + CINeMA (Module B)", br(),
-          "\u2192 Step 3: ROB-MEN (Module C)"
+          "\u2713 Data validated", br(),
+          "\u2192 Running NMA + CINeMA", br(),
+          "\u2192 Running ROB-MEN"
         ),
         type     = "message",
         duration = 8

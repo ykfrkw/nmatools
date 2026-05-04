@@ -67,3 +67,35 @@ test_that("small inflation under threshold returns 'no'", {
     "no"
   )
 })
+
+test_that("judge_rob_direct_sens_v exposes te_all, te_low, inflation, sign_flip", {
+  # Inflated: 3 high + 1 low, pooled |TE| inflates beyond 10%
+  res_inf <- judge_rob_direct_sens_v(
+    rob_vec = c("high", "high", "high", "low"),
+    te_vec  = c(-0.60, -0.70, -0.65, -0.30),
+    se_vec  = c(0.10, 0.10, 0.10, 0.20)
+  )
+  expect_equal(res_inf$judgement, "some_concerns")
+  expect_true(res_inf$inflation > 0.10)
+  expect_false(res_inf$sign_flip)
+  expect_true(!is.na(res_inf$te_all) && !is.na(res_inf$te_low))
+
+  # Sign-flip
+  res_flip <- judge_rob_direct_sens_v(
+    rob_vec = c("high", "high", "high", "low"),
+    te_vec  = c(-0.50, -0.60, -0.40, +0.30),
+    se_vec  = c(0.10, 0.10, 0.10, 0.20)
+  )
+  expect_equal(res_flip$judgement, "serious")
+  expect_true(res_flip$sign_flip)
+
+  # All high-RoB: te_low not computable -> NA
+  res_all <- judge_rob_direct_sens_v(
+    rob_vec = c("high", "high"),
+    te_vec  = c(-0.50, -0.60),
+    se_vec  = c(0.10, 0.10)
+  )
+  expect_equal(res_all$judgement, "some_concerns")
+  expect_true(is.na(res_all$te_low))
+  expect_true(is.na(res_all$inflation))
+})

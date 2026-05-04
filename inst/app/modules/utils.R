@@ -1,5 +1,5 @@
 # =============================================================================
-# utils.R — NMA Evaluator shared utilities
+# utils.R \u2014 NMA Evaluator shared utilities
 # =============================================================================
 # Shared constants and helper functions used across all modules.
 # Loaded first in app.R via source("modules/utils.R").
@@ -116,6 +116,29 @@ ROBMEN_COLOURS <- c(
     )
   )
 )
+
+# ----------------------------------------------------------------------------
+# format_te_ci: render "TE [lo, hi]" with sm-aware back-transformation.
+# OR/RR/HR are stored on log scale internally by netmeta; exp() to display.
+# ----------------------------------------------------------------------------
+format_te_ci <- function(te, lo, hi, sm, digits = 2) {
+  if (length(sm) != 1L || is.null(sm) || is.na(sm)) sm <- ""
+  if (toupper(sm) %in% c("OR", "RR", "HR")) {
+    te <- exp(te); lo <- exp(lo); hi <- exp(hi)
+  }
+  if (is.na(te)) return("\u2014")
+  ci_part <- if (!is.na(lo) && !is.na(hi))
+    paste0(" [", format(round(lo, digits), nsmall = digits), ", ",
+           format(round(hi, digits), nsmall = digits), "]")
+  else ""
+  paste0(format(round(te, digits), nsmall = digits), ci_part)
+}
+
+# Header label for a TE column given the summary measure.
+te_col_label <- function(sm) {
+  s <- toupper(sm %||% "")
+  if (s %in% c("OR", "RR", "HR")) paste0(s, " [95% CI]") else "TE [95% CI]"
+}
 
 # ----------------------------------------------------------------------------
 # get_contrib_matrix: extract the contribution matrix from a netcontrib object.
