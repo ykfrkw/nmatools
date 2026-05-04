@@ -1137,7 +1137,11 @@ convert_continuous <- function(df, sm) {
   }
 
   df <- df %>%
-    mutate(n = as.integer(n), mean = as.numeric(mean), sd = as.numeric(sd))
+    mutate(studlab = as.character(studlab),
+           treat   = as.character(treat),
+           n       = as.integer(n),
+           mean    = as.numeric(mean),
+           sd      = as.numeric(sd))
 
   pw <- tryCatch(
     pairwise(treat   = treat,
@@ -1182,7 +1186,10 @@ convert_binary <- function(df, sm) {
   }
 
   df <- df %>%
-    mutate(n = as.integer(n), event = as.integer(event))
+    mutate(studlab = as.character(studlab),
+           treat   = as.character(treat),
+           n       = as.integer(n),
+           event   = as.integer(event))
 
   pw <- tryCatch(
     pairwise(treat   = treat,
@@ -1283,7 +1290,9 @@ convert_wide <- function(df, outcome_type, sm, studlab_col, arm_maps,
   }
 
   long_df <- bind_rows(arm_dfs) %>%
-    mutate(n = as.integer(n), treat = as.character(treat))
+    mutate(studlab = as.character(studlab),
+           n       = as.integer(n),
+           treat   = as.character(treat))
 
   # Attach ROB / indirectness from study-level columns
   if (!is.null(rob_col) && rob_col != "(none)" && rob_col %in% names(df)) {
