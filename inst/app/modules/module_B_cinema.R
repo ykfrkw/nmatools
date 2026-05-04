@@ -725,31 +725,36 @@ moduleB_server <- function(id, processed_data,
 
       req(!is.null(plot_rows), nrow(plot_rows) > 0)
 
-      # Aggregate per (nma_comp, rob_label): total % + study list for tooltip
-      plot_agg <- plot_rows %>%
-        group_by(nma_comp, rob_label) %>%
-        summarise(
-          contrib_pct = sum(contrib_pct, na.rm = TRUE),
-          studies = paste0(
-            studlab, " (", round(contrib_pct, 1), "%)",
-            collapse = "<br>· "
-          ),
-          .groups = "drop"
-        )
+      # Multi-arm studies contribute through multiple pairwise rows for the same
+      # (target, ROB-category): merge them so each study is one segment.
+      plot_rows <- plot_rows %>%
+        group_by(nma_comp, studlab, rob_label) %>%
+        summarise(contrib_pct = sum(contrib_pct, na.rm = TRUE),
+                  .groups = "drop")
 
-      # Reverse factor: ggplotly stacks bottom-up so reversing puts
-      # Low → Some concerns → High in left-to-right order on the bar.
+      # Order within each bar: by ROB category, then by descending contribution
+      # so larger studies anchor each colour band. Each study stays its own
+      # segment with a thin white border separating studies.
       all_levels <- c("Low", "Some concerns", "High")
-      plot_agg$rob_label <- factor(plot_agg$rob_label, levels = rev(all_levels))
+      plot_rows <- plot_rows %>%
+        mutate(rob_label = factor(rob_label, levels = rev(all_levels))) %>%
+        group_by(nma_comp) %>%
+        arrange(rob_label, desc(contrib_pct), .by_group = TRUE) %>%
+        ungroup() %>%
+        mutate(
+          stack_id = paste(nma_comp, studlab, rob_label, sep = "||"),
+          stack_id = factor(stack_id, levels = unique(stack_id))
+        )
       rob_colours <- c("Low" = "#5cb85c", "Some concerns" = "#f0ad4e", "High" = "#d9534f")
 
-      p <- ggplot(plot_agg,
+      p <- ggplot(plot_rows,
                   aes(x = nma_comp, y = contrib_pct, fill = rob_label,
+                      group = stack_id,
                       text = paste0(nma_comp,
+                                    "<br>Study: ", studlab,
                                     "<br>ROB: ", rob_label,
-                                    "<br>Total: ", round(contrib_pct, 1), "%",
-                                    "<br>· ", studies))) +
-        geom_col(position = "stack") +
+                                    "<br>Contribution: ", round(contrib_pct, 1), "%"))) +
+        geom_col(position = "stack", colour = "white", linewidth = 0.4) +
         scale_fill_manual(values = rob_colours, name = "Risk of bias",
                           limits = c("Low", "Some concerns", "High"),
                           drop = FALSE) +
@@ -800,28 +805,33 @@ moduleB_server <- function(id, processed_data,
 
       req(!is.null(plot_rows), nrow(plot_rows) > 0)
 
-      plot_agg <- plot_rows %>%
-        group_by(nma_comp, indir_label) %>%
-        summarise(
-          contrib_pct = sum(contrib_pct, na.rm = TRUE),
-          studies = paste0(
-            studlab, " (", round(contrib_pct, 1), "%)",
-            collapse = "<br>· "
-          ),
-          .groups = "drop"
-        )
+      # Multi-arm studies contribute through multiple pairwise rows for the same
+      # (target, indirectness-category): merge so each study is one segment.
+      plot_rows <- plot_rows %>%
+        group_by(nma_comp, studlab, indir_label) %>%
+        summarise(contrib_pct = sum(contrib_pct, na.rm = TRUE),
+                  .groups = "drop")
 
       all_levels <- c("Low", "Some concerns", "High")
-      plot_agg$indir_label <- factor(plot_agg$indir_label, levels = rev(all_levels))
+      plot_rows <- plot_rows %>%
+        mutate(indir_label = factor(indir_label, levels = rev(all_levels))) %>%
+        group_by(nma_comp) %>%
+        arrange(indir_label, desc(contrib_pct), .by_group = TRUE) %>%
+        ungroup() %>%
+        mutate(
+          stack_id = paste(nma_comp, studlab, indir_label, sep = "||"),
+          stack_id = factor(stack_id, levels = unique(stack_id))
+        )
       indir_colours <- c("Low" = "#5cb85c", "Some concerns" = "#f0ad4e", "High" = "#d9534f")
 
-      p <- ggplot(plot_agg,
+      p <- ggplot(plot_rows,
                   aes(x = nma_comp, y = contrib_pct, fill = indir_label,
+                      group = stack_id,
                       text = paste0(nma_comp,
+                                    "<br>Study: ", studlab,
                                     "<br>Indirectness: ", indir_label,
-                                    "<br>Total: ", round(contrib_pct, 1), "%",
-                                    "<br>· ", studies))) +
-        geom_col(position = "stack") +
+                                    "<br>Contribution: ", round(contrib_pct, 1), "%"))) +
+        geom_col(position = "stack", colour = "white", linewidth = 0.4) +
         scale_fill_manual(values = indir_colours, name = "Indirectness",
                           limits = c("Low", "Some concerns", "High"),
                           drop = FALSE) +
