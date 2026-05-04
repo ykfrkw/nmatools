@@ -1531,19 +1531,16 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
     # ------------------------------------------------------------------
     # Reactive auto-fill ⑤a: contribution evaluation
-    # Fires whenever pct_biased() changes. Skips comparisons the user has
-    # already overridden (matches the behaviour of the SSE auto-fill below
-    # and of Module B's auto+override pattern). To revert to auto, reset
-    # the dropdown to "(auto)".
+    # Fires whenever pct_biased() changes and always overwrites with the
+    # latest auto value (no user-override guard) — user feedback: ⑤a must
+    # track the data, not snapshot the first auto value.
     # ------------------------------------------------------------------
     observe({
       ne <- tryCatch(nma_estimates(), error = function(e) NULL)
       pb <- tryCatch(pct_biased(),    error = function(e) NULL)
       if (is.null(ne) || is.null(pb) || nrow(ne) == 0) return()
       for (i in seq_len(nrow(ne))) {
-        sid   <- safe_id(ne$comparison[i])
-        c_cur <- isolate(input[[paste0("contrib_eval_", sid)]])
-        if (!is.null(c_cur) && nzchar(c_cur)) next  # user override: keep
+        sid    <- safe_id(ne$comparison[i])
         pb_row <- pb %>% filter(comparison == ne$comparison[i])
         if (nrow(pb_row) == 0) next
         p1 <- if (is.na(pb_row$pct_fav_t1[1])) 0 else pb_row$pct_fav_t1[1]
@@ -1563,17 +1560,15 @@ moduleC_server <- function(id, processed_data, cinema_module,
     # ------------------------------------------------------------------
     # Reactive auto-fill ⑤b: small-study effects evaluation
     # Uses network_sse_df() sse_auto (CI-overlap logic from netmetaregression).
-    # Fires when network_sse_df changes; skips comparisons already rated.
+    # Fires when network_sse_df changes and always overwrites with the latest
+    # auto value (no user-override guard) — same behaviour as ⑤a.
     # ------------------------------------------------------------------
     observe({
       ne  <- tryCatch(nma_estimates(),  error = function(e) NULL)
       nmr <- tryCatch(network_sse_df(), error = function(e) NULL)
       if (is.null(ne) || is.null(nmr) || nrow(ne) == 0 || nrow(nmr) == 0) return()
       for (i in seq_len(nrow(ne))) {
-        sid   <- safe_id(ne$comparison[i])
-        s_cur <- isolate(input[[paste0("sse_eval_", sid)]])
-        if (!is.null(s_cur) && nzchar(s_cur)) next  # already set by user
-
+        sid     <- safe_id(ne$comparison[i])
         nmr_row <- nmr %>% filter(comparison == ne$comparison[i])
         if (nrow(nmr_row) == 0) next
         s_auto <- nmr_row$sse_auto[1]
@@ -1674,10 +1669,10 @@ moduleC_server <- function(id, processed_data, cinema_module,
         updateSelectInput(session, paste0("ov_robmen_", sid), selected = ov_val)
       }
 
-      # NOTE: Do NOT auto-push to Domain 2 here.
-      # Pushing triggers cinema_results() to invalidate → robmen_main_ui re-renders
-      # → tabsetPanel resets to tab 1.  Use the manual "Update CINeMA Domain 2"
-      # button (send_to_cinema) for the sync step.
+      # NOTE: Do NOT auto-push to Domain 2 here. Auto-pushing would
+      # invalidate cinema_results() and re-render robmen_main_ui mid-edit,
+      # disrupting the user's flow. Use the explicit "Update CINeMA Domain 2"
+      # button (send_to_cinema) below the ④⑤ table.
     })
 
     # ------------------------------------------------------------------
@@ -1721,35 +1716,27 @@ moduleC_server <- function(id, processed_data, cinema_module,
       req(!is.null(egger_df()))
 
       tagList(
-        tabsetPanel(id = ns("robmen_tabs"),
+        # ---- Section 1: Pairwise Assessment (①②③) ----------------------
+        h4(tagList(icon("table"), " ①②③ Pairwise Assessment")),
+        div(style = "overflow-x:auto; margin-bottom:24px;",
+            uiOutput(ns("pairwise_table_ui"))),
 
-          # ---- Tab 1: Pairwise Assessment (①②③) ----------------------
-          tabPanel(tagList(icon("table"), " ①②③ Pairwise Assessment"),
-            br(),
-            div(style = "overflow-x:auto;",
-                uiOutput(ns("pairwise_table_ui")))
-          ),
+        # ---- Section 2: ROB-MEN Final Rating (④⑤) ---------------------
+        h4(tagList(icon("clipboard-check"), " ④⑤ ROB-MEN Final Rating")),
+        p(style = "font-size:0.88em; color:#555; margin:0 0 8px 0;",
+          "④ % contribution columns update automatically once the pairwise",
+          " assessment above is complete. Use the ",
+          icon("question-circle"), " icons in column headers for guidance."),
+        div(style = "overflow-x:auto;",
+            uiOutput(ns("robmen_table_ui"))),
 
-          # ---- Tab 2: ROB-MEN Final Rating (④⑤) ----------------------
-          tabPanel(tagList(icon("clipboard-check"), " ④⑤ ROB-MEN Final Rating"),
-            br(),
-            div(style = "display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px;",
-              p(style = "font-size:0.88em; color:#555; margin:0;",
-                icon("arrow-left"),
-                " Complete Tab 1 first. ④ % contribution columns update automatically.",
-                " Use the ", icon("question-circle"), " icons in column headers for guidance."),
-              div(style = "flex-shrink:0;",
-                actionButton(ns("send_to_cinema"),
-                             tagList(icon("arrow-right"), " Update CINeMA Domain 2"),
-                             class = "btn btn-primary btn-sm",
-                             title = "Send ROB-MEN ratings to CINeMA Module B (Domain 2)"),
-                uiOutput(ns("send_status"))
-              )
-            ),
-            div(style = "overflow-x:auto;",
-                uiOutput(ns("robmen_table_ui")))
-          )
-
+        # ---- Action footer: right-aligned sync button -----------------
+        div(style = "display:flex; justify-content:flex-end; align-items:center; gap:8px; margin-top:16px;",
+            uiOutput(ns("send_status")),
+            actionButton(ns("send_to_cinema"),
+                         tagList(icon("arrow-right"), " Update CINeMA Domain 2"),
+                         class = "btn btn-primary",
+                         title = "Send ROB-MEN ratings to CINeMA Module B (Domain 2)")
         )
       )
     })
