@@ -284,6 +284,15 @@ moduleB_server <- function(id, processed_data,
         if (!is.null(s$sens_inf_thresh) && !is.na(s$sens_inf_thresh))
           updateNumericInput(session, "sens_inf_thresh", value   = s$sens_inf_thresh)
       }, ignoreNULL = TRUE, ignoreInit = TRUE)
+
+      # Keep D4's delta in sync whenever the user changes effect measure on
+      # the Configuration tab (without having to re-run the analysis), so
+      # the per-measure default flows through immediately.
+      observeEvent(cur_settings()$delta, {
+        s <- cur_settings()
+        if (is.null(s) || is.null(s$delta) || is.na(s$delta)) return()
+        updateNumericInput(session, "delta", value = s$delta)
+      }, ignoreNULL = TRUE, ignoreInit = TRUE)
     }
 
     # ------------------------------------------------------------------

@@ -961,7 +961,7 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
       default_ref     <- if (length(default_match) > 0) default_match[1] else all_trts[1]
 
       cur_em    <- em_selected() %||% "SMD"
-      delta_def <- if (cur_em %in% c("OR", "RR")) 1.2 else 0.2
+      delta_def <- delta_default_for_measure(cur_em, df)
 
       wellPanel(
         h4("3. NMA Settings"),
@@ -1048,10 +1048,11 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
       )
     })
 
-    # Update delta default when effect measure changes
+    # Update delta default when effect measure changes (per-measure rules,
+    # MD uses pooled SD * 0.2 reconstructed from current pairwise data).
     observeEvent(em_selected(), {
-      cur_em    <- em_selected()
-      delta_def <- if (cur_em %in% c("OR", "RR")) 1.2 else 0.2
+      res <- tryCatch(processed_data(), error = function(e) NULL)
+      delta_def <- delta_default_for_measure(em_selected(), res$data)
       updateNumericInput(session, "delta", value = delta_def)
     }, ignoreInit = TRUE)
 

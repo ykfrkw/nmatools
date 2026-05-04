@@ -141,6 +141,37 @@ te_col_label <- function(sm) {
 }
 
 # ----------------------------------------------------------------------------
+# delta_default_for_measure: clinical-threshold default per effect measure.
+#   SMD : 0.2          (Cohen's small effect)
+#   OR  : 1.25         (small clinically meaningful odds shift)
+#   RR  : 1.2
+#   MD  : pooled within-group SD * 0.2 (so "MD 0.2*SD" maps to SMD 0.2);
+#         requires se / n1 / n2 columns. Falls back to 0.2 if data is
+#         unavailable or the pooled SD cannot be reconstructed.
+# ----------------------------------------------------------------------------
+delta_default_for_measure <- function(em, data = NULL) {
+  if (is.null(em) || !nzchar(em)) em <- "SMD"
+  if (em == "SMD") return(0.2)
+  if (em == "OR")  return(1.25)
+  if (em == "RR")  return(1.2)
+  if (em == "MD") {
+    if (is.null(data) || !is.data.frame(data)) return(0.2)
+    if (!all(c("se", "n1", "n2") %in% names(data))) return(0.2)
+    ok <- !is.na(data$se) & data$se > 0 &
+          !is.na(data$n1) & !is.na(data$n2) &
+          data$n1 > 0 & data$n2 > 0
+    if (!any(ok)) return(0.2)
+    # se(MD) = s_p * sqrt(1/n1 + 1/n2)  =>  s_p = se / sqrt(1/n1 + 1/n2)
+    s_p  <- data$se[ok] / sqrt(1 / data$n1[ok] + 1 / data$n2[ok])
+    wts  <- data$n1[ok] + data$n2[ok]
+    pooled_sd <- sqrt(sum(wts * s_p^2) / sum(wts))
+    if (is.na(pooled_sd) || pooled_sd <= 0) return(0.2)
+    return(round(pooled_sd * 0.2, 3))
+  }
+  0.2
+}
+
+# ----------------------------------------------------------------------------
 # get_contrib_matrix: extract the contribution matrix from a netcontrib object.
 # Tries multiple field names across different netmeta versions.
 # ----------------------------------------------------------------------------
