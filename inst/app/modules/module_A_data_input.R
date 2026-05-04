@@ -191,10 +191,9 @@ moduleA_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
-    h3("1. Upload NMA Data"),
-
-    # --- Upload section (always visible) ---
+    # --- Step 1: Upload (always visible) ---
     wellPanel(
+      h4("1. Upload NMA Data"),
       fileInput(
         ns("file_upload"), "Choose file (CSV or XLSX)",
         accept = c(".csv", ".xlsx"),
@@ -233,20 +232,24 @@ moduleA_ui <- function(id) {
     # --- Step 3: NMA Settings (shown after data is valid) ---
     uiOutput(ns("nma_settings_ui")),
 
-    hr(),
-    h4("4. Pairwise Data Preview"),
-    p(
-      "The table below shows data after conversion to pairwise format.",
-      "This is what the CINeMA and ROB-MEN tabs receive."
+    # --- Step 4: Pairwise Data Preview ---
+    wellPanel(
+      h4("4. Pairwise Data Preview"),
+      p(
+        "The table below shows data after conversion to pairwise format.",
+        "This is what the CINeMA and ROB-MEN tabs receive."
+      ),
+      DTOutput(ns("data_preview")),
+      hr(),
+      h5("Summary"),
+      verbatimTextOutput(ns("data_summary"))
     ),
-    DTOutput(ns("data_preview")),
-    hr(),
-    h5("Summary"),
-    verbatimTextOutput(ns("data_summary")),
 
-    hr(),
-    h4("5. Run Analysis"),
-    uiOutput(ns("run_analysis_ui"))
+    # --- Step 5: Run Analysis ---
+    wellPanel(
+      h4("5. Run Analysis"),
+      uiOutput(ns("run_analysis_ui"))
+    )
   )
 }
 
