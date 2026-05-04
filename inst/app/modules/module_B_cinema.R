@@ -108,15 +108,13 @@ moduleB_d2_ui <- function(id) {
   ns <- NS(id)
   tagList(
     uiOutput(ns("nma_error_banner")),
-    div(class = "alert alert-info",
-      icon("info-circle"),
-      " Run ROB-MEN \u2014 ROB-MEN ratings populate this domain automatically.",
-      " Or use the bulk buttons / per-comparison overrides below."),
+    moduleC_ui("module_c"),
+    hr(),
+    h4("Domain 2 (Reporting bias) \u2014 Final Ratings"),
+    p(style = "color:#555; font-size:0.9em;",
+      "ROB-MEN ratings above populate this domain automatically.",
+      " Use the bulk buttons or per-comparison overrides for manual adjustment."),
     div(style = "display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:12px;",
-      actionButton(ns("go_to_robmen"),
-        "Go to ROB-MEN",
-        class = "btn btn-info btn-sm",
-        icon  = icon("arrow-right")),
       actionButton(ns("d2_set_all_no"), "Set all: No concerns",
         class = "btn btn-success btn-sm"),
       actionButton(ns("d2_set_all_some"), "Set all: Some concerns",
@@ -124,7 +122,6 @@ moduleB_d2_ui <- function(id) {
       actionButton(ns("d2_set_all_major"), "Set all: Major concerns",
         class = "btn btn-danger btn-sm")
     ),
-    h5("Domain 2 Ratings \u2014 Auto-computed (from ROB-MEN) + Override"),
     shinycssloaders::withSpinner(uiOutput(ns("d2_override_ui")),
       type = 4, color = "#4472C4")
   )
@@ -329,13 +326,6 @@ moduleB_server <- function(id, processed_data,
       if (length(idx) == 0) return("Not assessed")
       as.character(rr$robmen_rating[idx[1]])
     }
-
-    # ------------------------------------------------------------------
-    # Navigate to ROB-MEN tab
-    # ------------------------------------------------------------------
-    observeEvent(input$go_to_robmen, {
-      if (!is.null(go_to_robmen)) go_to_robmen()
-    })
 
     # ------------------------------------------------------------------
     # NMA computation — fires on local button OR Module A run_trigger

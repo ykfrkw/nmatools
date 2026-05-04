@@ -488,7 +488,7 @@ moduleC_ui <- function(id) {
         }
       });
     "))),
-    h3("Step 3: ROB-MEN Analysis"),
+    h3("ROB-MEN Analysis"),
     p("Assesses risk of bias due to", strong("missing evidence"), "in NMA (Chiocchia et al.",
       tags$a("BMC Med 2021", href = "https://doi.org/10.1186/s12916-021-02166-3",
              target = "_blank"), ")."),

@@ -74,15 +74,14 @@ ui <- fluidPage(
   navbarPage(
     id    = "main_navbar",
     title = NULL,
-    tabPanel("Configuration",        moduleA_ui("module_a")),
-    tabPanel("① Within-study",  moduleB_d1_ui("module_b")),
-    tabPanel("② Reporting",     moduleB_d2_ui("module_b")),
-    tabPanel("③ Indirectness",  moduleB_d3_ui("module_b")),
-    tabPanel("④ Imprecision",   moduleB_d4_ui("module_b")),
-    tabPanel("⑤ Heterogeneity", moduleB_d5_ui("module_b")),
-    tabPanel("⑥ Incoherence",   moduleB_d6_ui("module_b")),
-    tabPanel("ROB-MEN",              moduleC_ui("module_c")),
-    tabPanel("Report",               moduleD_ui("module_d"))
+    tabPanel("Configuration",            moduleA_ui("module_a")),
+    tabPanel("① Within-study bias", moduleB_d1_ui("module_b")),
+    tabPanel("② Reporting bias",    moduleB_d2_ui("module_b")),
+    tabPanel("③ Indirectness",      moduleB_d3_ui("module_b")),
+    tabPanel("④ Imprecision",       moduleB_d4_ui("module_b")),
+    tabPanel("⑤ Heterogeneity",     moduleB_d5_ui("module_b")),
+    tabPanel("⑥ Incoherence",       moduleB_d6_ui("module_b")),
+    tabPanel("Report",                   moduleD_ui("module_d"))
   )
 )
 
@@ -111,16 +110,12 @@ make_server <- function(initial_data = NULL) {
                                initial_data = initial_data,
                                go_to_cinema = function() {
                                  updateNavbarPage(session, "main_navbar",
-                                                  selected = "① Within-study")
+                                                  selected = "① Within-study bias")
                                })
     cinema_b <- moduleB_server("module_b",
                                processed_data = data_a$processed_data,
                                nma_settings   = data_a$nma_settings,
-                               run_trigger    = data_a$run_trigger,
-                               go_to_robmen   = function() {
-                                 updateNavbarPage(session, "main_navbar",
-                                                  selected = "ROB-MEN")
-                               })
+                               run_trigger    = data_a$run_trigger)
 
     robmen_c <- moduleC_server("module_c",
                                processed_data = data_a$processed_data,
@@ -129,7 +124,7 @@ make_server <- function(initial_data = NULL) {
                                run_trigger    = data_a$run_trigger,
                                go_to_cinema   = function() {
                                  updateNavbarPage(session, "main_navbar",
-                                                  selected = "② Reporting")
+                                                  selected = "② Reporting bias")
                                })
     moduleD_server("module_d",
                    cinema_module  = cinema_b,
@@ -137,7 +132,7 @@ make_server <- function(initial_data = NULL) {
                    nma_settings_r = data_a$nma_settings,
                    go_to_cinema   = function() {
                      updateNavbarPage(session, "main_navbar",
-                                      selected = "① Within-study")
+                                      selected = "① Within-study bias")
                    })
   }
 }
