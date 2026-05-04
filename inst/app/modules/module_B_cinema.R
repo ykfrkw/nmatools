@@ -340,16 +340,8 @@ moduleB_server <- function(id, processed_data,
                                        inf_threshold = inf_t,
                                        small_values  = NULL)
       } else {
-        # Contribution-weighted ROB (default)
-        rob_score  <- c("low" = 0, "some concerns" = 1, "high" = 2)
-        df$rob_num <- rob_score[as.character(df$rob)]
-        direct_rob <- bind_rows(
-          df %>% mutate(comp_label = paste(t1, t2, sep = ":")),
-          df %>% mutate(comp_label = paste(t2, t1, sep = ":"))
-        ) %>%
-          group_by(comp_label) %>%
-          summarise(mean_rob = mean(rob_num, na.rm = TRUE), .groups = "drop")
-        d1 <- compute_domain1_wsb(comps, contrib, direct_rob, input$agg_rule)
+        # Contribution-weighted ROB (default, per-study)
+        d1 <- compute_domain1_wsb(comps, contrib, df, input$agg_rule)
       }
 
       # Domain 2: Reporting bias (from ROB-MEN or "Not assessed")
@@ -697,9 +689,10 @@ moduleB_server <- function(id, processed_data,
     })
 
     # ------------------------------------------------------------------
-    # D1 contribution chart
-    # Stacked horizontal bar: for each NMA comparison, the total %
-    # contribution split into Low (green) | Some concerns (yellow) | High (red).
+    # D1 contribution chart (per-study)
+    # Stacked horizontal bar: for each NMA comparison, study-level
+    # contribution split into Low | Some concerns | High based on each
+    # study's own ROB (not direct-comparison mean). Hover lists studies.
     # ------------------------------------------------------------------
     output$d1_contrib_chart <- renderPlotly({
       res <- nma_result(); req(!is.null(res), !is.null(res$df))
@@ -711,65 +704,58 @@ moduleB_server <- function(id, processed_data,
       comps <- ad$comps
       comp_labels <- paste(comps$t1, comps$t2, sep = " vs ")
 
-      # ROB per study (numeric 0/1/2)
       rob_num <- c("low" = 0, "some concerns" = 1, "high" = 2)
       df$rnk  <- rob_num[as.character(df$rob)]
+      df_iv   <- build_study_iv_table(df)
 
-      # For each study, map to canonical comp key (both directions)
-      study_rob <- bind_rows(
-        df %>% mutate(ck = paste(t1, t2, sep = ":")),
-        df %>% mutate(ck = paste(t2, t1, sep = ":"))
-      ) %>% select(ck, studlab, rnk) %>% distinct()
-
-      # For each NMA comparison, sum contributions split by ROB category
       plot_rows <- lapply(seq_len(nrow(comps)), function(i) {
-        row_idx <- find_cm_row(cm, comps$t1[i], comps$t2[i])
-        if (is.na(row_idx)) return(NULL)
-        contr <- cm[row_idx, ]; contr <- contr[contr > 0.001]
-        if (length(contr) == 0) return(NULL)
-
-        # For each contributing direct comparison, get mean ROB and contribution
-        sub <- lapply(names(contr), function(col_nm) {
-          s <- study_rob %>% filter(ck == col_nm)
-          mean_rob <- if (nrow(s) > 0) mean(s$rnk, na.rm = TRUE) else NA_real_
-          rob_lbl <- if (is.na(mean_rob)) "Unknown"
-                     else if (mean_rob < 0.5) "Low"
-                     else if (mean_rob < 1.5) "Some concerns"
-                     else "High"
-          data.frame(rob_label = rob_lbl,
-                     contrib_pct = contr[col_nm] * 100,
-                     stringsAsFactors = FALSE)
-        }) %>% bind_rows()
-
-        # Aggregate by ROB category
-        sub %>%
-          group_by(rob_label) %>%
-          summarise(contrib_pct = sum(contrib_pct, na.rm = TRUE), .groups = "drop") %>%
-          mutate(nma_comp = comp_labels[i])
+        sc <- study_contrib_per_target(df_iv, cm, comps$t1[i], comps$t2[i])
+        if (is.null(sc)) return(NULL)
+        sc <- sc[!is.na(sc$rnk) & sc$study_contrib > 1e-6, , drop = FALSE]
+        if (nrow(sc) == 0) return(NULL)
+        sc$rob_label <- rob_num_to_label(sc$rnk)
+        data.frame(
+          nma_comp    = comp_labels[i],
+          rob_label   = sc$rob_label,
+          contrib_pct = sc$study_contrib * 100,
+          studlab     = sc$studlab,
+          stringsAsFactors = FALSE
+        )
       }) %>% bind_rows()
 
       req(!is.null(plot_rows), nrow(plot_rows) > 0)
 
-      # Ensure all three levels present and ordered Low → Some concerns → High (left→right)
-      # Reverse levels: ggplotly inverts stacking order, so reversing here
-      # makes the final display show Low → Some concerns → High (left to right)
+      # Aggregate per (nma_comp, rob_label): total % + study list for tooltip
+      plot_agg <- plot_rows %>%
+        group_by(nma_comp, rob_label) %>%
+        summarise(
+          contrib_pct = sum(contrib_pct, na.rm = TRUE),
+          studies = paste0(
+            studlab, " (", round(contrib_pct, 1), "%)",
+            collapse = "<br>· "
+          ),
+          .groups = "drop"
+        )
+
+      # Reverse factor: ggplotly stacks bottom-up so reversing puts
+      # Low → Some concerns → High in left-to-right order on the bar.
       all_levels <- c("Low", "Some concerns", "High")
-      plot_rows$rob_label <- factor(plot_rows$rob_label,
-                                    levels = rev(all_levels))
+      plot_agg$rob_label <- factor(plot_agg$rob_label, levels = rev(all_levels))
       rob_colours <- c("Low" = "#5cb85c", "Some concerns" = "#f0ad4e", "High" = "#d9534f")
 
-      p <- ggplot(plot_rows,
+      p <- ggplot(plot_agg,
                   aes(x = nma_comp, y = contrib_pct, fill = rob_label,
                       text = paste0(nma_comp,
                                     "<br>ROB: ", rob_label,
-                                    "<br>Contribution: ", round(contrib_pct, 1), "%"))) +
+                                    "<br>Total: ", round(contrib_pct, 1), "%",
+                                    "<br>· ", studies))) +
         geom_col(position = "stack") +
         scale_fill_manual(values = rob_colours, name = "Risk of bias",
                           limits = c("Low", "Some concerns", "High"),
                           drop = FALSE) +
         coord_flip() +
         labs(x = NULL, y = "Contribution (%)",
-             title = "D1: Contribution by Risk of Bias category") +
+             title = "D1: Per-study contribution by Risk of Bias") +
         theme_minimal(base_size = 11) +
         theme(legend.position = "bottom")
 
@@ -779,7 +765,7 @@ moduleB_server <- function(id, processed_data,
     })
 
     # ------------------------------------------------------------------
-    # D3 contribution chart
+    # D3 contribution chart (per-study)
     # Stacked horizontal bar: same logic as D1 but for indirectness.
     # ------------------------------------------------------------------
     output$d3_contrib_chart <- renderPlotly({
@@ -795,54 +781,53 @@ moduleB_server <- function(id, processed_data,
 
       indir_num  <- c("low" = 0, "some concerns" = 1, "high" = 2)
       df$indir_n <- indir_num[as.character(df$indirectness)]
-
-      study_indir <- bind_rows(
-        df %>% mutate(ck = paste(t1, t2, sep = ":")),
-        df %>% mutate(ck = paste(t2, t1, sep = ":"))
-      ) %>% select(ck, studlab, indir_n) %>% distinct()
+      df_iv      <- build_study_iv_table(df)
 
       plot_rows <- lapply(seq_len(nrow(comps)), function(i) {
-        row_idx <- find_cm_row(cm, comps$t1[i], comps$t2[i])
-        if (is.na(row_idx)) return(NULL)
-        contr <- cm[row_idx, ]; contr <- contr[contr > 0.001]
-        if (length(contr) == 0) return(NULL)
-
-        sub <- lapply(names(contr), function(col_nm) {
-          s <- study_indir %>% filter(ck == col_nm)
-          mean_in <- if (nrow(s) > 0) mean(s$indir_n, na.rm = TRUE) else NA_real_
-          in_lbl <- if (is.na(mean_in)) "Unknown"
-                    else if (mean_in < 0.5) "Low"
-                    else if (mean_in < 1.5) "Some concerns"
-                    else "High"
-          data.frame(indir_label = in_lbl,
-                     contrib_pct = contr[col_nm] * 100,
-                     stringsAsFactors = FALSE)
-        }) %>% bind_rows()
-
-        sub %>%
-          group_by(indir_label) %>%
-          summarise(contrib_pct = sum(contrib_pct, na.rm = TRUE), .groups = "drop") %>%
-          mutate(nma_comp = comp_labels[i])
+        sc <- study_contrib_per_target(df_iv, cm, comps$t1[i], comps$t2[i])
+        if (is.null(sc)) return(NULL)
+        sc <- sc[!is.na(sc$indir_n) & sc$study_contrib > 1e-6, , drop = FALSE]
+        if (nrow(sc) == 0) return(NULL)
+        sc$indir_label <- rob_num_to_label(sc$indir_n)
+        data.frame(
+          nma_comp    = comp_labels[i],
+          indir_label = sc$indir_label,
+          contrib_pct = sc$study_contrib * 100,
+          studlab     = sc$studlab,
+          stringsAsFactors = FALSE
+        )
       }) %>% bind_rows()
 
       req(!is.null(plot_rows), nrow(plot_rows) > 0)
 
+      plot_agg <- plot_rows %>%
+        group_by(nma_comp, indir_label) %>%
+        summarise(
+          contrib_pct = sum(contrib_pct, na.rm = TRUE),
+          studies = paste0(
+            studlab, " (", round(contrib_pct, 1), "%)",
+            collapse = "<br>· "
+          ),
+          .groups = "drop"
+        )
+
       all_levels <- c("Low", "Some concerns", "High")
-      plot_rows$indir_label <- factor(plot_rows$indir_label, levels = rev(all_levels))
+      plot_agg$indir_label <- factor(plot_agg$indir_label, levels = rev(all_levels))
       indir_colours <- c("Low" = "#5cb85c", "Some concerns" = "#f0ad4e", "High" = "#d9534f")
 
-      p <- ggplot(plot_rows,
+      p <- ggplot(plot_agg,
                   aes(x = nma_comp, y = contrib_pct, fill = indir_label,
                       text = paste0(nma_comp,
                                     "<br>Indirectness: ", indir_label,
-                                    "<br>Contribution: ", round(contrib_pct, 1), "%"))) +
+                                    "<br>Total: ", round(contrib_pct, 1), "%",
+                                    "<br>· ", studies))) +
         geom_col(position = "stack") +
         scale_fill_manual(values = indir_colours, name = "Indirectness",
                           limits = c("Low", "Some concerns", "High"),
                           drop = FALSE) +
         coord_flip() +
         labs(x = NULL, y = "Contribution (%)",
-             title = "D3: Contribution by Indirectness category") +
+             title = "D3: Per-study contribution by Indirectness") +
         theme_minimal(base_size = 11) +
         theme(legend.position = "bottom")
 
@@ -1075,6 +1060,80 @@ moduleB_server <- function(id, processed_data,
 # %||% / get_contrib_matrix defined in utils.R
 
 # ----------------------------------------------------------------------------
+# build_study_iv_table: tag each pairwise row with its canonical (alphabetical)
+# direct comparison key and inverse-variance share within that direct comp.
+# Used to decompose comparison-level contribution down to study level.
+# ----------------------------------------------------------------------------
+build_study_iv_table <- function(df) {
+  df %>%
+    mutate(
+      direct_key = paste(pmin(t1, t2), pmax(t1, t2), sep = ":"),
+      iv_w       = 1 / (se ^ 2)
+    ) %>%
+    group_by(direct_key) %>%
+    mutate(iv_share = iv_w / sum(iv_w, na.rm = TRUE)) %>%
+    ungroup()
+}
+
+# ----------------------------------------------------------------------------
+# study_contrib_per_target: for one NMA target comparison, return df rows
+# annotated with study_contrib = cm[target, direct_of(study)] * iv_share.
+# Returns NULL if the target row is not in the contribution matrix.
+# ----------------------------------------------------------------------------
+study_contrib_per_target <- function(df_iv, cm, target_t1, target_t2) {
+  row_idx <- find_cm_row(cm, target_t1, target_t2)
+  if (is.na(row_idx)) return(NULL)
+  contr_row <- cm[row_idx, ]
+  cn <- names(contr_row)
+
+  # cm column names use ":" with alphabetical ordering. direct_key already
+  # canonical; fall back to reverse just in case.
+  direct_contrib <- vapply(df_iv$direct_key, function(k) {
+    if (k %in% cn) return(as.numeric(contr_row[[k]]))
+    parts <- strsplit(k, ":", fixed = TRUE)[[1]]
+    if (length(parts) == 2) {
+      rev_k <- paste(parts[2], parts[1], sep = ":")
+      if (rev_k %in% cn) return(as.numeric(contr_row[[rev_k]]))
+    }
+    0
+  }, numeric(1))
+
+  df_iv$direct_contrib <- direct_contrib
+  df_iv$study_contrib  <- direct_contrib * df_iv$iv_share
+  df_iv
+}
+
+# ----------------------------------------------------------------------------
+# aggregate_wsb_studies: aggregate study-level rob/indirectness scores (0-2)
+# weighted by per-study contribution to a target NMA comparison.
+# Returns one of "No concerns" / "Some concerns" / "Major concerns" / "Not assessed".
+# ----------------------------------------------------------------------------
+aggregate_wsb_studies <- function(scores, weights, rule = "average") {
+  ok <- !is.na(scores) & !is.na(weights) & weights > 0
+  if (!any(ok) || sum(weights[ok]) < 0.001) return("Not assessed")
+  s <- scores[ok]
+  w <- weights[ok] / sum(weights[ok])
+
+  num <- switch(rule,
+    average  = floor(weighted.mean(s, w) + 0.5) + 1L,
+    majority = {
+      cat <- pmax(1L, pmin(3L, as.integer(floor(s + 0.5)) + 1L))
+      totals <- vapply(1:3, function(c) sum(w[cat == c]), numeric(1))
+      max(which(totals == max(totals)))
+    },
+    highest  = floor(max(s) + 0.5) + 1L,
+    floor(weighted.mean(s, w) + 0.5) + 1L
+  )
+  num <- max(1L, min(3L, as.integer(num)))
+  c("No concerns", "Some concerns", "Major concerns")[num]
+}
+
+# rob_num_to_label: 0/1/2 → "Low" / "Some concerns" / "High". Used by charts.
+rob_num_to_label <- function(r) {
+  c("Low", "Some concerns", "High")[pmax(1L, pmin(3L, as.integer(r) + 1L))]
+}
+
+# ----------------------------------------------------------------------------
 # find_cm_row: locate a comparison in the contribution matrix.
 # Tries both t1:t2 and t2:t1 with multiple separator formats.
 # ----------------------------------------------------------------------------
@@ -1093,24 +1152,9 @@ find_cm_row <- function(cm, t1, t2) {
 }
 
 # ----------------------------------------------------------------------------
-# find_direct_score: bidirectional lookup in a direct_df(comp_label, score).
-# ----------------------------------------------------------------------------
-find_direct_score <- function(col_label, direct_df) {
-  m <- direct_df$score[direct_df$comp_label == col_label]
-  if (length(m) > 0 && !is.na(m[1])) return(m[1])
-  for (sep in c(":", " vs ", " - ")) {
-    parts <- strsplit(col_label, sep, fixed = TRUE)[[1]]
-    if (length(parts) == 2) {
-      rev_lbl <- paste(parts[2], parts[1], sep = ":")
-      m <- direct_df$score[direct_df$comp_label == rev_lbl]
-      if (length(m) > 0 && !is.na(m[1])) return(m[1])
-    }
-  }
-  NA_real_
-}
-
-# ----------------------------------------------------------------------------
-# aggregate_wsb: contribution-weighted ROB/indirectness aggregation.
+# aggregate_wsb: contribution-weighted ROB aggregation. Only the sensitivity-
+# based Domain 1 path uses this (rule="highest"); the contribution-weighted
+# default path uses aggregate_wsb_studies() above.
 # ----------------------------------------------------------------------------
 aggregate_wsb <- function(scores, weights, rule) {
   valid <- !is.na(scores) & weights > 0.001
@@ -1134,9 +1178,12 @@ aggregate_wsb <- function(scores, weights, rule) {
 
 
 # ----------------------------------------------------------------------------
-# Domain 1: Within-study bias
+# Domain 1: Within-study bias (per-study, contribution-weighted)
 # ----------------------------------------------------------------------------
-compute_domain1_wsb <- function(comps, contrib, direct_rob, rule = "average") {
+# For each NMA target comparison, decompose the comparison-level contribution
+# matrix down to study level by IV weight within each direct comparison, then
+# aggregate study rob (0=low, 1=some, 2=high) under the chosen rule.
+compute_domain1_wsb <- function(comps, contrib, df, rule = "average") {
   comp_labels <- paste(comps$t1, comps$t2, sep = " vs ")
   cm <- get_contrib_matrix(contrib)
   if (is.null(cm)) {
@@ -1145,22 +1192,15 @@ compute_domain1_wsb <- function(comps, contrib, direct_rob, rule = "average") {
                       stringsAsFactors = FALSE))
   }
 
-  dr <- data.frame(comp_label = direct_rob$comp_label,
-                   score      = direct_rob$mean_rob,
-                   stringsAsFactors = FALSE)
+  rob_score   <- c("low" = 0, "some concerns" = 1, "high" = 2)
+  df$rob_num  <- rob_score[as.character(df$rob)]
+  df_iv       <- build_study_iv_table(df)
 
-  results <- sapply(seq_len(nrow(comps)), function(i) {
-    row_idx <- find_cm_row(cm, comps$t1[i], comps$t2[i])
-    if (is.na(row_idx)) return("Not assessed")
-    contr <- cm[row_idx, ]; contr <- contr[contr > 0.001]
-    if (length(contr) == 0) return("Not assessed")
-    scores <- sapply(names(contr), function(lbl) {
-      s <- find_direct_score(lbl, dr)
-      # floor(s + 0.5) rounds 0.5 upward (avoid R banker's rounding)
-      if (is.na(s)) NA_real_ else floor(s + 0.5) + 1
-    })
-    aggregate_wsb(scores, contr, rule)
-  })
+  results <- vapply(seq_len(nrow(comps)), function(i) {
+    sc <- study_contrib_per_target(df_iv, cm, comps$t1[i], comps$t2[i])
+    if (is.null(sc)) return("Not assessed")
+    aggregate_wsb_studies(sc$rob_num, sc$study_contrib, rule)
+  }, character(1))
 
   data.frame(comparison = comp_labels, domain1 = results,
              stringsAsFactors = FALSE)
@@ -1232,24 +1272,10 @@ compute_domain1_wsb_sens <- function(comps, contrib, df,
 }
 
 # ----------------------------------------------------------------------------
-# Domain 3: Indirectness
+# Domain 3: Indirectness (per-study, contribution-weighted)
 # ----------------------------------------------------------------------------
 compute_domain3_indirectness <- function(comps, contrib, df, rule = "average") {
-  comp_labels  <- paste(comps$t1, comps$t2, sep = " vs ")
-  indir_score  <- c("low" = 0, "some concerns" = 1, "high" = 2)
-  df$indir_num <- indir_score[as.character(df$indirectness)]
-
-  direct_indir <- bind_rows(
-    df %>% mutate(comp_label = paste(t1, t2, sep = ":")),
-    df %>% mutate(comp_label = paste(t2, t1, sep = ":"))
-  ) %>%
-    group_by(comp_label) %>%
-    summarise(mean_indir = mean(indir_num, na.rm = TRUE), .groups = "drop")
-
-  di <- data.frame(comp_label = direct_indir$comp_label,
-                   score      = direct_indir$mean_indir,
-                   stringsAsFactors = FALSE)
-
+  comp_labels <- paste(comps$t1, comps$t2, sep = " vs ")
   cm <- get_contrib_matrix(contrib)
   if (is.null(cm)) {
     return(data.frame(comparison = comp_labels,
@@ -1257,17 +1283,15 @@ compute_domain3_indirectness <- function(comps, contrib, df, rule = "average") {
                       stringsAsFactors = FALSE))
   }
 
-  results <- sapply(seq_len(nrow(comps)), function(i) {
-    row_idx <- find_cm_row(cm, comps$t1[i], comps$t2[i])
-    if (is.na(row_idx)) return("Not assessed")
-    contr <- cm[row_idx, ]; contr <- contr[contr > 0.001]
-    if (length(contr) == 0) return("Not assessed")
-    scores <- sapply(names(contr), function(lbl) {
-      s <- find_direct_score(lbl, di)
-      if (is.na(s)) NA_real_ else floor(s + 0.5) + 1
-    })
-    aggregate_wsb(scores, contr, rule)
-  })
+  indir_score   <- c("low" = 0, "some concerns" = 1, "high" = 2)
+  df$indir_num  <- indir_score[as.character(df$indirectness)]
+  df_iv         <- build_study_iv_table(df)
+
+  results <- vapply(seq_len(nrow(comps)), function(i) {
+    sc <- study_contrib_per_target(df_iv, cm, comps$t1[i], comps$t2[i])
+    if (is.null(sc)) return("Not assessed")
+    aggregate_wsb_studies(sc$indir_num, sc$study_contrib, rule)
+  }, character(1))
 
   data.frame(comparison = comp_labels, domain3 = results,
              stringsAsFactors = FALSE)
