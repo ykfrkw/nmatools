@@ -75,6 +75,10 @@ moduleD_ui <- function(id) {
     h4("Summary Table"),
     p(em("Click the ", strong("Confidence"), " column to set the confidence level",
          " (High / Moderate / Low / Very low).")),
+    tags$small(style = "color:#666; display:block; margin-bottom:6px;",
+      "Rows are shown in the analysis's default order ",
+      "(mixed evidence first, then indirect-only). ",
+      "Use the Excel download for offline reordering."),
     DTOutput(ns("combined_dt")),
     br(),
 
@@ -456,6 +460,9 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                       callback = JS(cb_js),
                       options  = list(
                         pageLength = 20, scrollX = TRUE, dom = "t",
+                        ordering   = FALSE,  # spec-10: rows fixed at netmeta
+                                             # default order; column-header
+                                             # sort is disabled.
                         columnDefs = list(list(
                           targets = conf_col_idx,
                           render  = JS(render_js)
