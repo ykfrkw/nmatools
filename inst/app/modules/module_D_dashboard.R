@@ -84,12 +84,71 @@ moduleD_ui <- function(id) {
 
     hr(),
     h4("Network Graph"),
-    plotOutput(ns("netgraph_plot"), height = "400px"),
+    tags$details(
+      tags$summary(style = "cursor:pointer; color:#444; font-size:0.9em;
+                            margin-bottom:6px;",
+                   "Display options"),
+      wellPanel(
+        fluidRow(
+          column(4, selectInput(ns("netgraph_node_size"), "Node sizing",
+            choices = c("By total sample size" = "n",
+                        "By number of studies" = "k",
+                        "Equal"                = "equal"),
+            selected = "n")),
+          column(4, selectInput(ns("netgraph_edge_width"), "Edge thickness",
+            choices = c("By number of trials" = "number.of.studies",
+                        "Inverse variance"    = "se.fixed",
+                        "Equal"               = "equal"),
+            selected = "number.of.studies")),
+          column(4, selectInput(ns("netgraph_seq"), "Treatment order (around circle)",
+            choices = c("Optimal (minimise crossings)" = "optimal",
+                        "Alphabetic"                   = "alphabetic",
+                        "Most-common-outer"            = "common"),
+            selected = "optimal"))
+        ),
+        fluidRow(
+          column(4, checkboxInput(ns("netgraph_show_labels"),
+                                  "Show treatment labels", TRUE)),
+          column(4, checkboxInput(ns("netgraph_edge_label"),
+                                  "Show n-studies on edges", TRUE)),
+          column(4, sliderInput(ns("netgraph_height"),
+                                "Plot height (px)", 300, 900, 400, step = 50))
+        )
+      )
+    ),
+    uiOutput(ns("netgraph_plot_ui")),
     br(),
 
     hr(),
     h4("Forest Plot"),
     p(em("Points and error bars are colored by CINeMA confidence level.")),
+    tags$details(
+      tags$summary(style = "cursor:pointer; color:#444; font-size:0.9em;
+                            margin-bottom:6px;",
+                   "Display options"),
+      wellPanel(
+        fluidRow(
+          column(4, uiOutput(ns("forest_ref_picker"))),
+          column(4, selectInput(ns("forest_sort"), "Sort order",
+            choices = c("Default (P-score)"   = "pscore",
+                        "By point estimate"   = "estimate",
+                        "By confidence"       = "confidence",
+                        "Alphabetic"          = "alpha"),
+            selected = "pscore")),
+          column(4, sliderInput(ns("forest_height"),
+                                "Plot height (px)", 300, 1500, 600, step = 50))
+        ),
+        fluidRow(
+          column(4, numericInput(ns("forest_xlim_lo"), "x min (blank = auto)",
+                                 value = NA)),
+          column(4, numericInput(ns("forest_xlim_hi"), "x max (blank = auto)",
+                                 value = NA)),
+          column(4, checkboxInput(ns("forest_log_scale"),
+                                  "Log x-axis (OR/RR only)", TRUE))
+        ),
+        uiOutput(ns("forest_treatments_picker"))
+      )
+    ),
     uiOutput(ns("forest_plot_ui")),
     br(),
 
@@ -641,6 +700,13 @@ moduleD_server <- function(id, cinema_module, robmen_module,
     # ------------------------------------------------------------------
     # OUTPUT: Network graph (base R plot via netmeta::netgraph)
     # ------------------------------------------------------------------
+    # Dynamic-height wrapper so the slider in the Display options accordion
+    # actually resizes the rendered plot.
+    output$netgraph_plot_ui <- renderUI({
+      h <- input$netgraph_height %||% 400
+      plotOutput(ns("netgraph_plot"), height = paste0(h, "px"))
+    })
+
     output$netgraph_plot <- renderPlot({
       cr <- tryCatch(cinema_data(), error = function(e) NULL)
       req(!is.null(cr), !is.null(cr$net))
@@ -692,61 +758,77 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       }, character(1))
 
       n_trts <- length(net$trts)
-
-      # Node size: proportional to total participants per treatment
       df_raw <- tryCatch(cr$df, error = function(e) NULL)
-      cex_pts <- if (!is.null(df_raw) && "n" %in% names(df_raw) &&
-                      any(!is.na(df_raw$n))) {
-        trt_n <- data.frame(
-          trt = c(df_raw$t1, df_raw$t2),
-          n   = c(df_raw$n / 2, df_raw$n / 2)
-        ) %>%
-          filter(!is.na(n)) %>%
-          group_by(trt) %>%
-          summarise(total_n = sum(n, na.rm = TRUE), .groups = "drop")
-        raw_sizes <- sapply(net$trts, function(trt) {
-          idx <- which(trt_n$trt == trt)
-          if (length(idx) > 0) trt_n$total_n[idx] else mean(trt_n$total_n)
-        })
-        r <- range(raw_sizes)
-        if (diff(r) > 0) 1.5 + 2.5 * (raw_sizes - r[1]) / diff(r)
-        else rep(2.5, length(raw_sizes))
-      } else {
+
+      # Node size — three modes via Display Options accordion (spec-14)
+      node_mode <- input$netgraph_node_size %||% "n"
+      cex_pts <- if (identical(node_mode, "equal")) {
         rep(2.5, n_trts)
+      } else if (identical(node_mode, "k")) {
+        # Number of studies per treatment
+        if (!is.null(df_raw) && all(c("t1", "t2", "studlab") %in% names(df_raw))) {
+          k_per <- vapply(net$trts, function(trt) {
+            length(unique(df_raw$studlab[df_raw$t1 == trt | df_raw$t2 == trt]))
+          }, integer(1))
+          r <- range(k_per)
+          if (diff(r) > 0) 1.5 + 2.5 * (k_per - r[1]) / diff(r)
+          else rep(2.5, n_trts)
+        } else rep(2.5, n_trts)
+      } else {
+        # Default: by total sample size
+        if (!is.null(df_raw) && "n" %in% names(df_raw) && any(!is.na(df_raw$n))) {
+          trt_n <- data.frame(
+            trt = c(df_raw$t1, df_raw$t2),
+            n   = c(df_raw$n / 2, df_raw$n / 2)
+          ) %>%
+            filter(!is.na(n)) %>%
+            group_by(trt) %>%
+            summarise(total_n = sum(n, na.rm = TRUE), .groups = "drop")
+          raw_sizes <- sapply(net$trts, function(trt) {
+            idx <- which(trt_n$trt == trt)
+            if (length(idx) > 0) trt_n$total_n[idx] else mean(trt_n$total_n)
+          })
+          r <- range(raw_sizes)
+          if (diff(r) > 0) 1.5 + 2.5 * (raw_sizes - r[1]) / diff(r)
+          else rep(2.5, n_trts)
+        } else rep(2.5, n_trts)
+      }
+
+      thickness_arg   <- input$netgraph_edge_width %||% "number.of.studies"
+      seq_arg         <- input$netgraph_seq        %||% "optimal"
+      show_labels     <- isTRUE(input$netgraph_show_labels %||% TRUE)
+      show_edge_label <- isTRUE(input$netgraph_edge_label  %||% TRUE)
+      labels_arg      <- if (show_labels) net$trts else rep("", n_trts)
+
+      build_args <- function(extra = list()) {
+        base <- list(
+          x                = net,
+          seq              = seq_arg,
+          plastic          = FALSE,
+          points           = TRUE,
+          pch              = 21,
+          cex.points       = cex_pts,
+          col.points       = "black",
+          bg.points        = "gray",
+          thickness        = thickness_arg,
+          number.of.studies = show_edge_label,
+          pos.number.of.studies = 0.45,
+          multiarm         = FALSE,
+          labels           = labels_arg
+        )
+        utils::modifyList(base, extra)
       }
 
       tryCatch(
-        netgraph(net,
-                 seq              = "optimal",
-                 plastic          = FALSE,
-                 points           = TRUE,
-                 pch              = 21,
-                 cex.points       = cex_pts,
-                 col.points       = "black",
-                 bg.points        = "gray",
-                 thickness        = "number.of.studies",
-                 number.of.studies = TRUE,
-                 pos.number.of.studies = 0.45,
-                 multiarm         = FALSE,
-                 col              = edge_cols,
-                 main             = "Evidence network (edge color = CINeMA confidence)"),
+        do.call(netgraph, build_args(list(
+          col  = edge_cols,
+          main = "Evidence network (edge color = CINeMA confidence)"
+        ))),
         error = function(e) {
           tryCatch(
-            netgraph(net,
-                     seq              = "optimal",
-                     plastic          = FALSE,
-                     points           = TRUE, pch = 21,
-                     cex.points       = cex_pts,
-                     col.points       = "black",
-                     bg.points        = "gray",
-                     thickness        = "number.of.studies",
-                     number.of.studies = TRUE,
-                     pos.number.of.studies = 0.45,
-                     multiarm         = FALSE,
-                     main             = "Evidence network"),
+            do.call(netgraph, build_args(list(main = "Evidence network"))),
             error = function(e2) {
-              netgraph(net, plastic = FALSE,
-                       main = "Evidence network")
+              netgraph(net, plastic = FALSE, main = "Evidence network")
             }
           )
         }
@@ -756,6 +838,28 @@ moduleD_server <- function(id, cinema_module, robmen_module,
     # ------------------------------------------------------------------
     # OUTPUT: Inline forest plot (plotly, CINeMA confidence colours)
     # ------------------------------------------------------------------
+    # Reference-treatment dropdown (driven by the trained network)
+    output$forest_ref_picker <- renderUI({
+      cr <- tryCatch(cinema_data(), error = function(e) NULL)
+      if (is.null(cr) || is.null(cr$net)) return(NULL)
+      trts <- sort(cr$net$trts)
+      default <- tryCatch(cr$net$reference.group, error = function(e) trts[1])
+      if (is.null(default) || !nzchar(default)) default <- trts[1]
+      selectInput(ns("forest_ref"), "Reference treatment",
+                  choices = trts, selected = default)
+    })
+
+    # Treatments-to-show checkbox group (every non-reference treatment is on)
+    output$forest_treatments_picker <- renderUI({
+      cr <- tryCatch(cinema_data(), error = function(e) NULL)
+      if (is.null(cr) || is.null(cr$net)) return(NULL)
+      ref  <- input$forest_ref %||% cr$net$reference.group %||% sort(cr$net$trts)[1]
+      trts <- setdiff(sort(cr$net$trts), ref)
+      checkboxGroupInput(ns("forest_treatments"),
+                         "Treatments to show (against reference)",
+                         choices = trts, selected = trts, inline = TRUE)
+    })
+
     output$forest_plot_ui <- renderUI({
       cr <- tryCatch(cinema_data(), error = function(e) NULL)
       if (is.null(cr)) {
@@ -763,9 +867,8 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                    icon("exclamation-circle"),
                    " Run Module B (CINeMA) first."))
       }
-      n_comps <- nrow(cr$te_df)
-      plot_height <- paste0(max(300, 60 + n_comps * 32), "px")
-      plotlyOutput(ns("forest_plot_inline"), height = plot_height)
+      h <- input$forest_height %||% 600
+      plotlyOutput(ns("forest_plot_inline"), height = paste0(h, "px"))
     })
 
     output$forest_plot_inline <- renderPlotly({
@@ -776,7 +879,10 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       merged <- cinema_merged()
       net    <- cr$net
       pal    <- current_palette()
-      ref    <- tryCatch(net$reference.group, error = function(e) NULL)
+      # spec-09: reference may be overridden via the Display Options accordion
+      ref    <- input$forest_ref
+      if (is.null(ref) || !nzchar(ref))
+        ref <- tryCatch(net$reference.group, error = function(e) NULL)
       sm     <- if (!is.null(nma_settings_r)) nma_settings_r()$effect_measure %||%
                   tryCatch(net$sm, error = function(e) "") else
                   tryCatch(net$sm, error = function(e) "")
@@ -831,6 +937,12 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         ) %>%
         ungroup()
 
+      # spec-09: filter by user-selected treatments (Display Options).
+      # An unset / empty selection means "show all", so leave plot_df alone.
+      sel_trts <- input$forest_treatments
+      if (!is.null(sel_trts) && length(sel_trts) > 0)
+        plot_df <- plot_df %>% filter(label %in% sel_trts)
+
       # Add per-treatment N to labels
       if (!is.null(trt_n)) {
         plot_df <- plot_df %>%
@@ -839,8 +951,20 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         plot_df <- plot_df %>% mutate(label_n = label)
       }
 
-      # Sort: largest TE at top (y_pos = n).
-      if (!is.null(p_scores) && length(p_scores) > 0) {
+      # Sort: largest TE at top (y_pos = n). spec-09: routed via accordion.
+      sort_choice <- input$forest_sort %||% "pscore"
+      if (identical(sort_choice, "alpha")) {
+        plot_df <- plot_df %>% arrange(label)
+      } else if (identical(sort_choice, "estimate")) {
+        plot_df <- plot_df %>% arrange(desc(TE_log))
+      } else if (identical(sort_choice, "confidence")) {
+        plot_df <- plot_df %>%
+          mutate(.conf_rank = match(conf_final,
+                                    c("High", "Moderate", "Low",
+                                      "Very low", "Not set"))) %>%
+          arrange(.conf_rank, label) %>%
+          select(-.conf_rank)
+      } else if (!is.null(p_scores) && length(p_scores) > 0) {
         plot_df <- plot_df %>% mutate(p_score = p_scores[label])
         plot_df <- if (small_val == "undesirable")
                      plot_df %>% arrange(coalesce(p_score, Inf))
@@ -848,6 +972,15 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                      plot_df %>% arrange(desc(coalesce(p_score, -Inf)))
       } else {
         plot_df <- plot_df %>% arrange(TE_log)
+      }
+      # Ensure p_score column exists for the tooltip below even when the user
+      # picked a non-P-score sort.
+      if (!"p_score" %in% names(plot_df)) {
+        if (!is.null(p_scores) && length(p_scores) > 0) {
+          plot_df <- plot_df %>% mutate(p_score = p_scores[label])
+        } else {
+          plot_df <- plot_df %>% mutate(p_score = NA_real_)
+        }
       }
 
       plot_df <- plot_df %>%
@@ -880,6 +1013,10 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                  else
                    paste0("Effect size  (vs. ", ref_lbl, ")")
 
+      sort_label_map <- c(pscore = "P-score", estimate = "point estimate",
+                          confidence = "confidence", alpha = "alphabetic")
+      sort_label <- sort_label_map[[sort_choice]] %||% "P-score"
+
       p <- ggplot(plot_df,
                   aes(y = y_pos, colour = conf_final, fill = conf_final,
                       text = tooltip)) +
@@ -897,7 +1034,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
              title = paste0("NMA Forest Plot",
                             if (!is.null(ref) && nzchar(ref))
                               paste0(" — vs. ", ref) else "",
-                            "  [sorted by P-score]")) +
+                            "  [sorted by ", sort_label, "]")) +
         theme_minimal(base_size = 12) +
         theme(
           legend.position    = "bottom",
@@ -907,7 +1044,18 @@ moduleD_server <- function(id, cinema_module, robmen_module,
           plot.title         = element_text(face = "bold")
         )
 
-      if (is_ratio) p <- p + scale_x_log10()
+      # spec-09: optional manual x-limits override (NA = let ggplot decide).
+      xlim_lo <- input$forest_xlim_lo
+      xlim_hi <- input$forest_xlim_hi
+      if (!is.null(xlim_lo) && !is.null(xlim_hi) &&
+          !is.na(xlim_lo) && !is.na(xlim_hi)) {
+        p <- p + coord_cartesian(xlim = c(xlim_lo, xlim_hi))
+      }
+
+      # spec-09: log x-axis toggle. Defaults to log when the measure is
+      # OR/RR (was the previous behaviour). Now user-controllable.
+      use_log <- isTRUE(input$forest_log_scale %||% TRUE) && is_ratio
+      if (use_log) p <- p + scale_x_log10()
 
       ggplotly(p, tooltip = "text") %>%
         layout(legend = list(orientation = "h", x = 0, y = -0.15))
