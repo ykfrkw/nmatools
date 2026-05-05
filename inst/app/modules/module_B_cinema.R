@@ -60,10 +60,11 @@ moduleB_d1_ui <- function(id) {
         column(6,
           selectInput(ns("d1_judgement"), "Judgement method",
             choices = c(
-              "Average (contribution-weighted mean)"  = "average",
-              "Majority (largest contribution share)" = "majority",
-              "Highest (most severe contributor)"     = "highest",
-              "Sensitivity-based (excl. high-RoB)"    = "sens"
+              "Average (contribution-weighted mean)"        = "average",
+              "Majority (largest contribution share)"       = "majority",
+              "Highest (most severe contributor)"           = "highest",
+              "Sensitivity-based: CI overlap & inflation"   = "sens",
+              "Sensitivity-based: split-evidence p-value"   = "sens_p"
             ),
             selected = "average"
           )
@@ -74,6 +75,21 @@ moduleB_d1_ui <- function(id) {
             numericInput(ns("sens_inf_thresh"),
                          "Inflation threshold (relative |TE| change)",
                          value = 0.10, min = 0.0, max = 0.5, step = 0.05)
+          ),
+          conditionalPanel(
+            condition = sprintf("input['%s'] == 'sens_p'", ns("d1_judgement")),
+            fluidRow(
+              column(6,
+                numericInput(ns("sens_p_some"),
+                             "p cutoff: Some concerns (>)",
+                             value = 0.10, min = 0.001, max = 0.5, step = 0.01)
+              ),
+              column(6,
+                numericInput(ns("sens_p_serious"),
+                             "p cutoff: Serious (≤)",
+                             value = 0.05, min = 0.001, max = 0.5, step = 0.01)
+              )
+            )
           )
         )
       )
@@ -445,6 +461,14 @@ moduleB_server <- function(id, processed_data,
         d1 <- compute_domain1_wsb_sens(comps, contrib, df,
                                        inf_threshold = inf_t,
                                        small_values  = NULL)
+      } else if (identical(d1_choice, "sens_p")) {
+        p_some    <- if (is.null(input$sens_p_some) || is.na(input$sens_p_some))
+                       0.10 else input$sens_p_some
+        p_serious <- if (is.null(input$sens_p_serious) || is.na(input$sens_p_serious))
+                       0.05 else input$sens_p_serious
+        d1 <- compute_domain1_wsb_split_p(comps, contrib, df,
+                                          p_some    = p_some,
+                                          p_serious = p_serious)
       } else {
         d1 <- compute_domain1_wsb(comps, contrib, df, d1_choice)
       }
@@ -980,6 +1004,96 @@ moduleB_server <- function(id, processed_data,
         out
       }
 
+      # spec-11: split-evidence p-value card_extra (sibling of sens_extra).
+      # Pools low+some and high subsets independently, displays TE per pool
+      # plus the test result.
+      p_some_v    <- if (is.null(input$sens_p_some) || is.na(input$sens_p_some))
+                       0.10 else input$sens_p_some
+      p_serious_v <- if (is.null(input$sens_p_serious) || is.na(input$sens_p_serious))
+                       0.05 else input$sens_p_serious
+
+      sens_p_extra <- function(i) {
+        out <- tryCatch({
+          t1 <- ad$comps$t1[i]; t2 <- ad$comps$t2[i]
+          sub <- df[(df$t1 == t1 & df$t2 == t2) |
+                    (df$t1 == t2 & df$t2 == t1), , drop = FALSE]
+          if (nrow(sub) == 0)
+            return(p(style = "margin:4px 0; color:#666;",
+                     em("No direct evidence — judgement carried over from contributing comparisons.")))
+
+          te_raw     <- sub[[te_col]]
+          se_raw     <- sub[[se_col]]
+          te_aligned <- ifelse(sub$t1 == t1, te_raw, -te_raw)
+          v <- judge_rob_direct_split_p_v(
+            rob_vec   = as.character(sub$rob),
+            te_vec    = te_aligned,
+            se_vec    = se_raw,
+            p_some    = p_some_v,
+            p_serious = p_serious_v
+          )
+
+          ls_lo <- if (!is.na(v$te_ls) && !is.na(v$se_ls))
+                     v$te_ls - 1.96 * v$se_ls else NA_real_
+          ls_hi <- if (!is.na(v$te_ls) && !is.na(v$se_ls))
+                     v$te_ls + 1.96 * v$se_ls else NA_real_
+          h_lo  <- if (!is.na(v$te_h)  && !is.na(v$se_h))
+                     v$te_h  - 1.96 * v$se_h  else NA_real_
+          h_hi  <- if (!is.na(v$te_h)  && !is.na(v$se_h))
+                     v$te_h  + 1.96 * v$se_h  else NA_real_
+
+          ls_str <- format_te_ci(v$te_ls, ls_lo, ls_hi, sm_val)
+          h_str  <- format_te_ci(v$te_h,  h_lo,  h_hi,  sm_val)
+
+          # p-value badge
+          p_badge <- if (is.na(v$p_value)) {
+            tags$span(style = "color:#888;", "p = —")
+          } else if (isTRUE(v$sign_flip)) {
+            tags$span(
+              title = "Sign flip between low+some and high pools",
+              style = "background:#f8d7da; color:#721c24; padding:1px 6px;
+                       border-radius:3px; font-weight:bold;",
+              "sign flip ⚠")
+          } else if (v$p_value <= p_serious_v) {
+            tags$span(
+              title = sprintf("p ≤ %.2f → serious concerns", p_serious_v),
+              style = "background:#f8d7da; color:#721c24; padding:1px 6px;
+                       border-radius:3px; font-weight:bold;",
+              sprintf("p = %.3f ⚠", v$p_value))
+          } else if (v$p_value <= p_some_v) {
+            tags$span(
+              title = sprintf("%.2f < p ≤ %.2f → some concerns",
+                              p_serious_v, p_some_v),
+              style = "background:#fff3cd; color:#856404; padding:1px 6px;
+                       border-radius:3px; font-weight:bold;",
+              sprintf("p = %.3f", v$p_value))
+          } else {
+            tags$span(
+              style = "color:#198754; font-weight:bold;",
+              sprintf("p = %.3f", v$p_value))
+          }
+
+          tagList(
+            p(style = "margin:2px 0;",
+              "TE (low+some, k = ", v$k_ls, "): ",
+              if (is.na(v$te_ls)) tags$span(style = "color:#888;", "—")
+              else strong(ls_str)),
+            p(style = "margin:2px 0;",
+              "TE (high, k = ", v$k_h, "): ",
+              if (is.na(v$te_h)) tags$span(style = "color:#888;", "—")
+              else strong(h_str)),
+            p(style = "margin:2px 0;",
+              "Two-sample test (low+some vs high): ", p_badge)
+          )
+        }, error = function(e)
+          p(style = "margin:4px 0; color:#888; font-size:0.85em;",
+            em(paste("Split-p TE not computed:", conditionMessage(e)))))
+        out
+      }
+
+      d1_choice_now <- input$d1_judgement %||% "average"
+      card_extra_fn <- if (identical(d1_choice_now, "sens_p")) sens_p_extra
+                       else                                    sens_extra
+
       render_domain_cards(
         n              = nrow(ad$comps),
         comps          = ad$comps,
@@ -987,7 +1101,7 @@ moduleB_server <- function(id, processed_data,
         auto_vals      = ad$d1$domain1,
         ns_func        = ns,
         ov_prefix      = "ov_d1",
-        card_extra     = sens_extra,
+        card_extra     = card_extra_fn,
         reason_prefix  = "reason_d1",
         selected_vals  = ad$d1$domain1
       )
@@ -1421,6 +1535,69 @@ compute_domain1_wsb_sens <- function(comps, contrib, df,
       j <- judgments[[lbl]]
       if (is.null(j)) {
         # Try reverse ordering "B:A"
+        parts <- strsplit(lbl, ":", fixed = TRUE)[[1]]
+        if (length(parts) == 2) {
+          j <- judgments[[paste(parts[2], parts[1], sep = ":")]]
+        }
+      }
+      if (is.null(j)) NA_real_ else as.numeric(num_map[[j]])
+    })
+    aggregate_wsb(scores, contr, rule = "highest")
+  })
+
+  data.frame(comparison = comp_labels, domain1 = results,
+             stringsAsFactors = FALSE)
+}
+
+# ---- compute_domain1_wsb_split_p ------------------------------------------
+# spec-11: per-comparison D1 judgement using the split-evidence p-value rule
+# (judge_rob_direct_split_p). Same plumbing as compute_domain1_wsb_sens —
+# only the helper differs.
+# ----------------------------------------------------------------------------
+compute_domain1_wsb_split_p <- function(comps, contrib, df,
+                                        p_some    = 0.10,
+                                        p_serious = 0.05) {
+  comp_labels <- paste(comps$t1, comps$t2, sep = " vs ")
+  cm <- get_contrib_matrix(contrib)
+  if (is.null(cm)) {
+    return(data.frame(comparison = comp_labels,
+                      domain1    = rep("Not assessed", nrow(comps)),
+                      stringsAsFactors = FALSE))
+  }
+
+  te_col <- if ("TE"   %in% names(df)) "TE"   else if ("y"  %in% names(df)) "y"  else NA_character_
+  se_col <- if ("seTE" %in% names(df)) "seTE" else if ("se" %in% names(df)) "se" else NA_character_
+
+  num_map  <- c(no = 1L, some_concerns = 2L, serious = 3L)
+  judgments <- new.env(hash = TRUE, parent = emptyenv())
+  pairs_tab <- unique(rbind(
+    data.frame(a = df$t1, b = df$t2, stringsAsFactors = FALSE),
+    data.frame(a = df$t2, b = df$t1, stringsAsFactors = FALSE)
+  ))
+  for (i in seq_len(nrow(pairs_tab))) {
+    a <- pairs_tab$a[i]; b <- pairs_tab$b[i]
+    sub <- df[(df$t1 == a & df$t2 == b) | (df$t1 == b & df$t2 == a), , drop = FALSE]
+    if (nrow(sub) == 0) next
+    te_vec <- if (!is.na(te_col)) sub[[te_col]] else rep(NA_real_, nrow(sub))
+    se_vec <- if (!is.na(se_col)) sub[[se_col]] else rep(NA_real_, nrow(sub))
+    j <- judge_rob_direct_split_p(
+      rob_vec   = as.character(sub$rob),
+      te_vec    = te_vec,
+      se_vec    = se_vec,
+      p_some    = p_some,
+      p_serious = p_serious
+    )
+    judgments[[paste(a, b, sep = ":")]] <- j
+  }
+
+  results <- sapply(seq_len(nrow(comps)), function(i) {
+    row_idx <- find_cm_row(cm, comps$t1[i], comps$t2[i])
+    if (is.na(row_idx)) return("Not assessed")
+    contr <- cm[row_idx, ]; contr <- contr[contr > 0.001]
+    if (length(contr) == 0) return("Not assessed")
+    scores <- sapply(names(contr), function(lbl) {
+      j <- judgments[[lbl]]
+      if (is.null(j)) {
         parts <- strsplit(lbl, ":", fixed = TRUE)[[1]]
         if (length(parts) == 2) {
           j <- judgments[[paste(parts[2], parts[1], sep = ":")]]

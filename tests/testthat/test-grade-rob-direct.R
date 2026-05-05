@@ -99,3 +99,97 @@ test_that("judge_rob_direct_sens_v exposes te_all, te_low, inflation, sign_flip"
   expect_true(is.na(res_all$te_low))
   expect_true(is.na(res_all$inflation))
 })
+
+# ---------------------------------------------------------------------------
+# Sensitivity-based, split-evidence p-value variant
+# ---------------------------------------------------------------------------
+
+test_that("split-p: no high-RoB studies returns 'no'", {
+  expect_equal(
+    judge_rob_direct_split_p(
+      rob_vec = c("low", "low", "some concerns"),
+      te_vec  = c(-0.30, -0.40, -0.35),
+      se_vec  = c(0.10, 0.10, 0.12)
+    ),
+    "no"
+  )
+})
+
+test_that("split-p: only high-RoB studies returns 'serious' (no comparator)", {
+  expect_equal(
+    judge_rob_direct_split_p(
+      rob_vec = c("high", "high", "high"),
+      te_vec  = c(-0.50, -0.60, -0.55),
+      se_vec  = c(0.10, 0.10, 0.10)
+    ),
+    "serious"
+  )
+})
+
+test_that("split-p: low+some and high agree (small delta) returns 'no'", {
+  # Both pools centred near -0.50 -> p will be near 1
+  expect_equal(
+    judge_rob_direct_split_p(
+      rob_vec = c("low", "some concerns", "high", "high"),
+      te_vec  = c(-0.50, -0.52, -0.48, -0.51),
+      se_vec  = c(0.10,  0.10,  0.10,  0.10)
+    ),
+    "no"
+  )
+})
+
+test_that("split-p: sign flip overrides p-value to 'serious'", {
+  # te_ls > 0, te_h < 0 -> sign flip
+  expect_equal(
+    judge_rob_direct_split_p(
+      rob_vec = c("low", "low", "high", "high"),
+      te_vec  = c(0.30, 0.40, -0.30, -0.40),
+      se_vec  = c(0.10, 0.10, 0.10, 0.10)
+    ),
+    "serious"
+  )
+})
+
+test_that("split-p: large delta (p < 0.05) returns 'serious'", {
+  # te_ls = 0.0 (SE 0.07), te_h = 0.6 (SE 0.07) -> delta = -0.6, SE_diff ~0.10,
+  # z ~6 -> p < 1e-9
+  res <- judge_rob_direct_split_p_v(
+    rob_vec = c("low", "low", "high", "high"),
+    te_vec  = c(0.00, 0.00, 0.60, 0.60),
+    se_vec  = c(0.10, 0.10, 0.10, 0.10)
+  )
+  # Sign-of-zero edge: te_ls = 0 might or might not register sign_flip.
+  # The judgement we care about is "serious" via either route.
+  expect_equal(res$judgement, "serious")
+  expect_true(res$p_value < 0.001 || isTRUE(res$sign_flip))
+})
+
+test_that("split-p: moderate delta (0.05 < p <= 0.10) returns 'some_concerns'", {
+  # Tuned so that two-sided p is ~0.07.
+  # te_ls = 0.0 (SE 0.10), te_h = 0.30 (SE 0.10) -> SE_diff ~0.1414, z ~2.12,
+  # p ~ 0.034 -> too small. Widen SEs to push p up.
+  # te_ls = 0.0 (SE 0.20), te_h = 0.30 (SE 0.20) -> SE_diff ~0.283, z ~1.06,
+  # p ~ 0.29 -> too large.
+  # te_ls = 0.0 (SE 0.10), te_h = 0.20 (SE 0.10) -> z ~ 1.41, p ~ 0.158 -> still
+  # large. Tune to z ~ 1.81 (p ~ 0.07): delta=0.30, se_diff=0.166.
+  # se_ls = se_h = sqrt(0.166^2/2) ~ 0.1175.
+  res <- judge_rob_direct_split_p_v(
+    rob_vec = c("low", "low", "low", "high", "high", "high"),
+    te_vec  = c(0.00, 0.00, 0.00, 0.30, 0.30, 0.30),
+    se_vec  = c(0.20, 0.20, 0.20, 0.20, 0.20, 0.20)
+  )
+  expect_equal(res$judgement, "some_concerns")
+  expect_true(res$p_value > 0.05 && res$p_value <= 0.10)
+})
+
+test_that("split-p: returns shape-stable list with k_ls / k_h / p_value", {
+  res <- judge_rob_direct_split_p_v(
+    rob_vec = c("low", "some concerns", "high"),
+    te_vec  = c(-0.30, -0.40, -0.35),
+    se_vec  = c(0.10, 0.10, 0.10)
+  )
+  expect_named(res, c("judgement", "te_ls", "te_h", "se_ls", "se_h",
+                      "k_ls", "k_h", "p_value", "sign_flip"))
+  expect_equal(res$k_ls, 2L)
+  expect_equal(res$k_h, 1L)
+})
