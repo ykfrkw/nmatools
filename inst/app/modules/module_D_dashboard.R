@@ -163,47 +163,73 @@ moduleD_ui <- function(id) {
 
     wellPanel(
       h4("Export"),
+
+      # --- Primary: {netmetaviz}-compatible CSV ---------------------------
+      div(style = "border:1px solid #cce5ff; background:#f0f7ff;
+                   border-radius:0.5rem; padding:14px 16px; margin-bottom:14px;",
+        fluidRow(
+          column(8,
+            h5(style = "margin-top:0;",
+               icon("file-csv"), " {netmetaviz} CSV ",
+               tags$span(style = "background:#0d6efd; color:white;
+                          padding:2px 8px; border-radius:3px; font-size:0.7em;
+                          margin-left:6px; vertical-align:middle;",
+                         "RECOMMENDED")),
+            p(style = "margin-bottom:6px;",
+              "The reproducible artefact for ",
+              tags$a("{netmetaviz}", target = "_blank",
+                     href = "https://github.com/CINeMA-team/netmetaviz"),
+              "-based visualisation pipelines. Schema matches the CINeMA",
+              " web tool's exported CSV (one row per comparison, all six",
+              " domain ratings, confidence, downgrade reasons).")
+          ),
+          column(4,
+            downloadButton(ns("dl_nmv_csv"), "Download CSV",
+                           class = "btn btn-primary btn-lg btn-block",
+                           icon  = icon("file-csv")),
+            tags$div(style = "margin-top:8px;",
+              actionButton(ns("save_to_env"), "Save to R environment",
+                           class = "btn btn-outline-secondary btn-sm btn-block",
+                           icon  = icon("r-project")))
+          )
+        )
+      ),
+
+      # --- Secondary: raw / convenience exports ---------------------------
+      h5(style = "color:#666; font-size:0.95em; margin-top:14px;",
+         "Other formats"),
       fluidRow(
-        column(3,
-          h5(icon("file-csv"), " CSV"),
-          p(em("All domains, override reasons, and network estimates.")),
+        column(4,
+          h6(icon("file-csv"), " CSV"),
+          p(style = "font-size:0.85em; color:#666;",
+            "Raw table — all domains, override reasons, and network estimates."),
           downloadButton(ns("dl_csv"), "Download CSV",
-                         class = "btn btn-outline-secondary btn-block",
+                         class = "btn btn-outline-secondary btn-sm btn-block",
                          icon  = icon("file-csv"))
         ),
-        column(3,
-          h5(icon("file-excel"), " Excel (.xlsx)"),
-          p(em("Color-coded workbook (openxlsx).")),
+        column(4,
+          h6(icon("file-excel"), " Excel (.xlsx)"),
+          p(style = "font-size:0.85em; color:#666;",
+            "Colour-coded workbook (openxlsx)."),
           if (.HAS_OPENXLSX) {
             downloadButton(ns("dl_xlsx"), "Download Excel",
-                           class = "btn btn-success btn-block",
+                           class = "btn btn-outline-success btn-sm btn-block",
                            icon  = icon("file-excel"))
           } else {
             div(class = "alert alert-warning",
+                style = "font-size:0.85em; padding:6px 10px;",
                 icon("exclamation-circle"),
                 strong(" openxlsx not installed."), br(),
                 code('install.packages("openxlsx")'))
           }
         ),
-        column(3,
-          h5(icon("image"), " Forest Plot (PNG)"),
-          p(em("NMA estimates with CINeMA confidence colors.")),
+        column(4,
+          h6(icon("image"), " Forest Plot (PNG)"),
+          p(style = "font-size:0.85em; color:#666;",
+            "NMA estimates with CINeMA confidence colours."),
           downloadButton(ns("dl_forest"), "Download PNG",
-                         class = "btn btn-outline-primary btn-block",
+                         class = "btn btn-outline-primary btn-sm btn-block",
                          icon  = icon("image"))
-        ),
-        column(3,
-          h5(icon("file-csv"), " netmetaviz CSV"),
-          p(em("CINeMA results in {netmetaviz} format.")),
-          downloadButton(ns("dl_nmv_csv"), "Download CINeMA results CSV",
-                         class = "btn btn-outline-info btn-block",
-                         icon  = icon("file-csv")),
-          tags$div(
-            style = "margin-top:8px;",
-            actionButton(ns("save_to_env"), "Save to R environment",
-                         class = "btn btn-outline-dark btn-sm btn-block",
-                         icon  = icon("r-project"))
-          )
         )
       )
     ),
