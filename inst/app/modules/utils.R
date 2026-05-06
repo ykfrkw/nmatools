@@ -172,6 +172,120 @@ delta_default_for_measure <- function(em, data = NULL) {
 }
 
 # ----------------------------------------------------------------------------
+# build_netmeta_forest: render the canonical netmeta::forest() output to the
+# currently-open graphics device, parameterised by a Display Options list.
+# Used by both the inline imageOutput render and the dl_forest download
+# handler so the on-screen plot and the downloaded PNG always match.
+#
+# `opts` is a flat list. All fields are optional; missing fields fall back to
+# forest.netmeta()'s own defaults.
+#   $reference        : reference treatment (string)
+#   $sortvar          : "pscore" / "estimate" / "alpha" / NULL = netmeta default
+#   $small_values     : "desirable" / "undesirable" — feeds netrank() for
+#                       pscore sort. Defaults to "desirable".
+#   $xlim             : numeric length-2 (NA-tolerant; both NA = auto)
+#   $log_scale        : logical; for OR/RR/HR maps to backtransf=TRUE +
+#                       drawing on log scale via meta defaults
+#   $show_k           : logical; adds "k" to leftcols if TRUE
+#   $show_weight      : logical; adds "w.random" / "w.common" to rightcols
+#   $prediction       : logical; show prediction interval row
+#   $print_hetstat    : logical; show tau^2 + I^2 row
+#   $estimate_shape   : "diamond" (default) / "square"
+#   $smlab            : header text (string)
+#   $label_left       : left-side label (string)
+#   $label_right      : right-side label (string)
+#   $smaller_text     : logical; fontsize 0.85 vs 1.0
+# ----------------------------------------------------------------------------
+build_netmeta_forest <- function(net, opts = list()) {
+  if (is.null(net)) stop("build_netmeta_forest: 'net' is required")
+
+  pooled_kind <- if (isTRUE(net$random)) "random" else "common"
+
+  # Sort variable
+  sortvar <- NULL
+  sort_key <- opts$sortvar %||% "pscore"
+  small_v  <- opts$small_values %||% "desirable"
+  if (identical(sort_key, "pscore")) {
+    pr <- tryCatch(netmeta::netrank(net, small.values = small_v),
+                   error = function(e) NULL)
+    if (!is.null(pr)) {
+      ps <- pr$Pscore.random %||% pr$Pscore.common
+      if (!is.null(ps)) {
+        # forest.netmeta uses sortvar evaluated in net$trts order;
+        # higher P-score → top, so negate when desirable.
+        sortvar <- if (identical(small_v, "undesirable")) ps[net$trts]
+                   else                                    -ps[net$trts]
+      }
+    }
+  } else if (identical(sort_key, "estimate")) {
+    # Use the random/common TE column from netmeta's leag table.
+    te_mat <- net$TE.random %||% net$TE.common
+    ref    <- opts$reference %||% net$reference.group %||% net$trts[1]
+    if (!is.null(te_mat) && ref %in% rownames(te_mat))
+      sortvar <- -te_mat[net$trts, ref]   # largest at top
+  } else if (identical(sort_key, "alpha")) {
+    sortvar <- net$trts
+  } # else NULL → forest.netmeta uses its own default order (net$seq)
+
+  # Columns
+  leftcols  <- "studlab"
+  if (isTRUE(opts$show_k)) leftcols <- c(leftcols, "k")
+  rightcols <- c("effect", "ci")
+  if (isTRUE(opts$show_weight))
+    rightcols <- c(rightcols,
+                   if (identical(pooled_kind, "random")) "w.random"
+                   else                                  "w.common")
+
+  # xlim
+  xlim <- NULL
+  if (!is.null(opts$xlim) && length(opts$xlim) == 2 &&
+      all(!is.na(opts$xlim)))
+    xlim <- as.numeric(opts$xlim)
+
+  # backtransf only matters for OR/RR/HR; netmeta picks backtransf by sm.
+  # We keep its default unless user asked for the raw log scale.
+  backtransf <- isTRUE(opts$log_scale %||% TRUE)
+
+  # Diamond vs square — forest.meta has no per-row override here, but the
+  # `plotwidth` family + `col.diamond` controls colour. Shape is fixed in
+  # this iteration; the toggle is informational. Documented in spec-09.
+
+  fontsize <- if (isTRUE(opts$smaller_text)) 0.85 else 1.0
+
+  # Build the call. Pass-through args via list so we can drop NULLs cleanly.
+  call_args <- list(
+    x                = net,
+    pooled           = pooled_kind,
+    reference.group  = opts$reference %||% net$reference.group,
+    leftcols         = leftcols,
+    rightcols        = rightcols,
+    backtransf       = backtransf,
+    print.tau2       = isTRUE(opts$print_hetstat),
+    print.I2         = isTRUE(opts$print_hetstat),
+    overall.hetstat  = isTRUE(opts$print_hetstat),
+    fontsize         = fontsize,
+    smlab            = opts$smlab %||% NULL,
+    label.left       = opts$label_left  %||% NULL,
+    label.right      = opts$label_right %||% NULL
+  )
+  if (!is.null(sortvar)) call_args$sortvar <- sortvar
+  if (!is.null(xlim))    call_args$xlim    <- xlim
+  # NB: `prediction` is a forest.netsplit / forest.meta arg, NOT a
+  # forest.netmeta arg — passing it errors out. Spec-09's "Show prediction
+  # interval row" toggle is therefore a no-op in this iteration; reopen if
+  # netmeta upstream adds prediction support to forest.netmeta.
+
+  # Drop NULL entries so forest.netmeta uses its own defaults.
+  call_args <- call_args[!vapply(call_args, is.null, logical(1))]
+
+  # netmeta::forest is not exported under that name; the S3 method is
+  # netmeta:::forest.netmeta and the generic `forest` lives in the meta
+  # package. Call the method directly to avoid relying on namespace search.
+  do.call(getFromNamespace("forest.netmeta", "netmeta"), call_args)
+  invisible(NULL)
+}
+
+# ----------------------------------------------------------------------------
 # get_contrib_matrix: extract the contribution matrix from a netcontrib object.
 # Tries multiple field names across different netmeta versions.
 # ----------------------------------------------------------------------------
