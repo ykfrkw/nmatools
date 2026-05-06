@@ -887,9 +887,12 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                   choices = trts, selected = default)
     })
 
-    # Dynamic header-text input — pre-filled with the same default the
-    # builder would generate, so the user sees what's actually being
-    # rendered before typing an override.
+    # Dynamic header-text input — pre-filled with the default the builder
+    # would generate. The renderUI re-fires whenever `input$forest_ref`
+    # (or sm / cr$net) changes, so the value resets to the new default
+    # automatically. Custom edits the user typed for the *previous*
+    # reference are intentionally discarded — user has to re-type only if
+    # they want a non-default header for the new reference.
     output$forest_smlab_input <- renderUI({
       cr <- tryCatch(cinema_data(), error = function(e) NULL)
       if (is.null(cr) || is.null(cr$net)) {
@@ -905,12 +908,8 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                          paste0(sm, " vs. ", ref)
                        else
                          paste0("Network meta-analysis vs. ", ref)
-      # Preserve user edits across re-renders: if they've typed something,
-      # keep it; otherwise reset to the recomputed default.
-      cur <- isolate(input$forest_smlab)
-      init <- if (is.null(cur) || !nzchar(cur)) default_smlab else cur
       textInput(ns("forest_smlab"), "Header text",
-                value = init,
+                value = default_smlab,
                 placeholder = default_smlab)
     })
 

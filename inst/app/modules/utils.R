@@ -335,21 +335,39 @@ build_netmeta_forest <- function(net, opts = list()) {
     "Major concerns" = "#eec4bf",
     "Not assessed"   = "#dcdcdc")
 
-  trts_in_order <- if (drop_ref) setdiff(net$trts, ref_trt) else net$trts
+  # forest.netmeta internally calls `dat.i <- dat.i[order(sortvar), ]` which
+  # reorders the rows but does NOT reorder col.square / col.square.lines /
+  # col.study. To keep colours aligned with their treatments, we have to
+  # apply the same permutation ourselves before passing the col vectors.
+  if (is.null(sortvar)) {
+    sort_perm <- seq_along(net$trts)
+  } else if (is.character(sortvar)) {
+    sort_perm <- match(sortvar, net$trts)
+  } else if (is.numeric(sortvar)) {
+    sort_perm <- order(sortvar)
+  } else {
+    sort_perm <- seq_along(net$trts)
+  }
+  sort_perm <- sort_perm[!is.na(sort_perm)]
+  trts_in_order <- net$trts[sort_perm]
+  if (drop_ref) trts_in_order <- setdiff(trts_in_order, ref_trt)
 
+  # The reference treatment has no CINeMA judgement of its own. Render
+  # the square as solid black (fill + border + axis label all black) so
+  # it is visually distinct from any rated treatment and from "Not set".
+  # This also keeps the axis tick / label colour consistent with the
+  # rest of the plot — forest.netmeta ties the row colour to col.square,
+  # so a non-black fill drags the axis label colour with it.
   pick_pal <- function(t, pal) {
-    if (identical(t, ref_trt)) return(unname(pal["Not set"]))
+    if (identical(t, ref_trt)) return("#000000")
     cv <- conf_vec[t]
     if (is.null(cv) || is.na(cv) || !nzchar(cv) || !cv %in% names(pal))
       return(unname(pal["Not set"]))
     unname(pal[cv])
   }
 
-  # The reference treatment has no CINeMA judgement of its own. We want
-  # the square fill + border greyed out, but the row's axis label
-  # (treatment name) should stay black so the reference reads naturally.
   pick_label_col <- function(t, pal) {
-    if (identical(t, ref_trt)) return("#000000")  # axis label = black
+    if (identical(t, ref_trt)) return("#000000")
     cv <- conf_vec[t]
     if (is.null(cv) || is.na(cv) || !nzchar(cv) || !cv %in% names(pal))
       return(unname(pal["Not set"]))
