@@ -1265,20 +1265,31 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
               if (!is.null(ov_val) && ov_val %in% c("Suspected bias", "Suspected substantial bias")) {
                 pct  <- contribs[col_nm] * 100
-                # Direction priority: user-entered bias_dir (if any) overrides Egger.
-                # "t1" = parts[1] favored, "t2" = parts[2] favored.
-                # Convert to Egger-style sign convention: positive → parts[2] favored.
-                bias_sgn   <- 0L
+                # The bias_dir dropdown was built using *canonical* (alphabetic
+                # pmin / pmax) treatment labels — the same ordering used to
+                # construct comp_key `ck`. So the user's "t1" / "t2" choice
+                # always refers to (ck_t1, ck_t2), regardless of the order in
+                # which the contribution-matrix column happens to list them.
+                # Bug fix: use ck_t1/ck_t2 rather than parts[1]/parts[2],
+                # which can be inverted depending on netmeta's internal
+                # ordering of the contribution matrix columns.
+                ck_t1 <- pmin(parts[1], parts[2])
+                ck_t2 <- pmax(parts[1], parts[2])
+                favored <- NA_character_
                 dir_manual <- input[[paste0("bias_dir_", sid)]]
                 if (!is.null(dir_manual) && nzchar(dir_manual)) {
-                  bias_sgn <- if (dir_manual == "t2") 1L else -1L
+                  favored <- if (dir_manual == "t2") ck_t2 else ck_t1
                 } else {
-                  eg_row   <- eg %>% filter(comp_key == ck)
-                  if (nrow(eg_row) > 0 && !is.na(eg_row$egger_bias[1]))
+                  # Egger fallback: egger_df was computed using canonical
+                  # (ck_t1, ck_t2) treat ordering, so positive sign → ck_t2.
+                  eg_row <- eg %>% filter(comp_key == ck)
+                  if (nrow(eg_row) > 0 && !is.na(eg_row$egger_bias[1])) {
                     bias_sgn <- sign(eg_row$egger_bias[1])
+                    if (bias_sgn != 0)
+                      favored <- if (bias_sgn > 0) ck_t2 else ck_t1
+                  }
                 }
-                if (bias_sgn != 0) {
-                  favored <- if (bias_sgn > 0) parts[2] else parts[1]
+                if (!is.na(favored)) {
                   if (favored == ne$t2[i]) pct_t2 <- pct_t2 + pct
                   else                     pct_t1 <- pct_t1 + pct
                 }
@@ -1454,6 +1465,81 @@ moduleC_server <- function(id, processed_data, cinema_module,
       ))
     })
 
+    observeEvent(input$info_pw_overall, {
+      showModal(modalDialog(
+        title    = tagList(icon("info-circle"),
+                           " \u2462 Pairwise overall judgement \u2014 Decision guide"),
+        size     = "l",
+        easyClose = TRUE,
+        footer   = modalButton("Close"),
+        div(style = "font-size:0.92em;",
+          p("Each direct comparison gets a single overall pairwise",
+            " judgement ", tags$b("\u2462"),
+            " by combining within-study bias (\u2460) and across-study",
+            " bias (\u2461). The algorithm short-circuits to ",
+            em("Suspected bias"),
+            " as soon as either component is suspected (Chiocchia 2021",
+            " \u00a72.3)."),
+
+          tags$h5("Truth table"),
+          tags$table(class = "table table-bordered table-sm",
+            style = "font-size:0.95em;",
+            tags$thead(tags$tr(
+              tags$th("\u2460 Within-study"),
+              tags$th("\u2461 Across-study"),
+              tags$th("\u2192 \u2462 Overall")
+            )),
+            tags$tbody(
+              tags$tr(tags$td("Suspected bias"), tags$td(em("any value")),
+                      tags$td(strong(style = "color:#721c24;",
+                                     "Suspected bias")),
+                      title = "Within Suspected dominates regardless of Across"),
+              tags$tr(tags$td(em("any value")), tags$td("Suspected bias"),
+                      tags$td(strong(style = "color:#721c24;",
+                                     "Suspected bias")),
+                      title = "Across Suspected dominates regardless of Within"),
+              tags$tr(tags$td("No bias detected"),
+                      tags$td("No bias detected"),
+                      tags$td(strong(style = "color:#155724;",
+                                     "No bias detected"))),
+              tags$tr(tags$td(em("Otherwise")), tags$td(em("Otherwise")),
+                      tags$td(strong(style = "color:#856404;",
+                                     "Some concerns")),
+                      title = "Any other combination of Some concerns / No bias / Insufficient data")
+            )
+          ),
+
+          tags$h5("Group-specific rules"),
+          tags$ul(
+            tags$li(strong("Group A (Mixed/Direct):"),
+                    " evaluate both \u2460 and \u2461 normally."),
+            tags$li(strong("Group B (Other outcomes):"),
+                    " \u2460 only \u2014 \u2461 is Not applicable",
+                    " (no outcome data \u2192 no funnel/Egger possible)."),
+            tags$li(strong("Group C (Unobserved):"),
+                    " \u2461 only (qualitative) \u2014 \u2460 is Not",
+                    " applicable.")
+          ),
+
+          tags$h5("Why ", em("Suspected bias"), " short-circuits"),
+          p("\u2460 and \u2461 describe distinct mechanisms (selective",
+            " non-reporting vs publication bias). If either is severe",
+            " enough to be Suspected, the comparison is Suspected",
+            " overall \u2014 Tab 2's contribution-matrix step then needs",
+            " to know which treatment the bias favours.",
+            tags$b(" Direction of bias "),
+            "in the rightmost column makes that explicit."),
+
+          tags$hr(),
+          tags$small(style = "color:#666;",
+            "Reference: Chiocchia V, et al. ",
+            em("ROB-MEN: a tool to assess Risk Of Bias due to Missing"),
+            em(" Evidence in Network meta-analysis."),
+            " BMC Med 2021;19:304.")
+        )
+      ))
+    })
+
     observeEvent(input$info_contrib, {
       showModal(modalDialog(
         title = tagList(icon("info-circle"), " Evaluation of contribution — Decision guide"),
@@ -1472,42 +1558,163 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
     observeEvent(input$info_sse, {
       showModal(modalDialog(
-        title = tagList(icon("info-circle"), " Small-study effects — Decision guide"),
-        easyClose = TRUE, footer = modalButton("Close"),
-        tags$ul(
-          tags$li(strong("No evidence:"),
-                  " adjusted estimate similar to unadjusted, CIs overlap well"),
-          tags$li(strong("Evidence reinforcing biased contribution:"),
-                  " adjusted estimate differs notably AND shifts in the same direction as the biased",
-                  " contribution (\u24a4a) \u2192 risk of High risk"),
-          tags$li(strong("Evidence NOT reinforcing:"),
-                  " adjusted estimate differs but in opposite direction \u2192 biases counteract",
-                  " \u2192 Some concerns at most")
+        title    = tagList(icon("info-circle"),
+                           " ⒤b Small-study effects — Decision guide"),
+        size     = "l",
+        easyClose = TRUE,
+        footer   = modalButton("Close"),
+        div(style = "font-size:0.92em;",
+          p("This judgement compares the unadjusted NMA estimate with the",
+            tags$b(" NMR-adjusted estimate "),
+            "(network meta-regression on standard error, Chiocchia 2023",
+            " §2.4). If the regression-adjusted estimate is broadly",
+            " consistent with the unadjusted one, small-study effects",
+            " are unlikely to drive the result. If it differs and",
+            " shifts in the same direction as the biased pairwise",
+            " contributions (⒤a), small-study effects reinforce",
+            " the bias and the comparison is at higher risk."),
+
+          tags$h5("Decision tree"),
+          tags$table(class = "table table-bordered table-sm",
+            style = "font-size:0.95em;",
+            tags$thead(tags$tr(
+              tags$th("Adjusted vs unadjusted"),
+              tags$th("Direction of shift"),
+              tags$th("→ Judgement")
+            )),
+            tags$tbody(
+              tags$tr(tags$td("Adjusted CI overlaps unadjusted CI well"),
+                      tags$td(HTML("&mdash;")),
+                      tags$td(strong(style = "color:#155724;",
+                                     "No evidence of small-study effects"))),
+              tags$tr(tags$td("CIs separate / NMR estimate differs notably"),
+                      tags$td("Same direction as ⒤a biased contribution"),
+                      tags$td(strong(style = "color:#721c24;",
+                                     "Evidence reinforcing biased contribution"))),
+              tags$tr(tags$td("CIs separate / NMR estimate differs notably"),
+                      tags$td("Opposite direction (biases cancel)"),
+                      tags$td(strong(style = "color:#856404;",
+                                     "Evidence not reinforcing")))
+            )
+          ),
+
+          tags$h5("How the auto judgement works"),
+          tags$ul(
+            tags$li("Run ", code("netmetaregression(net, var.covar = \"seTE\")"),
+                    " to obtain an SE-adjusted treatment effect with a",
+                    " 95% CI."),
+            tags$li("Compare the NMR CI with the unadjusted NMA CI;",
+                    " if they overlap, default to ",
+                    em("No evidence"), "."),
+            tags$li("If they don't overlap, compare the direction of",
+                    " shift to ⒤a's biased-contribution direction."),
+            tags$li(strong("Edge cases:"),
+                    " when NMR cannot be fitted (τ² = 0",
+                    " boundary, insufficient df, or fewer than 10",
+                    " studies in the network), ⒤b falls back to ",
+                    em("No evidence "),
+                    "so the cell still carries an interpretable",
+                    " judgement.")
+          ),
+
+          tags$hr(),
+          tags$small(style = "color:#666;",
+            "Reference: Chiocchia V, et al. ",
+            em("Small-study effects in network meta-analysis."),
+            " Res Synth Methods 2023;14:830–850.")
         )
       ))
     })
 
     observeEvent(input$info_robmen_alg, {
       showModal(modalDialog(
-        title = tagList(icon("info-circle"), " ROB-MEN final rating algorithm (Table 5, Chiocchia 2021)"),
-        easyClose = TRUE, footer = modalButton("Close"),
-        tags$table(class = "table table-bordered table-sm",
-          style = "font-size:0.95em;",
-          tags$thead(tags$tr(
-            tags$th("\u24a4a Contribution"),
-            tags$th("\u24a4b Small-study effects"),
-            tags$th("Result")
-          )),
-          tags$tbody(
-            tags$tr(tags$td("No substantial / Balanced"), tags$td("None"),
-                    tags$td(strong(style = "color:#155724;", "Low risk"))),
-            tags$tr(tags$td("No substantial / Balanced"), tags$td("Present"),
-                    tags$td(strong(style = "color:#856404;", "Some concerns"))),
-            tags$tr(tags$td("Favouring one treatment"), tags$td("None / opposite dir."),
-                    tags$td(strong(style = "color:#856404;", "Some concerns"))),
-            tags$tr(tags$td("Favouring one treatment"), tags$td("Reinforcing"),
-                    tags$td(strong(style = "color:#721c24;", "High risk")))
-          )
+        title    = tagList(icon("info-circle"),
+                           " ⒤ ROB-MEN final rating algorithm",
+                           " (Table 5, Chiocchia 2021)"),
+        size     = "l",
+        easyClose = TRUE,
+        footer   = modalButton("Close"),
+        div(style = "font-size:0.92em;",
+          p("The final ROB-MEN rating per NMA estimate combines two",
+            " pieces of evidence: how much of the estimate's contribution",
+            " comes from biased pairwise comparisons (⒤a), and",
+            " whether small-study effects reinforce, oppose, or are",
+            " absent (⒤b)."),
+
+          tags$h5("Rating algorithm"),
+          tags$table(class = "table table-bordered table-sm",
+            style = "font-size:0.95em;",
+            tags$thead(tags$tr(
+              tags$th("⒤a Contribution"),
+              tags$th("⒤b Small-study effects"),
+              tags$th("→ ⒤ ROB-MEN final")
+            )),
+            tags$tbody(
+              tags$tr(tags$td("No substantial contribution"),
+                      tags$td(em("any value")),
+                      tags$td(strong(style = "color:#155724;",
+                                     "Low risk")),
+                      title = "No biased contribution -> nothing for SSE to reinforce"),
+              tags$tr(tags$td("Substantial — balanced"),
+                      tags$td("None"),
+                      tags$td(strong(style = "color:#155724;",
+                                     "Low risk"))),
+              tags$tr(tags$td("Substantial — balanced"),
+                      tags$td("Present (any direction)"),
+                      tags$td(strong(style = "color:#856404;",
+                                     "Some concerns"))),
+              tags$tr(tags$td("Substantial — favouring one treatment"),
+                      tags$td("None / opposite direction"),
+                      tags$td(strong(style = "color:#856404;",
+                                     "Some concerns"))),
+              tags$tr(tags$td("Substantial — favouring one treatment"),
+                      tags$td("Reinforcing same direction"),
+                      tags$td(strong(style = "color:#721c24;",
+                                     "High risk")))
+            )
+          ),
+
+          tags$h5("Reading the table"),
+          tags$ul(
+            tags$li(strong("Low risk:"),
+                    " bias does not materially shape this estimate —",
+                    " either no biased pairwise contribution is large",
+                    " enough to matter (≥ 15 pp threshold) or the",
+                    " biased contributions cancel and the network shows",
+                    " no small-study-effect signal."),
+            tags$li(strong("Some concerns:"),
+                    " a partial signal exists but the direction is",
+                    " neutral or contradictory — either bias",
+                    " contributions are balanced and small-study effects",
+                    " add a caveat, or the bias points one way but the",
+                    " regression adjustment moves the other way."),
+            tags$li(strong("High risk:"),
+                    " biased contributions favour one treatment AND",
+                    " small-study effects shift the estimate in that",
+                    " same direction — the two signals reinforce.")
+          ),
+
+          tags$h5("Where the inputs come from"),
+          tags$ul(
+            tags$li(tags$b("⒤a"),
+                    " — sum of contribution-matrix entries from",
+                    " comparisons rated Suspected bias in Tab 1, weighted",
+                    " by Direction of bias. Auto-judged by the 15 pp",
+                    " threshold."),
+            tags$li(tags$b("⒤b"),
+                    " — NMR-adjusted vs unadjusted CI overlap (see",
+                    " ⒤b decision guide)."),
+            tags$li("Each cell is editable so a domain expert can override",
+                    " the auto rating; ⒤ then auto-syncs from",
+                    " whatever values are currently shown.")
+          ),
+
+          tags$hr(),
+          tags$small(style = "color:#666;",
+            "Reference: Chiocchia V, et al. ",
+            em("ROB-MEN: a tool to assess Risk Of Bias due to Missing"),
+            em(" Evidence in Network meta-analysis."),
+            " BMC Med 2021;19:304 (Table 5).")
         )
       ))
     })
@@ -1809,7 +2016,11 @@ moduleC_server <- function(id, processed_data, cinema_module,
               class = "btn btn-xs btn-warning", style = "font-size:0.75em;"))),
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
-            HTML("③ Overall judgement")),
+            HTML("③ Overall judgement"),
+            actionButton(ns("info_pw_overall"), label = icon("question-circle"),
+              class = "btn btn-xs btn-link",
+              style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
+              title = "Decision guide")),
           div(style = "margin-top:4px;",
             actionButton(ns("calc_overall_pw"), tagList(icon("calculator"), " auto"),
               class = "btn btn-xs btn-info", style = "font-size:0.75em;",
