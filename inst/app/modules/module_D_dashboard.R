@@ -144,8 +144,8 @@ moduleD_ui <- function(id) {
           column(4, uiOutput(ns("forest_ref_picker"))),
           column(4, selectInput(ns("forest_sort"), "Sort order",
             choices = c(
-              "Default (P-score, best first)"                  = "pscore",
-              "P-score (worst first)"                          = "pscore_reverse",
+              "P-score"                                        = "pscore",
+              "▲ P-score"                                      = "pscore_reverse",
               "CINeMA category (High+Moderate first), then P-score"
                                                                = "cinema_pscore",
               "By point estimate"                              = "estimate",
@@ -174,19 +174,14 @@ moduleD_ui <- function(id) {
         fluidRow(
           column(4, sliderInput(ns("forest_fontsize"),
                                 "Font size (pt)",
-                                min = 8, max = 18, value = 14, step = 0.5)),
-          column(8, textInput(ns("forest_smlab"),
-                              "Header text (blank = auto)", value = ""))
+                                min = 5, max = 18, value = 10, step = 0.5)),
+          column(8, uiOutput(ns("forest_smlab_input")))
         ),
         fluidRow(
-          column(4, textInput(ns("forest_label_left"),
+          column(6, textInput(ns("forest_label_left"),
                               "Favours left (under x-axis)", value = "")),
-          column(4, textInput(ns("forest_label_right"),
-                              "Favours right (under x-axis)", value = "")),
-          column(4, textInput(ns("forest_fontfamily"),
-                              "Plot font family (blank = system default)",
-                              value = "",
-                              placeholder = "e.g. Hiragino Sans"))
+          column(6, textInput(ns("forest_label_right"),
+                              "Favours right (under x-axis)", value = ""))
         )
       )
     ),
@@ -202,9 +197,9 @@ moduleD_ui <- function(id) {
     fluidRow(
       column(4, selectInput(ns("league_sort"), "Sort treatments by",
         choices = c(
-          "Alphabetic"             = "alpha",
-          "P-score (best first)"   = "pscore",
-          "P-score (worst first)"  = "pscore_reverse"),
+          "Alphabetic"  = "alpha",
+          "P-score"     = "pscore",
+          "▲ P-score"   = "pscore_reverse"),
         selected = "alpha"))
     ),
     uiOutput(ns("league_table_ui")),
@@ -892,6 +887,33 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                   choices = trts, selected = default)
     })
 
+    # Dynamic header-text input — pre-filled with the same default the
+    # builder would generate, so the user sees what's actually being
+    # rendered before typing an override.
+    output$forest_smlab_input <- renderUI({
+      cr <- tryCatch(cinema_data(), error = function(e) NULL)
+      if (is.null(cr) || is.null(cr$net)) {
+        return(textInput(ns("forest_smlab"), "Header text", value = ""))
+      }
+      ref <- input$forest_ref %||% cr$net$reference.group %||%
+             sort(cr$net$trts)[1]
+      sm  <- if (!is.null(nma_settings_r))
+               nma_settings_r()$effect_measure %||%
+                 tryCatch(cr$net$sm, error = function(e) "")
+             else tryCatch(cr$net$sm, error = function(e) "")
+      default_smlab <- if (nzchar(sm))
+                         paste0(sm, " vs. ", ref)
+                       else
+                         paste0("Network meta-analysis vs. ", ref)
+      # Preserve user edits across re-renders: if they've typed something,
+      # keep it; otherwise reset to the recomputed default.
+      cur <- isolate(input$forest_smlab)
+      init <- if (is.null(cur) || !nzchar(cur)) default_smlab else cur
+      textInput(ns("forest_smlab"), "Header text",
+                value = init,
+                placeholder = default_smlab)
+    })
+
     # ------------------------------------------------------------------
     # forest_confidence_r: per-treatment CINeMA confidence vector keyed
     # by treatment name. Used by the "CINeMA category + P-score" sort
@@ -955,8 +977,6 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       lab_r_user <- trimws(input$forest_label_right %||% "")
       lab_l <- if (nzchar(lab_l_user)) lab_l_user else NULL
       lab_r <- if (nzchar(lab_r_user)) lab_r_user else NULL
-      ff_user <- trimws(input$forest_fontfamily %||% "")
-      ff <- if (nzchar(ff_user)) ff_user else ""
 
       # Per-treatment total N — used by the "Total N" column when
       # show_n_total is on. Zero-imputed for treatments with no
@@ -981,8 +1001,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         show_n_total  = isTRUE(input$forest_show_n        %||% TRUE),
         trt_n         = trt_n_vec,
         print_hetstat = isTRUE(input$forest_print_hetstat %||% FALSE),
-        fontsize_pt   = as.numeric(input$forest_fontsize  %||% 14),
-        fontfamily    = ff,
+        fontsize_pt   = as.numeric(input$forest_fontsize  %||% 10),
         smlab         = smlab,
         label_left    = lab_l,
         label_right   = lab_r
@@ -1020,19 +1039,15 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       # the actual content extent regardless of how many treatments the
       # network has.
       tmp <- tempfile(fileext = ".png")
-      ff <- input$forest_fontfamily %||% ""
-      .cairo_png(tmp, width = 1500L, height = 1800L, res = 150,
-                 family = ff)
-      .with_cjk_font(family = ff, dpi = 150,
-        tryCatch(
-          build_netmeta_forest(cr$net, forest_opts_r()),
-          error = function(e) {
-            plot.new()
-            title(main = paste("Forest plot unavailable:",
-                                conditionMessage(e)))
-          })
-      )
-      grDevices::dev.off()
+      .cairo_png(tmp, width = 1500L, height = 1800L, res = 150)
+      tryCatch(
+        build_netmeta_forest(cr$net, forest_opts_r()),
+        error = function(e) {
+          plot.new()
+          title(main = paste("Forest plot unavailable:",
+                              conditionMessage(e)))
+        },
+        finally = grDevices::dev.off())
       trim_png_in_place(tmp, border_px = 25)
 
       list(src         = tmp,
@@ -1363,18 +1378,15 @@ moduleD_server <- function(id, cinema_module, robmen_module,
           if (!is.null(opts)) {
             fn   <- paste0("forest_plot_", date_tag, ".png")
             png_path <- file.path(stage, fn)
-            ff <- input$forest_fontfamily %||% ""
             .cairo_png(png_path, width = 3000L, height = 3600L,
-                       res = 300, family = ff)
-            .with_cjk_font(family = ff, dpi = 300,
-              tryCatch(build_netmeta_forest(cr$net, opts),
-                       error = function(e) {
-                         plot.new()
-                         title(main = paste("Forest plot unavailable:",
-                                            conditionMessage(e)))
-                       })
-            )
-            grDevices::dev.off()
+                       res = 300)
+            tryCatch(build_netmeta_forest(cr$net, opts),
+                     error = function(e) {
+                       plot.new()
+                       title(main = paste("Forest plot unavailable:",
+                                          conditionMessage(e)))
+                     },
+                     finally = grDevices::dev.off())
             trim_png_in_place(png_path, border_px = 50)
             files_in_zip <- c(files_in_zip, fn)
           }

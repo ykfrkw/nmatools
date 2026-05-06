@@ -345,13 +345,27 @@ build_netmeta_forest <- function(net, opts = list()) {
     unname(pal[cv])
   }
 
+  # The reference treatment has no CINeMA judgement of its own. We want
+  # the square fill + border greyed out, but the row's axis label
+  # (treatment name) should stay black so the reference reads naturally.
+  pick_label_col <- function(t, pal) {
+    if (identical(t, ref_trt)) return("#000000")  # axis label = black
+    cv <- conf_vec[t]
+    if (is.null(cv) || is.na(cv) || !nzchar(cv) || !cv %in% names(pal))
+      return(unname(pal["Not set"]))
+    unname(pal[cv])
+  }
+
   col_cinema_dark <- NULL
   col_cinema_light <- NULL
+  col_cinema_label <- NULL
   if (use_cinema_color && length(trts_in_order) > 0) {
     col_cinema_dark  <- vapply(trts_in_order, pick_pal, character(1),
                                 pal = cinema_pal_dark)
     col_cinema_light <- vapply(trts_in_order, pick_pal, character(1),
                                 pal = cinema_pal_light)
+    col_cinema_label <- vapply(trts_in_order, pick_label_col, character(1),
+                                pal = cinema_pal_dark)
   }
 
   # ---- Optional add.data column (e.g. Total N per treatment) ------------
@@ -368,16 +382,8 @@ build_netmeta_forest <- function(net, opts = list()) {
     rownames(add_data) <- add_trts
   }
 
-  # ---- Font family (Japanese / CJK support) -----------------------------
-  # forest.meta hands `fontfamily` to grid::gpar() for every text run.
-  # CAVEAT: meta::forest renders text via grid which on most R installs
-  # ignores font fallback for non-Latin glyphs and produces 豆腐 when the
-  # smlab / label.left / label.right contain CJK characters. Reliable
-  # CJK rendering needs the {showtext} + {sysfonts} pair: install
-  # showtext, register a CJK font (e.g. via sysfonts::font_add_google
-  # or font_add with a local TTF), then call showtext::showtext_auto()
-  # before invoking the renderer. The Display Options "Plot font family"
-  # input lets the user point at a registered family name.
+  # forest.meta hands `fontfamily` to grid::gpar(). Default empty string
+  # lets the device pick. Per-deployment font tweaking is out of scope.
   font_family <- opts$fontfamily %||% ""
 
   # Build the call. Pass-through args via list so we can drop NULLs cleanly.
@@ -406,7 +412,8 @@ build_netmeta_forest <- function(net, opts = list()) {
   if (!is.null(col_cinema_dark)) {
     call_args$col.square       <- col_cinema_light  # fill (light)
     call_args$col.square.lines <- col_cinema_dark   # border (dark)
-    call_args$col.study        <- col_cinema_dark   # treatment label
+    call_args$col.study        <- col_cinema_label  # treatment label
+                                                    # (black for reference)
   }
   if (!is.null(add_data)) call_args$add.data <- add_data
   if (!is.null(sortvar)) call_args$sortvar <- sortvar
@@ -460,42 +467,6 @@ build_netmeta_forest <- function(net, opts = list()) {
     grDevices::png(filename = filename, width = width, height = height,
                    res = res)
   }
-}
-
-# ----------------------------------------------------------------------------
-# .with_cjk_font: wrap an expression in a showtext block so CJK glyphs
-# render through showtext's freetype path instead of the device's grid font.
-# No-op when showtext / sysfonts aren't installed; in that case CJK text
-# may render as 豆腐 — that's a known meta::forest + grid limitation.
-#
-# The first call lazily registers the user-supplied font family with
-# sysfonts (treating it as a Google Fonts name when it contains a space,
-# else as a local font filename). Subsequent calls reuse the registered
-# font.
-# ----------------------------------------------------------------------------
-.cjk_registered <- new.env(parent = emptyenv())
-
-.with_cjk_font <- function(expr, family = "", dpi = 150) {
-  if (!requireNamespace("showtext", quietly = TRUE) ||
-      !requireNamespace("sysfonts", quietly = TRUE) ||
-      !nzchar(family))
-    return(expr)
-  if (is.null(.cjk_registered[[family]])) {
-    ok <- tryCatch({
-      sysfonts::font_add_google(family, family)
-      TRUE
-    }, error = function(e) FALSE)
-    if (!ok) ok <- tryCatch({
-      sysfonts::font_add(family, regular = family)
-      TRUE
-    }, error = function(e) FALSE)
-    .cjk_registered[[family]] <- ok
-  }
-  if (!isTRUE(.cjk_registered[[family]])) return(expr)
-  showtext::showtext_opts(dpi = dpi)
-  showtext::showtext_begin()
-  on.exit(showtext::showtext_end(), add = TRUE)
-  force(expr)
 }
 
 trim_png_in_place <- function(path, border_px = 25, fuzz = 2) {

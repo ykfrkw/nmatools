@@ -61,7 +61,13 @@ source("modules/module_D_dashboard.R")
 
 ui <- fluidPage(
   theme = nma_theme,
-  titlePanel("NMA Evaluator: CINeMA + ROB-MEN"),
+  titlePanel(div(
+    tags$h2(style = "font-family: Monaco, Menlo, monospace;
+                     font-weight:600; color:#18181b; margin:0;",
+            "nmatools::cinema()"),
+    tags$div(style = "color:#52525b; font-size:0.95em; margin-top:2px;",
+             "netmeta + CINeMA + ROB-MEN")
+  )),
   tags$head(tags$style(HTML("
     .alert { padding:10px; border-radius:0.5rem; margin-bottom:10px; }
     .alert-info    { background:#eff6ff; border:1px solid #bfdbfe;
@@ -76,9 +82,7 @@ ui <- fluidPage(
 
   navbarPage(
     id    = "main_navbar",
-    title = tags$span(style = "font-family: Monaco, Menlo, monospace;
-                               font-weight:600; color:#18181b;",
-                      "nmatools::cinema()"),
+    title = NULL,  # title rendered by the titlePanel above the navbar
     tabPanel("Configuration",            moduleA_ui("module_a")),
     tabPanel("① Within-study bias", moduleB_d1_ui("module_b")),
     tabPanel("② Reporting bias",    moduleB_d2_ui("module_b")),
