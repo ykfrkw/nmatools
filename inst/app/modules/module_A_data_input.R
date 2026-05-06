@@ -375,7 +375,19 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
     # ====================================================================
     output$step2_ui <- renderUI({
       src <- data_source()
-      if (is.null(src) || identical(src, "injected")) return(NULL)
+      # Placeholder so the section title stays visible before any data is
+      # loaded (the previous return(NULL) made Step 2/3 disappear entirely
+      # and the user saw "1. Upload" jump straight to "4. Pairwise…").
+      if (is.null(src) || identical(src, "injected")) {
+        return(wellPanel(
+          h4("2. Data Format & Outcome Type"),
+          div(class = "alert alert-secondary",
+              style = "margin-bottom:0;",
+              icon("hourglass-half"),
+              " Upload a file or load the demo data to configure the",
+              " data format and outcome type.")
+        ))
+      }
 
       fmt    <- auto_fmt()
       ot     <- auto_outcome()
@@ -952,7 +964,18 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
     # ====================================================================
     output$nma_settings_ui <- renderUI({
       res <- tryCatch(processed_data(), error = function(e) NULL)
-      if (is.null(res) || !is.null(res$error) || is.null(res$data)) return(NULL)
+      # Placeholder before data is valid so the "3. NMA Settings" title is
+      # always visible (prevents the gap between Step 1 and Step 4).
+      if (is.null(res) || !is.null(res$error) || is.null(res$data)) {
+        return(wellPanel(
+          h4("3. NMA Settings"),
+          div(class = "alert alert-secondary",
+              style = "margin-bottom:0;",
+              icon("hourglass-half"),
+              " Effects model, reference treatment, and analysis options",
+              " appear here once the data above passes validation.")
+        ))
+      }
 
       df       <- res$data
       all_trts <- sort(unique(c(df$t1, df$t2)))
@@ -1078,7 +1101,15 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
     # ====================================================================
     output$run_analysis_ui <- renderUI({
       res <- tryCatch(processed_data(), error = function(e) NULL)
-      if (is.null(res) || !is.null(res$error) || is.null(res$data)) return(NULL)
+      # Placeholder so the Run Analysis section is informative even when
+      # no data has been validated yet.
+      if (is.null(res) || !is.null(res$error) || is.null(res$data)) {
+        return(div(class = "alert alert-secondary",
+                   style = "margin-bottom:0;",
+                   icon("hourglass-half"),
+                   " The Run button appears here once the data above",
+                   " passes validation."))
+      }
       div(style = "margin: 16px 0 8px;",
         actionButton(ns("run_analysis"),
                      "\u25b6  Run CINeMA + ROB-MEN Analysis",
