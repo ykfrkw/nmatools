@@ -532,6 +532,35 @@ moduleC_ui <- function(id) {
   ns <- NS(id)
 
   tagList(
+    # Inline-help "?" badge styling — the column-header info icons are
+    # spans (not buttons) styled as high-contrast circles so they stay
+    # visible regardless of bslib / Bootstrap version. Click handlers
+    # fire Shiny.setInputValue to trigger observeEvent in the server.
+    tags$head(tags$style(HTML("
+      .robmen-help-icon {
+        display: inline-block;
+        min-width: 20px;
+        height: 20px;
+        line-height: 18px;
+        padding: 0 6px;
+        margin-left: 2px;
+        text-align: center;
+        font-weight: 700;
+        font-size: 0.85em;
+        color: #6c3483;
+        background: #ffffff;
+        border: 1px solid #ffffff;
+        border-radius: 50%;
+        cursor: pointer;
+        user-select: none;
+        vertical-align: middle;
+      }
+      .robmen-help-icon:hover {
+        background: #f0e0fa;
+        color: #4a235a;
+        box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
+      }
+    "))),
     # Custom JS: enable/disable across-study cells reactively (no shinyjs needed)
     tags$head(tags$script(HTML("
       Shiny.addCustomMessageHandler('robmen_toggle_across', function(msg) {
@@ -2083,8 +2112,13 @@ moduleC_server <- function(id, processed_data, cinema_module,
         h4(tagList(icon("clipboard-check"), " ④⑤ ROB-MEN Final Rating")),
         p(style = "font-size:0.88em; color:#555; margin:0 0 8px 0;",
           "④ % contribution columns update automatically once the pairwise",
-          " assessment above is complete. Use the ",
-          icon("question-circle"), " icons in column headers for guidance."),
+          " assessment above is complete. Click the ",
+          tags$span(style = paste0(
+            "display:inline-block; min-width:18px; height:18px; line-height:16px;",
+            " padding:0 5px; text-align:center; font-weight:700; font-size:0.8em;",
+            " color:#fff; background:#6c3483; border-radius:50%;"),
+            "?"),
+          " badges in any column header for the decision logic."),
         div(style = "overflow-x:auto;",
             uiOutput(ns("robmen_table_ui"))),
 
@@ -2129,42 +2163,42 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("① Within-study bias"),
-            actionButton(ns("info_within"), label = HTML("?"),
-              class = "btn btn-xs",
-              style = "padding:0; min-width:20px; min-height:20px;
-                       line-height:1; font-weight:700; font-size:0.85em;
-                       color:#fff; background:rgba(255,255,255,0.18);
-                       border:1px solid rgba(255,255,255,0.55);
-                       border-radius:50%;",
-              title = "Assessment guide")),
+            tags$span(
+              id = ns("info_within"),
+              class = "robmen-help-icon",
+              onclick = sprintf(
+                "Shiny.setInputValue('%s', Date.now(), {priority:'event'})",
+                ns("info_within")),
+              title = "Assessment guide",
+              "?")),
           div(style = "margin-top:4px;",
             actionButton(ns("set_all_within_no"), "set all \u2192 No bias",
               class = "btn btn-xs btn-warning", style = "font-size:0.75em;"))),
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("② Across-study bias"),
-            actionButton(ns("info_across"), label = HTML("?"),
-              class = "btn btn-xs",
-              style = "padding:0; min-width:20px; min-height:20px;
-                       line-height:1; font-weight:700; font-size:0.85em;
-                       color:#fff; background:rgba(255,255,255,0.18);
-                       border:1px solid rgba(255,255,255,0.55);
-                       border-radius:50%;",
-              title = "Assessment guide")),
+            tags$span(
+              id = ns("info_across"),
+              class = "robmen-help-icon",
+              onclick = sprintf(
+                "Shiny.setInputValue('%s', Date.now(), {priority:'event'})",
+                ns("info_across")),
+              title = "Assessment guide",
+              "?")),
           div(style = "margin-top:4px;",
             actionButton(ns("set_all_across_no"), "set all \u2192 No bias",
               class = "btn btn-xs btn-warning", style = "font-size:0.75em;"))),
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("③ Overall judgement"),
-            actionButton(ns("info_pw_overall"), label = HTML("?"),
-              class = "btn btn-xs",
-              style = "padding:0; min-width:20px; min-height:20px;
-                       line-height:1; font-weight:700; font-size:0.85em;
-                       color:#fff; background:rgba(255,255,255,0.18);
-                       border:1px solid rgba(255,255,255,0.55);
-                       border-radius:50%;",
-              title = "Decision guide")),
+            tags$span(
+              id = ns("info_pw_overall"),
+              class = "robmen-help-icon",
+              onclick = sprintf(
+                "Shiny.setInputValue('%s', Date.now(), {priority:'event'})",
+                ns("info_pw_overall")),
+              title = "Decision guide",
+              "?")),
           div(style = "margin-top:4px;",
             actionButton(ns("calc_overall_pw"), tagList(icon("calculator"), " auto"),
               class = "btn btn-xs btn-info", style = "font-size:0.75em;",
@@ -2367,14 +2401,14 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = paste0(th_style, "text-align:center;"),
           div(style = "display:inline-flex; align-items:center; gap:4px; justify-content:center;",
             HTML("④ % Biased contrib."),
-            actionButton(ns("info_pct_biased"), label = HTML("?"),
-              class = "btn btn-xs",
-              style = "padding:0; min-width:20px; min-height:20px;
-                       line-height:1; font-weight:700; font-size:0.85em;
-                       color:#fff; background:rgba(255,255,255,0.18);
-                       border:1px solid rgba(255,255,255,0.55);
-                       border-radius:50%;",
-              title = "Decision guide")),
+            tags$span(
+              id = ns("info_pct_biased"),
+              class = "robmen-help-icon",
+              onclick = sprintf(
+                "Shiny.setInputValue('%s', Date.now(), {priority:'event'})",
+                ns("info_pct_biased")),
+              title = "Decision guide",
+              "?")),
           tags$small(style = "font-weight:normal; opacity:0.85;", "Favours 1st treat.")),
         tags$th(style = paste0(th_style, "text-align:center;"),
           div(HTML("④ % Biased contrib.")),
@@ -2382,14 +2416,14 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("⑤a Contribution"),
-            actionButton(ns("info_contrib"), label = HTML("?"),
-              class = "btn btn-xs",
-              style = "padding:0; min-width:20px; min-height:20px;
-                       line-height:1; font-weight:700; font-size:0.85em;
-                       color:#fff; background:rgba(255,255,255,0.18);
-                       border:1px solid rgba(255,255,255,0.55);
-                       border-radius:50%;",
-              title = "Decision guide")),
+            tags$span(
+              id = ns("info_contrib"),
+              class = "robmen-help-icon",
+              onclick = sprintf(
+                "Shiny.setInputValue('%s', Date.now(), {priority:'event'})",
+                ns("info_contrib")),
+              title = "Decision guide",
+              "?")),
           tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal;",
             HTML("\u226515 pp diff \u2192 Substantial"))),
         tags$th(style = paste0(th_style, "text-align:center;"),
@@ -2403,27 +2437,27 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("⑤b Small-study effects"),
-            actionButton(ns("info_sse"), label = HTML("?"),
-              class = "btn btn-xs",
-              style = "padding:0; min-width:20px; min-height:20px;
-                       line-height:1; font-weight:700; font-size:0.85em;
-                       color:#fff; background:rgba(255,255,255,0.18);
-                       border:1px solid rgba(255,255,255,0.55);
-                       border-radius:50%;",
-              title = "Decision guide")),
+            tags$span(
+              id = ns("info_sse"),
+              class = "robmen-help-icon",
+              onclick = sprintf(
+                "Shiny.setInputValue('%s', Date.now(), {priority:'event'})",
+                ns("info_sse")),
+              title = "Decision guide",
+              "?")),
           tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal;",
             HTML("Compare NMA vs NMR"))),
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("⑤ ROB-MEN rating"),
-            actionButton(ns("info_robmen_alg"), label = HTML("?"),
-              class = "btn btn-xs",
-              style = "padding:0; min-width:20px; min-height:20px;
-                       line-height:1; font-weight:700; font-size:0.85em;
-                       color:#fff; background:rgba(255,255,255,0.18);
-                       border:1px solid rgba(255,255,255,0.55);
-                       border-radius:50%;",
-              title = "Algorithm (Table 5)")))
+            tags$span(
+              id = ns("info_robmen_alg"),
+              class = "robmen-help-icon",
+              onclick = sprintf(
+                "Shiny.setInputValue('%s', Date.now(), {priority:'event'})",
+                ns("info_robmen_alg")),
+              title = "Algorithm (Table 5)",
+              "?")))
       )
 
       robmen_grp_header <- function(label) {
