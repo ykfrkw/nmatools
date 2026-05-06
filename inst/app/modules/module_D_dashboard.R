@@ -137,7 +137,8 @@ moduleD_ui <- function(id) {
 
     hr(),
     h4("Forest Plot"),
-    p(em("Points and error bars are colored by CINeMA confidence level.")),
+    p(em("Canonical netmeta::forest() output. Use Display Options to",
+         " change reference, sort order, x-axis, or appearance.")),
     tags$details(
       tags$summary(style = "cursor:pointer; color:#444; font-size:0.9em;
                             margin-bottom:6px;",
@@ -146,10 +147,12 @@ moduleD_ui <- function(id) {
         fluidRow(
           column(4, uiOutput(ns("forest_ref_picker"))),
           column(4, selectInput(ns("forest_sort"), "Sort order",
-            choices = c("Default (P-score)"   = "pscore",
-                        "By point estimate"   = "estimate",
-                        "By confidence"       = "confidence",
-                        "Alphabetic"          = "alpha"),
+            choices = c(
+              "Default (P-score)"                              = "pscore",
+              "CINeMA category (High+Moderate first), then P-score"
+                                                               = "cinema_pscore",
+              "By point estimate"                              = "estimate",
+              "Alphabetic"                                     = "alpha"),
             selected = "pscore")),
           column(4, sliderInput(ns("forest_height"),
                                 "Plot height (px)", 300, 1500, 600, step = 50))
@@ -160,9 +163,22 @@ moduleD_ui <- function(id) {
           column(4, numericInput(ns("forest_xlim_hi"), "x max (blank = auto)",
                                  value = NA)),
           column(4, checkboxInput(ns("forest_log_scale"),
-                                  "Log x-axis (OR/RR only)", TRUE))
+                                  "Log x-axis (OR/RR)", TRUE))
         ),
-        uiOutput(ns("forest_treatments_picker"))
+        fluidRow(
+          column(4, checkboxInput(ns("forest_show_k"),
+                                  "Show k (number of studies) column", TRUE)),
+          column(4, checkboxInput(ns("forest_show_w"),
+                                  "Show weight column", FALSE)),
+          column(4, checkboxInput(ns("forest_print_hetstat"),
+                                  "Show heterogeneity row (tau², I²)", FALSE))
+        ),
+        fluidRow(
+          column(4, checkboxInput(ns("forest_smaller_text"),
+                                  "Smaller text (dense plots)", FALSE)),
+          column(8, textInput(ns("forest_smlab"),
+                              "Header text (blank = auto)", value = ""))
+        )
       )
     ),
     uiOutput(ns("forest_plot_ui")),
@@ -970,17 +986,82 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                   choices = trts, selected = default)
     })
 
-    # Treatments-to-show checkbox group (every non-reference treatment is on)
-    output$forest_treatments_picker <- renderUI({
-      cr <- tryCatch(cinema_data(), error = function(e) NULL)
-      if (is.null(cr) || is.null(cr$net)) return(NULL)
-      ref  <- input$forest_ref %||% cr$net$reference.group %||% sort(cr$net$trts)[1]
-      trts <- setdiff(sort(cr$net$trts), ref)
-      checkboxGroupInput(ns("forest_treatments"),
-                         "Treatments to show (against reference)",
-                         choices = trts, selected = trts, inline = TRUE)
+    # ------------------------------------------------------------------
+    # forest_confidence_r: per-treatment CINeMA confidence vector keyed
+    # by treatment name. Used by the "CINeMA category + P-score" sort
+    # mode. Treatments missing from the merged table (or with empty
+    # confidence) default to "Not set" so they get the "poor" bucket.
+    # ------------------------------------------------------------------
+    forest_confidence_r <- reactive({
+      cr     <- tryCatch(cinema_data(),    error = function(e) NULL)
+      merged <- tryCatch(cinema_merged(),  error = function(e) NULL)
+      if (is.null(cr) || is.null(merged)) return(setNames(character(0),
+                                                          character(0)))
+      ref <- input$forest_ref %||% cr$net$reference.group %||%
+             sort(cr$net$trts)[1]
+      out <- setNames(rep("Not set", length(cr$net$trts)), cr$net$trts)
+      for (i in seq_len(nrow(merged))) {
+        parts <- strsplit(merged$comparison[i], " vs ")[[1]]
+        if (length(parts) != 2) next
+        other <- if (parts[1] == ref) parts[2]
+                 else if (parts[2] == ref) parts[1]
+                 else next
+        cv <- if (nzchar(merged$confidence[i])) merged$confidence[i]
+              else                              merged$suggested_confidence[i]
+        if (!nzchar(cv)) cv <- "Not set"
+        out[other] <- cv
+      }
+      out[ref] <- "High"   # reference is itself; pin to "good" bucket
+      out
     })
 
+    # ------------------------------------------------------------------
+    # forest_opts_r: assemble the build_netmeta_forest() options list
+    # from Display Options inputs. Single source of truth for both the
+    # inline render and the dl_forest download handler.
+    # ------------------------------------------------------------------
+    forest_opts_r <- reactive({
+      cr  <- tryCatch(cinema_data(), error = function(e) NULL)
+      req(!is.null(cr), !is.null(cr$net))
+      net <- cr$net
+
+      ref <- input$forest_ref %||% net$reference.group %||% sort(net$trts)[1]
+      sm  <- if (!is.null(nma_settings_r))
+               nma_settings_r()$effect_measure %||%
+                 tryCatch(net$sm, error = function(e) "")
+             else tryCatch(net$sm, error = function(e) "")
+      is_ratio  <- !is.null(sm) && sm %in% c("OR", "RR", "HR")
+      small_val <- if (!is.null(nma_settings_r))
+                     (nma_settings_r()$small_value_desirable %||% "desirable")
+                   else "desirable"
+
+      xlim_lo <- input$forest_xlim_lo
+      xlim_hi <- input$forest_xlim_hi
+      xlim    <- if (!is.null(xlim_lo) && !is.null(xlim_hi) &&
+                     !is.na(xlim_lo)   && !is.na(xlim_hi))
+                   c(xlim_lo, xlim_hi) else NULL
+
+      smlab_user <- trimws(input$forest_smlab %||% "")
+      smlab <- if (nzchar(smlab_user)) smlab_user else NULL
+
+      list(
+        reference     = ref,
+        sortvar       = input$forest_sort %||% "pscore",
+        confidence    = forest_confidence_r(),
+        small_values  = small_val,
+        xlim          = xlim,
+        log_scale     = isTRUE(input$forest_log_scale %||% TRUE) && is_ratio,
+        show_k        = isTRUE(input$forest_show_k        %||% TRUE),
+        show_weight   = isTRUE(input$forest_show_w        %||% FALSE),
+        print_hetstat = isTRUE(input$forest_print_hetstat %||% FALSE),
+        smaller_text  = isTRUE(input$forest_smaller_text  %||% FALSE),
+        smlab         = smlab
+      )
+    })
+
+    # ------------------------------------------------------------------
+    # OUTPUT: Inline forest plot (netmeta::forest, rendered as PNG)
+    # ------------------------------------------------------------------
     output$forest_plot_ui <- renderUI({
       cr <- tryCatch(cinema_data(), error = function(e) NULL)
       if (is.null(cr)) {
@@ -989,198 +1070,36 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                    " Run Module B (CINeMA) first."))
       }
       h <- input$forest_height %||% 600
-      plotlyOutput(ns("forest_plot_inline"), height = paste0(h, "px"))
+      imageOutput(ns("forest_plot_image"),
+                  height = paste0(h, "px"),
+                  width  = "100%")
     })
 
-    output$forest_plot_inline <- renderPlotly({
+    output$forest_plot_image <- renderImage({
       cr <- tryCatch(cinema_data(), error = function(e) NULL)
-      req(!is.null(cr))
+      req(!is.null(cr), !is.null(cr$net))
 
-      te_df  <- cr$te_df
-      merged <- cinema_merged()
-      net    <- cr$net
-      pal    <- current_palette()
-      # spec-09: reference may be overridden via the Display Options accordion
-      ref    <- input$forest_ref
-      if (is.null(ref) || !nzchar(ref))
-        ref <- tryCatch(net$reference.group, error = function(e) NULL)
-      sm     <- if (!is.null(nma_settings_r)) nma_settings_r()$effect_measure %||%
-                  tryCatch(net$sm, error = function(e) "") else
-                  tryCatch(net$sm, error = function(e) "")
-      is_ratio <- !is.null(sm) && sm %in% c("OR", "RR")
+      h_px <- input$forest_height %||% 600
+      tmp  <- tempfile(fileext = ".png")
+      grDevices::png(tmp, width = 1100, height = max(400, h_px), res = 110)
+      tryCatch(
+        build_netmeta_forest(cr$net, forest_opts_r()),
+        error = function(e) {
+          # Fallback: minimal default forest so the user still sees
+          # something if a Display Options combination upsets
+          # forest.netmeta.
+          plot.new()
+          title(main = paste("Forest plot unavailable:",
+                              conditionMessage(e)))
+        },
+        finally = grDevices::dev.off()
+      )
 
-      # small_value_desirable from Module A settings
-      small_val <- if (!is.null(nma_settings_r))
-                     (nma_settings_r()$small_value_desirable %||% "desirable")
-                   else "desirable"
-
-      # Per-treatment total N
-      trt_n <- compute_trt_n(cr$df)
-
-      # P-scores for sorting
-      p_scores_obj <- tryCatch(netrank(net, small.values = small_val),
-                               error = function(e) NULL)
-      p_scores <- if (!is.null(p_scores_obj)) {
-        p_scores_obj$Pscore.random %||%
-          p_scores_obj$Pscore.common %||%
-          p_scores_obj$random.w     %||%
-          p_scores_obj$common.w
-      } else NULL
-
-      if (!is.null(ref) && nzchar(ref)) {
-        te_df  <- te_df  %>% filter(grepl(ref, comparison, fixed = TRUE))
-        merged <- merged %>% filter(grepl(ref, comparison, fixed = TRUE))
-      }
-
-      conf_col_map <- if ((input$palette %||% "pastel") == "classic") pal$conf else pal$conf_txt
-
-      plot_df <- left_join(
-        te_df,
-        merged %>% select(comparison, confidence, suggested_confidence),
-        by = "comparison"
-      ) %>%
-        mutate(
-          conf_final = ifelse(nzchar(confidence), confidence, suggested_confidence),
-          conf_final = ifelse(nzchar(conf_final), conf_final, "Not set")
-        ) %>%
-        rowwise() %>%
-        mutate(
-          t1_c      = strsplit(comparison, " vs ")[[1]][1],
-          t2_c      = strsplit(comparison, " vs ")[[1]][2],
-          is_ref_t1 = !is.null(ref) && nzchar(ref) && (t1_c == ref),
-          label     = if (is_ref_t1) t2_c else t1_c,
-          TE_log    = if (is_ref_t1) -TE     else TE,
-          lo_log    = if (is_ref_t1) -upper  else lower,
-          hi_log    = if (is_ref_t1) -lower  else upper,
-          TE_disp   = if (is_ratio) exp(TE_log) else TE_log,
-          lo_disp   = if (is_ratio) exp(lo_log) else lo_log,
-          hi_disp   = if (is_ratio) exp(hi_log) else hi_log
-        ) %>%
-        ungroup()
-
-      # spec-09: filter by user-selected treatments (Display Options).
-      # An unset / empty selection means "show all", so leave plot_df alone.
-      sel_trts <- input$forest_treatments
-      if (!is.null(sel_trts) && length(sel_trts) > 0)
-        plot_df <- plot_df %>% filter(label %in% sel_trts)
-
-      # Add per-treatment N to labels
-      if (!is.null(trt_n)) {
-        plot_df <- plot_df %>%
-          mutate(label_n = paste0(label, " (N=", trt_n[label], ")"))
-      } else {
-        plot_df <- plot_df %>% mutate(label_n = label)
-      }
-
-      # Sort: largest TE at top (y_pos = n). spec-09: routed via accordion.
-      sort_choice <- input$forest_sort %||% "pscore"
-      if (identical(sort_choice, "alpha")) {
-        plot_df <- plot_df %>% arrange(label)
-      } else if (identical(sort_choice, "estimate")) {
-        plot_df <- plot_df %>% arrange(desc(TE_log))
-      } else if (identical(sort_choice, "confidence")) {
-        plot_df <- plot_df %>%
-          mutate(.conf_rank = match(conf_final,
-                                    c("High", "Moderate", "Low",
-                                      "Very low", "Not set"))) %>%
-          arrange(.conf_rank, label) %>%
-          select(-.conf_rank)
-      } else if (!is.null(p_scores) && length(p_scores) > 0) {
-        plot_df <- plot_df %>% mutate(p_score = p_scores[label])
-        plot_df <- if (small_val == "undesirable")
-                     plot_df %>% arrange(coalesce(p_score, Inf))
-                   else
-                     plot_df %>% arrange(desc(coalesce(p_score, -Inf)))
-      } else {
-        plot_df <- plot_df %>% arrange(TE_log)
-      }
-      # Ensure p_score column exists for the tooltip below even when the user
-      # picked a non-P-score sort.
-      if (!"p_score" %in% names(plot_df)) {
-        if (!is.null(p_scores) && length(p_scores) > 0) {
-          plot_df <- plot_df %>% mutate(p_score = p_scores[label])
-        } else {
-          plot_df <- plot_df %>% mutate(p_score = NA_real_)
-        }
-      }
-
-      plot_df <- plot_df %>%
-        mutate(
-          y_pos      = seq_len(n()),
-          label_n    = factor(label_n, levels = label_n),
-          conf_final = factor(conf_final,
-                              levels = c("High", "Moderate", "Low", "Very low", "Not set")),
-          p_score_lbl = if (!is.null(p_scores))
-                          ifelse(!is.na(p_score), sprintf("P=%.2f", p_score), "")
-                        else "",
-          tooltip    = paste0(
-            "<b>", label, "</b>",
-            if (!is.null(p_scores) && "p_score" %in% names(.)) {
-              ifelse(!is.na(p_score), paste0("  (P-score=", sprintf("%.2f", p_score), ")"), "")
-            } else "",
-            "<br>",
-            if (!is.null(sm) && nzchar(sm)) sm else "Estimate",
-            ": ", sprintf("%.3f", TE_disp),
-            if (!is.null(ref) && nzchar(ref)) paste0("  (vs. ", ref, ")") else "",
-            "<br>95% CI: [", sprintf("%.3f", lo_disp), ", ", sprintf("%.3f", hi_disp), "]<br>",
-            "CINeMA confidence: ", conf_final
-          )
-        )
-
-      null_x  <- if (is_ratio) 1 else 0
-      ref_lbl <- if (!is.null(ref) && nzchar(ref)) ref else "reference"
-      x_label <- if (!is.null(sm) && nzchar(sm))
-                   paste0(sm, "  (vs. ", ref_lbl, ")")
-                 else
-                   paste0("Effect size  (vs. ", ref_lbl, ")")
-
-      sort_label_map <- c(pscore = "P-score", estimate = "point estimate",
-                          confidence = "confidence", alpha = "alphabetic")
-      sort_label <- sort_label_map[[sort_choice]] %||% "P-score"
-
-      p <- ggplot(plot_df,
-                  aes(y = y_pos, colour = conf_final, fill = conf_final,
-                      text = tooltip)) +
-        geom_vline(xintercept = null_x, linetype = "dashed",
-                   colour = "grey40", linewidth = 0.6) +
-        geom_errorbarh(aes(xmin = lo_disp, xmax = hi_disp),
-                       height = 0.35, linewidth = 0.9) +
-        geom_point(aes(x = TE_disp),
-                   shape = 22, size = 4.5, stroke = 0.3, colour = "grey20") +
-        scale_colour_manual(values = conf_col_map, name = "CINeMA confidence",
-                            aesthetics = c("colour", "fill"), drop = FALSE) +
-        scale_y_continuous(breaks = plot_df$y_pos, labels = plot_df$label_n,
-                           expand = expansion(add = 0.7)) +
-        labs(x = x_label, y = NULL,
-             title = paste0("NMA Forest Plot",
-                            if (!is.null(ref) && nzchar(ref))
-                              paste0(" — vs. ", ref) else "",
-                            "  [sorted by ", sort_label, "]")) +
-        theme_minimal(base_size = 12) +
-        theme(
-          legend.position    = "bottom",
-          panel.grid.minor   = element_blank(),
-          panel.grid.major.y = element_blank(),
-          axis.text.y        = element_text(size = 11),
-          plot.title         = element_text(face = "bold")
-        )
-
-      # spec-09: optional manual x-limits override (NA = let ggplot decide).
-      xlim_lo <- input$forest_xlim_lo
-      xlim_hi <- input$forest_xlim_hi
-      if (!is.null(xlim_lo) && !is.null(xlim_hi) &&
-          !is.na(xlim_lo) && !is.na(xlim_hi)) {
-        p <- p + coord_cartesian(xlim = c(xlim_lo, xlim_hi))
-      }
-
-      # spec-09: log x-axis toggle. Defaults to log when the measure is
-      # OR/RR (was the previous behaviour). Now user-controllable.
-      use_log <- isTRUE(input$forest_log_scale %||% TRUE) && is_ratio
-      if (use_log) p <- p + scale_x_log10()
-
-      ggplotly(p, tooltip = "text") %>%
-        layout(legend = list(orientation = "h", x = 0, y = -0.15))
-    })
+      list(src         = tmp,
+           contentType = "image/png",
+           width       = "100%",
+           alt         = "NMA forest plot")
+    }, deleteFile = TRUE)
 
     # ------------------------------------------------------------------
     # OUTPUT: League table with CINeMA confidence cell colours
@@ -1327,7 +1246,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
     })
 
     # ------------------------------------------------------------------
-    # DOWNLOAD: Forest plot PNG
+    # DOWNLOAD: Forest plot PNG (matches the inline view; same builder)
     # ------------------------------------------------------------------
     output$dl_forest <- downloadHandler(
       filename = function() {
@@ -1335,145 +1254,16 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       },
       content = function(file) {
         cr <- tryCatch(cinema_data(), error = function(e) NULL)
-        req(!is.null(cr))
-
-        te_df  <- cr$te_df
-        merged <- cinema_merged()
-        net    <- cr$net
-        pal    <- current_palette()
-        ref    <- tryCatch(net$reference.group, error = function(e) NULL)
-        sm     <- if (!is.null(nma_settings_r)) nma_settings_r()$effect_measure %||%
-                    tryCatch(net$sm, error = function(e) "") else
-                    tryCatch(net$sm, error = function(e) "")
-        is_ratio  <- !is.null(sm) && sm %in% c("OR", "RR")
-        small_val <- if (!is.null(nma_settings_r))
-                       (nma_settings_r()$small_value_desirable %||% "desirable")
-                     else "desirable"
-
-        # Per-treatment total N
-        trt_n <- compute_trt_n(cr$df)
-
-        # P-scores for sorting
-        p_scores_obj <- tryCatch(netrank(net, small.values = small_val),
-                                 error = function(e) NULL)
-        p_scores <- if (!is.null(p_scores_obj)) {
-          p_scores_obj$Pscore.random %||%
-            p_scores_obj$Pscore.common %||%
-            p_scores_obj$random.w     %||%
-            p_scores_obj$common.w
-        } else NULL
-
-        if (!is.null(ref) && nzchar(ref)) {
-          te_df  <- te_df  %>% filter(grepl(ref, comparison, fixed = TRUE))
-          merged <- merged %>% filter(grepl(ref, comparison, fixed = TRUE))
-        }
-
-        conf_col_map <- if ((input$palette %||% "pastel") == "classic") pal$conf else pal$conf_txt
-
-        plot_df <- left_join(
-          te_df,
-          merged %>% select(comparison, confidence, suggested_confidence),
-          by = "comparison"
-        ) %>%
-          mutate(
-            conf_final = ifelse(nzchar(confidence), confidence, suggested_confidence),
-            conf_final = ifelse(nzchar(conf_final), conf_final, "Not set")
-          ) %>%
-          rowwise() %>%
-          mutate(
-            t1_c      = strsplit(comparison, " vs ")[[1]][1],
-            t2_c      = strsplit(comparison, " vs ")[[1]][2],
-            is_ref_t1 = !is.null(ref) && nzchar(ref) && (t1_c == ref),
-            label     = if (is_ref_t1) t2_c else t1_c,
-            TE_log    = if (is_ref_t1) TE    else -TE,
-            lo_log    = if (is_ref_t1) lower else -upper,
-            hi_log    = if (is_ref_t1) upper else -lower,
-            TE_disp   = if (is_ratio) exp(TE_log) else TE_log,
-            lo_disp   = if (is_ratio) exp(lo_log) else lo_log,
-            hi_disp   = if (is_ratio) exp(hi_log) else hi_log
-          ) %>%
-          ungroup()
-
-        # Add per-treatment N to labels
-        if (!is.null(trt_n)) {
-          plot_df <- plot_df %>%
-            mutate(label_n = paste0(label, " (N=", trt_n[label], ")"))
-        } else {
-          plot_df <- plot_df %>% mutate(label_n = label)
-        }
-
-        # Sort: largest TE at top (same logic as inline plot)
-        if (!is.null(p_scores) && length(p_scores) > 0) {
-          plot_df <- plot_df %>% mutate(p_score = p_scores[label])
-          plot_df <- if (small_val == "undesirable")
-                       plot_df %>% arrange(coalesce(p_score, Inf))
-                     else
-                       plot_df %>% arrange(desc(coalesce(p_score, -Inf)))
-        } else {
-          plot_df <- plot_df %>% arrange(TE_log)
-        }
-
-        plot_df <- plot_df %>%
-          mutate(
-            y_pos      = seq_len(n()),
-            label_n    = factor(label_n, levels = label_n),
-            conf_final = factor(conf_final,
-                                levels = c("High", "Moderate", "Low", "Very low", "Not set")),
-            ci_text    = paste0(sprintf("%.2f", TE_disp),
-                                " [", sprintf("%.2f", lo_disp),
-                                ", ", sprintf("%.2f", hi_disp), "]")
-          )
-
-        null_x  <- if (is_ratio) 1 else 0
-        ref_lbl <- if (!is.null(ref) && nzchar(ref)) ref else "reference"
-        x_label <- if (!is.null(sm) && nzchar(sm))
-                     paste0(sm, "  (vs. ", ref_lbl, ")")
-                   else
-                     paste0("Effect size  (vs. ", ref_lbl, ")")
-
-        x_vals <- c(plot_df$lo_disp, plot_df$hi_disp)
-        x_max  <- max(x_vals[is.finite(x_vals)], null_x, na.rm = TRUE)
-        x_text <- x_max + diff(range(x_vals[is.finite(x_vals)], null_x)) * 0.08
-
-        p <- ggplot(plot_df, aes(y = y_pos, colour = conf_final, fill = conf_final)) +
-          geom_vline(xintercept = null_x, linetype = "dashed",
-                     colour = "grey40", linewidth = 0.6) +
-          geom_errorbarh(aes(xmin = lo_disp, xmax = hi_disp),
-                         height = 0.35, linewidth = 0.9) +
-          geom_point(aes(x = TE_disp),
-                     shape = 22, size = 5, stroke = 0.3, colour = "grey20") +
-          geom_text(aes(x = x_text, label = ci_text),
-                    hjust = 0, size = 3.4, colour = "grey25") +
-          scale_colour_manual(values = conf_col_map, name = "CINeMA confidence",
-                              aesthetics = c("colour", "fill"), drop = FALSE) +
-          scale_y_continuous(breaks = plot_df$y_pos, labels = plot_df$label_n,
-                             expand = expansion(add = 0.7)) +
-          coord_cartesian(clip = "off") +
-          labs(
-            x       = x_label,
-            y       = NULL,
-            title   = paste0("NMA Forest Plot — vs. ", ref_lbl,
-                             "  [sorted by P-score, small value = ", small_val, "]"),
-            caption = paste0("Squares = NMA point estimates; bars = 95% CI;",
-                             " color = CINeMA confidence level;",
-                             " N = total randomized per treatment")
-          ) +
-          theme_minimal(base_size = 13) +
-          theme(
-            legend.position    = "bottom",
-            panel.grid.minor   = element_blank(),
-            panel.grid.major.y = element_blank(),
-            axis.text.y        = element_text(size = 12),
-            plot.title         = element_text(face = "bold"),
-            plot.caption       = element_text(colour = "grey50", size = 10),
-            plot.margin        = margin(10, 160, 10, 10)
-          )
-
-        if (is_ratio) p <- p + scale_x_log10()
-
-        fig_height <- max(4, 1.2 + 0.5 * nrow(plot_df))
-        ggsave(file, plot = p, width = 12, height = fig_height,
-               dpi = 300, device = "png")
+        req(!is.null(cr), !is.null(cr$net))
+        h_px <- input$forest_height %||% 600
+        # 2x the inline DPI for a print-ready PNG; height scales with the
+        # slider so a tall network produces a tall PNG.
+        grDevices::png(file,
+                       width  = 2200,
+                       height = max(800, h_px * 2),
+                       res    = 220)
+        on.exit(grDevices::dev.off())
+        build_netmeta_forest(cr$net, forest_opts_r())
       }
     )
 

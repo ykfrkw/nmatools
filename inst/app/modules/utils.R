@@ -202,23 +202,61 @@ build_netmeta_forest <- function(net, opts = list()) {
   pooled_kind <- if (isTRUE(net$random)) "random" else "common"
 
   # Sort variable
-  sortvar <- NULL
+  sortvar  <- NULL
   sort_key <- opts$sortvar %||% "pscore"
   small_v  <- opts$small_values %||% "desirable"
-  if (identical(sort_key, "pscore")) {
+
+  # Helper: get a per-treatment P-score vector aligned with net$trts. NULL on
+  # failure (e.g. degenerate network where netrank() can't run).
+  get_pscore_vec <- function() {
     pr <- tryCatch(netmeta::netrank(net, small.values = small_v),
                    error = function(e) NULL)
-    if (!is.null(pr)) {
-      ps <- pr$Pscore.random %||% pr$Pscore.common
-      if (!is.null(ps)) {
-        # forest.netmeta uses sortvar evaluated in net$trts order;
-        # higher P-score → top, so negate when desirable.
-        sortvar <- if (identical(small_v, "undesirable")) ps[net$trts]
-                   else                                    -ps[net$trts]
-      }
+    if (is.null(pr)) return(NULL)
+    pr$Pscore.random %||% pr$Pscore.common
+  }
+
+  if (is.numeric(sort_key) && length(sort_key) == length(net$trts)) {
+    # Caller supplied a precomputed numeric vector (already in net$trts order)
+    sortvar <- sort_key
+  } else if (identical(sort_key, "pscore")) {
+    ps <- get_pscore_vec()
+    if (!is.null(ps)) {
+      # forest.netmeta uses sortvar evaluated in net$trts order;
+      # higher P-score → top, so negate when desirable.
+      sortvar <- if (identical(small_v, "undesirable")) ps[net$trts]
+                 else                                    -ps[net$trts]
+    }
+  } else if (identical(sort_key, "cinema_pscore")) {
+    # Two-tier sort: CINeMA confidence bucket first
+    # (High+Moderate above Low+Very low), then P-score within each bucket
+    # (highest P-score on top of its bucket). Requires opts$confidence —
+    # a per-treatment named character vector with values from the
+    # CINeMA confidence vocabulary ("High" / "Moderate" / "Low" /
+    # "Very low" / "Not set"). Treatments missing from the vector default
+    # to the "poor" bucket so they don't accidentally float above
+    # well-rated rivals.
+    conf_vec <- opts$confidence %||% character()
+    ps       <- get_pscore_vec()
+    if (length(conf_vec) > 0) {
+      bucket <- vapply(net$trts, function(t) {
+        cv <- conf_vec[t]
+        if (is.null(cv) || is.na(cv) || !nzchar(cv)) "poor"
+        else if (cv %in% c("High", "Moderate", "No concerns")) "good"
+        else                                                   "poor"
+      }, character(1))
+      bucket_offset <- ifelse(bucket == "good", 0, 1000)
+      pscore_part <- if (!is.null(ps)) {
+        if (identical(small_v, "undesirable"))  ps[net$trts]
+        else                                   -ps[net$trts]
+      } else 0
+      sortvar <- bucket_offset + pscore_part
+    } else if (!is.null(ps)) {
+      # No confidence info → fall back to plain P-score
+      sortvar <- if (identical(small_v, "undesirable")) ps[net$trts]
+                 else                                    -ps[net$trts]
     }
   } else if (identical(sort_key, "estimate")) {
-    # Use the random/common TE column from netmeta's leag table.
+    # Use the random/common TE column from netmeta's league table.
     te_mat <- net$TE.random %||% net$TE.common
     ref    <- opts$reference %||% net$reference.group %||% net$trts[1]
     if (!is.null(te_mat) && ref %in% rownames(te_mat))
