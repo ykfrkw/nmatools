@@ -2129,8 +2129,13 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("① Within-study bias"),
-            actionButton(ns("info_within"), label = icon("question-circle"),
-              class = "btn btn-xs btn-link", style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
+            actionButton(ns("info_within"), label = HTML("?"),
+              class = "btn btn-xs",
+              style = "padding:0; min-width:20px; min-height:20px;
+                       line-height:1; font-weight:700; font-size:0.85em;
+                       color:#fff; background:rgba(255,255,255,0.18);
+                       border:1px solid rgba(255,255,255,0.55);
+                       border-radius:50%;",
               title = "Assessment guide")),
           div(style = "margin-top:4px;",
             actionButton(ns("set_all_within_no"), "set all \u2192 No bias",
@@ -2138,8 +2143,13 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("② Across-study bias"),
-            actionButton(ns("info_across"), label = icon("question-circle"),
-              class = "btn btn-xs btn-link", style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
+            actionButton(ns("info_across"), label = HTML("?"),
+              class = "btn btn-xs",
+              style = "padding:0; min-width:20px; min-height:20px;
+                       line-height:1; font-weight:700; font-size:0.85em;
+                       color:#fff; background:rgba(255,255,255,0.18);
+                       border:1px solid rgba(255,255,255,0.55);
+                       border-radius:50%;",
               title = "Assessment guide")),
           div(style = "margin-top:4px;",
             actionButton(ns("set_all_across_no"), "set all \u2192 No bias",
@@ -2147,9 +2157,13 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("③ Overall judgement"),
-            actionButton(ns("info_pw_overall"), label = icon("question-circle"),
-              class = "btn btn-xs btn-link",
-              style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
+            actionButton(ns("info_pw_overall"), label = HTML("?"),
+              class = "btn btn-xs",
+              style = "padding:0; min-width:20px; min-height:20px;
+                       line-height:1; font-weight:700; font-size:0.85em;
+                       color:#fff; background:rgba(255,255,255,0.18);
+                       border:1px solid rgba(255,255,255,0.55);
+                       border-radius:50%;",
               title = "Decision guide")),
           div(style = "margin-top:4px;",
             actionButton(ns("calc_overall_pw"), tagList(icon("calculator"), " auto"),
@@ -2353,9 +2367,13 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = paste0(th_style, "text-align:center;"),
           div(style = "display:inline-flex; align-items:center; gap:4px; justify-content:center;",
             HTML("④ % Biased contrib."),
-            actionButton(ns("info_pct_biased"), label = icon("question-circle"),
-              class = "btn btn-xs btn-link",
-              style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
+            actionButton(ns("info_pct_biased"), label = HTML("?"),
+              class = "btn btn-xs",
+              style = "padding:0; min-width:20px; min-height:20px;
+                       line-height:1; font-weight:700; font-size:0.85em;
+                       color:#fff; background:rgba(255,255,255,0.18);
+                       border:1px solid rgba(255,255,255,0.55);
+                       border-radius:50%;",
               title = "Decision guide")),
           tags$small(style = "font-weight:normal; opacity:0.85;", "Favours 1st treat.")),
         tags$th(style = paste0(th_style, "text-align:center;"),
@@ -2364,8 +2382,13 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("⑤a Contribution"),
-            actionButton(ns("info_contrib"), label = icon("question-circle"),
-              class = "btn btn-xs btn-link", style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
+            actionButton(ns("info_contrib"), label = HTML("?"),
+              class = "btn btn-xs",
+              style = "padding:0; min-width:20px; min-height:20px;
+                       line-height:1; font-weight:700; font-size:0.85em;
+                       color:#fff; background:rgba(255,255,255,0.18);
+                       border:1px solid rgba(255,255,255,0.55);
+                       border-radius:50%;",
               title = "Decision guide")),
           tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal;",
             HTML("\u226515 pp diff \u2192 Substantial"))),
@@ -2380,16 +2403,26 @@ moduleC_server <- function(id, processed_data, cinema_module,
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("⑤b Small-study effects"),
-            actionButton(ns("info_sse"), label = icon("question-circle"),
-              class = "btn btn-xs btn-link", style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
+            actionButton(ns("info_sse"), label = HTML("?"),
+              class = "btn btn-xs",
+              style = "padding:0; min-width:20px; min-height:20px;
+                       line-height:1; font-weight:700; font-size:0.85em;
+                       color:#fff; background:rgba(255,255,255,0.18);
+                       border:1px solid rgba(255,255,255,0.55);
+                       border-radius:50%;",
               title = "Decision guide")),
           tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal;",
             HTML("Compare NMA vs NMR"))),
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("⑤ ROB-MEN rating"),
-            actionButton(ns("info_robmen_alg"), label = icon("question-circle"),
-              class = "btn btn-xs btn-link", style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
+            actionButton(ns("info_robmen_alg"), label = HTML("?"),
+              class = "btn btn-xs",
+              style = "padding:0; min-width:20px; min-height:20px;
+                       line-height:1; font-weight:700; font-size:0.85em;
+                       color:#fff; background:rgba(255,255,255,0.18);
+                       border:1px solid rgba(255,255,255,0.55);
+                       border-radius:50%;",
               title = "Algorithm (Table 5)")))
       )
 
