@@ -334,6 +334,148 @@ write_test_results_docx <- function(net, file,
 }
 
 # ----------------------------------------------------------------------------
+# write_pairwise_appendix_docx
+# ----------------------------------------------------------------------------
+# For every direct pairwise comparison in the trained network, run a
+# fixed/random-effects pairwise meta-analysis on the study-level subset and
+# embed:
+#   - one forest plot (always, when k >= 1)
+#   - one contour-enhanced funnel plot (only when k >= 10, matching Egger's
+#     threshold; see pmatools' funnel-plot conventions)
+#
+# Reuses build_robmen_plots() from spec-13 phase 1 — that helper already
+# encapsulates the metagen() -> meta::forest() / meta::funnel() pipeline
+# with PNG output and per-comparison error isolation. Here we just wrap
+# its rows in officer body_add_img() calls and a portrait page.
+#
+# Inputs
+#   net           : trained netmeta object
+#   pairwise_df   : data.frame with columns t1, t2, studlab, y (TE), se (seTE)
+#   sm            : summary measure ("MD" / "SMD" / "OR" / "RR" / "HR")
+#   file          : output path
+#   builder_fn    : injectable forest/funnel builder (defaults to
+#                   build_robmen_plots so tests can stub)
+#
+# Returns invisibly the path; emits messages for skipped comparisons.
+# ----------------------------------------------------------------------------
+write_pairwise_appendix_docx <- function(net,
+                                         pairwise_df,
+                                         sm         = NULL,
+                                         file,
+                                         builder_fn = NULL,
+                                         title    = "Pairwise Meta-Analyses",
+                                         subtitle = NULL) {
+  if (!requireNamespace("officer", quietly = TRUE))
+    stop("officer is required for Word export")
+  if (is.null(builder_fn)) {
+    if (!exists("build_robmen_plots", mode = "function"))
+      stop("build_robmen_plots() is not loaded; source _robmen_bg_plots.R")
+    builder_fn <- build_robmen_plots
+  }
+  if (is.null(net) || is.null(pairwise_df))
+    stop("write_pairwise_appendix_docx: net and pairwise_df are required")
+
+  if (is.null(sm) || !nzchar(sm))
+    sm <- tryCatch(net$sm, error = function(e) "MD") %||% "MD"
+
+  # Build the list of unique direct comparisons (canonical order: t1 < t2).
+  pw <- pairwise_df
+  pw$t1c <- pmin(pw$t1, pw$t2)
+  pw$t2c <- pmax(pw$t1, pw$t2)
+  pw$y_can <- ifelse(pw$t1 == pw$t1c, pw$y, -pw$y)
+  comps <- unique(pw[, c("t1c", "t2c"), drop = FALSE])
+  comps <- comps[order(comps$t1c, comps$t2c), , drop = FALSE]
+
+  doc <- officer::read_docx()
+  doc <- officer::body_add_par(doc, title, style = "heading 1")
+  if (!is.null(subtitle) && nzchar(subtitle))
+    doc <- officer::body_add_par(doc, subtitle, style = "Normal")
+  doc <- officer::body_add_par(doc,
+    paste0("One section per direct comparison. Forest plots are produced",
+           " for every comparison with at least one study; contour-enhanced",
+           " funnel plots are added only when k >= 10 (Egger's threshold)."),
+    style = "Normal")
+
+  out_dir <- file.path(tempdir(),
+                       paste0("pairwise_appendix_", as.integer(Sys.time())))
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+  any_section <- FALSE
+  for (i in seq_len(nrow(comps))) {
+    t1 <- comps$t1c[i]; t2 <- comps$t2c[i]
+    sub <- pw[pw$t1c == t1 & pw$t2c == t2, , drop = FALSE]
+    sub_df <- data.frame(studlab = as.character(sub$studlab),
+                         y       = sub$y_can,
+                         se      = sub$se,
+                         stringsAsFactors = FALSE)
+    comp_label <- paste(t1, "vs", t2)
+
+    res <- tryCatch(
+      builder_fn(comp = list(comp_key = comp_label),
+                 study_subset = sub_df,
+                 sm           = sm,
+                 run_id       = paste0("appx_", i),
+                 out_dir      = out_dir,
+                 width        = 1100, height = 700, res = 130),
+      error = function(e)
+        list(forest_path = NA_character_, funnel_path = NA_character_,
+             k = nrow(sub_df), error = conditionMessage(e)))
+
+    doc <- officer::body_add_par(doc,
+                                  paste0(comp_label,
+                                         "  (k = ", res$k, ")"),
+                                  style = "heading 2")
+    if (!is.na(res$forest_path) && file.exists(res$forest_path)) {
+      doc <- officer::body_add_img(doc, src = res$forest_path,
+                                   width = 6.0, height = 3.6)
+      any_section <- TRUE
+    } else {
+      doc <- officer::body_add_par(doc,
+        paste0("[Forest plot unavailable",
+               if (!is.na(res$error)) paste0(": ", res$error) else "",
+               "]"),
+        style = "Normal")
+    }
+
+    if (!is.na(res$funnel_path) && file.exists(res$funnel_path)) {
+      doc <- officer::body_add_par(doc,
+                                    "Contour-enhanced funnel plot",
+                                    style = "Normal")
+      doc <- officer::body_add_img(doc, src = res$funnel_path,
+                                   width = 6.0, height = 3.6)
+    } else {
+      reason <- if (res$k < 10)
+                  paste0("Funnel plot omitted (k = ", res$k,
+                         " < 10; Egger's threshold).")
+                else
+                  "Funnel plot not produced."
+      doc <- officer::body_add_par(doc, reason, style = "Normal")
+    }
+  }
+
+  if (!any_section) {
+    doc <- officer::body_add_par(doc,
+      "[No pairwise meta-analyses could be rendered. ",
+      " Check that pairwise_df has columns t1, t2, studlab, y, se.]",
+      style = "Normal")
+  }
+
+  # Portrait A4
+  ps <- officer::prop_section(
+    page_size    = officer::page_size(orient = "portrait",
+                                      width  = 8.27,
+                                      height = 11.69),
+    page_margins = officer::page_mar(top = 0.75, bottom = 0.75,
+                                     left = 0.75, right = 0.75,
+                                     header = 0.5, footer = 0.5,
+                                     gutter = 0)
+  )
+  doc <- officer::body_set_default_section(doc, ps)
+  print(doc, target = file)
+  invisible(file)
+}
+
+# ----------------------------------------------------------------------------
 # build_robmen_export_df
 # ----------------------------------------------------------------------------
 # `robmen_results` is the list returned by moduleC_server's robmen_results

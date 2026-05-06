@@ -253,11 +253,13 @@ moduleD_ui <- function(id) {
                 "ROB-MEN evaluation — landscape Word"          = "robmen_docx",
                 "ROB-MEN evaluation — Excel"                   = "robmen_xlsx",
                 "Local & global tests of incoherence — Word (Monaco)"
-                                                               = "tests_docx"),
+                                                               = "tests_docx",
+                "Pairwise meta-analyses — Word (forest + funnel)"
+                                                               = "pairwise_docx"),
               selected = c("r_script", "netmeta_rds", "cinema_csv",
                            "netgraph_png", "forest_png",
                            "summary_docx", "league_docx", "robmen_docx",
-                           "tests_docx"))
+                           "tests_docx", "pairwise_docx"))
           ),
           column(4,
             downloadButton(ns("dl_bundle"), "Download Bundle (ZIP)",
@@ -1675,6 +1677,29 @@ moduleD_server <- function(id, cinema_module, robmen_module,
             files_in_zip <<- c(files_in_zip, fn)
           }, error = function(e) {
             message("tests_docx failed: ", conditionMessage(e))
+          })
+        }
+
+        # 13. Pairwise meta-analyses appendix — Word (Phase D)
+        if ("pairwise_docx" %in% items) {
+          fn <- paste0("pairwise_appendix_", date_tag, ".docx")
+          tryCatch({
+            pw_df <- cr$df
+            if (is.null(pw_df) || nrow(pw_df) == 0) {
+              message("pairwise_docx skipped: no pairwise data")
+            } else {
+              write_pairwise_appendix_docx(
+                net          = cr$net,
+                pairwise_df  = pw_df,
+                sm           = sm_val,
+                file         = file.path(stage, fn),
+                title        = "Pairwise Meta-Analyses (Appendix)",
+                subtitle     = paste("Generated:", format(Sys.time(),
+                                                            "%Y-%m-%d %H:%M")))
+              files_in_zip <<- c(files_in_zip, fn)
+            }
+          }, error = function(e) {
+            message("pairwise_docx failed: ", conditionMessage(e))
           })
         }
 
