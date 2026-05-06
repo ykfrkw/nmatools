@@ -1628,6 +1628,12 @@ moduleC_server <- function(id, processed_data, cinema_module,
     # User override is intentionally not preserved — feedback was that
     # ⑤a / ⑤b must always reflect the current data.
     # ------------------------------------------------------------------
+    # priority = -100: forces this observer to run AFTER renderUI(robmen_table_ui)
+    # has replaced the DOM. Otherwise our updateSelectInput fires first, then
+    # renderUI rebuilds the selectInput element with its own (stale) `selected`
+    # arg and Shiny preserves whatever value the client had — the auto value
+    # we just pushed gets overwritten. With low priority the observer runs
+    # last and the updateSelectInput call wins.
     observe({
       ne  <- tryCatch(nma_estimates(),  error = function(e) NULL)
       pb  <- tryCatch(pct_biased(),     error = function(e) NULL)
@@ -1658,11 +1664,37 @@ moduleC_server <- function(id, processed_data, cinema_module,
         }
         updateSelectInput(session, paste0("sse_eval_", sid), selected = s_auto)
 
-        # ⑤ ROB-MEN rating
+        # ⑤ ROB-MEN rating (using the auto-computed ⑤a / ⑤b)
         ov_auto <- compute_overall_robmen(c_auto, s_auto)
         updateSelectInput(session, paste0("ov_robmen_", sid), selected = ov_auto)
       }
-    })
+    }, priority = -100)
+
+    # ------------------------------------------------------------------
+    # Secondary observer: keep ⑤ ROB-MEN rating in sync with whatever the
+    # user currently sees in ⑤a / ⑤b. This is independent of the auto
+    # observer above and fires whenever a contrib_eval_* or sse_eval_*
+    # input value changes — including manual user overrides. Low priority
+    # so it runs after renderUI rebuilds, and after the auto observer
+    # finishes pushing its values.
+    # ------------------------------------------------------------------
+    observe({
+      ne <- tryCatch(nma_estimates(), error = function(e) NULL)
+      if (is.null(ne) || nrow(ne) == 0) return()
+      for (i in seq_len(nrow(ne))) {
+        sid <- safe_id(ne$comparison[i])
+        c_val <- input[[paste0("contrib_eval_", sid)]]
+        s_val <- input[[paste0("sse_eval_",     sid)]]
+        if (is.null(c_val) || !nzchar(c_val)) next
+        if (is.null(s_val) || !nzchar(s_val)) next
+        ov_new <- compute_overall_robmen(c_val, s_val)
+        ov_cur <- input[[paste0("ov_robmen_", sid)]]
+        if (is.null(ov_cur) || !identical(ov_cur, ov_new)) {
+          updateSelectInput(session, paste0("ov_robmen_", sid),
+                            selected = ov_new)
+        }
+      }
+    }, priority = -200)
 
     # ------------------------------------------------------------------
     # Collect final ROB-MEN ratings (for Module B integration + return)
