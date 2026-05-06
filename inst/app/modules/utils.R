@@ -288,24 +288,75 @@ build_netmeta_forest <- function(net, opts = list()) {
   # `plotwidth` family + `col.diamond` controls colour. Shape is fixed in
   # this iteration; the toggle is informational. Documented in spec-09.
 
-  fontsize <- if (isTRUE(opts$smaller_text)) 0.85 else 1.0
+  # forest.meta defaults to fontsize = 12; that renders ~tiny when the
+  # PNG is later downscaled by imageOutput's width="100%". Bump baseline to
+  # 14pt so labels stay legible after browser scaling, with optional 12pt
+  # for dense plots via $smaller_text. Heading/study fonts get an extra
+  # nudge per pmatools::plot_forest's defaults.
+  fs_base    <- if (isTRUE(opts$smaller_text)) 12 else 14
+  fs_study   <- fs_base
+  fs_heading <- fs_base + 1
+  fs_axis    <- fs_base
+  spacing    <- if (isTRUE(opts$smaller_text)) 0.9 else 1.05
+
+  # ---- CINeMA confidence colouring (default ON) -------------------------
+  # forest.netmeta paints rows in net$trts order, *excluding* the reference
+  # group. col.square / col.square.lines / col.study all accept either a
+  # single value or a per-row vector matched against that order. Pulling
+  # the colour vector from opts$confidence keeps the inline forest visually
+  # consistent with the league table and the network graph, both of which
+  # already use the CINeMA palette by default.
+  conf_vec  <- opts$confidence %||% character()
+  ref_trt   <- opts$reference %||% net$reference.group %||% net$trts[1]
+  trts_plot <- setdiff(net$trts, ref_trt)
+  use_cinema_color <- isTRUE(opts$cinema_color %||% TRUE)
+  cinema_pal <- opts$cinema_palette %||% c(
+    "High"     = "#1e8449",
+    "Moderate" = "#2471a3",
+    "Low"      = "#e67e22",
+    "Very low" = "#c0392b",
+    "Not set"  = "#bfbfbf",
+    "No concerns"    = "#1e8449",
+    "Some concerns"  = "#e67e22",
+    "Major concerns" = "#c0392b",
+    "Not assessed"   = "#bfbfbf")
+
+  col_cinema <- NULL
+  if (use_cinema_color && length(conf_vec) > 0 && length(trts_plot) > 0) {
+    col_cinema <- vapply(trts_plot, function(t) {
+      cv <- conf_vec[t]
+      if (is.null(cv) || is.na(cv) || !nzchar(cv) ||
+          !cv %in% names(cinema_pal))
+        return(unname(cinema_pal["Not set"]))
+      unname(cinema_pal[cv])
+    }, character(1))
+  }
 
   # Build the call. Pass-through args via list so we can drop NULLs cleanly.
   call_args <- list(
     x                = net,
     pooled           = pooled_kind,
-    reference.group  = opts$reference %||% net$reference.group,
+    reference.group  = ref_trt,
     leftcols         = leftcols,
     rightcols        = rightcols,
     backtransf       = backtransf,
     print.tau2       = isTRUE(opts$print_hetstat),
     print.I2         = isTRUE(opts$print_hetstat),
     overall.hetstat  = isTRUE(opts$print_hetstat),
-    fontsize         = fontsize,
+    fontsize         = fs_base,
+    fs.study         = fs_study,
+    fs.heading       = fs_heading,
+    fs.axis          = fs_axis,
+    spacing          = spacing,
     smlab            = opts$smlab %||% NULL,
     label.left       = opts$label_left  %||% NULL,
     label.right      = opts$label_right %||% NULL
   )
+  if (!is.null(col_cinema)) {
+    call_args$col.square       <- col_cinema
+    call_args$col.square.lines <- col_cinema
+    call_args$col.study        <- col_cinema
+  }
   if (!is.null(sortvar)) call_args$sortvar <- sortvar
   if (!is.null(xlim))    call_args$xlim    <- xlim
   # NB: `prediction` is a forest.netsplit / forest.meta arg, NOT a
