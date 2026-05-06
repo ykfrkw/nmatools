@@ -51,6 +51,7 @@ nma_theme <- bslib::bs_theme(
 
 source("modules/utils.R")            # shared constants and helpers (load first)
 source("modules/_d1_sens_judge.R")   # pure RoB sensitivity flowchart (used by Module B)
+source("modules/_robmen_bg_plots.R") # pure forest/funnel builder (spec-13 phase 1; used by Module C)
 source("modules/module_A_data_input.R")
 source("modules/module_B_cinema.R")
 source("modules/module_C_robmen.R")
