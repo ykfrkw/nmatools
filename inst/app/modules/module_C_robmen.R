@@ -196,15 +196,18 @@ compute_overall_robmen <- function(contrib_eval, sse_eval) {
 compute_auto_contrib <- function(te, pct_fav_t1, pct_fav_t2) {
   p1 <- if (length(pct_fav_t1) == 0 || is.na(pct_fav_t1[1])) 0 else pct_fav_t1[1]
   p2 <- if (length(pct_fav_t2) == 0 || is.na(pct_fav_t2[1])) 0 else pct_fav_t2[1]
-  if (p1 == 0 && p2 == 0) return("No substantial contribution from bias")
-  if (!is.na(te) && te > 0) {
-    p_concern <- p2; p_other <- p1
-  } else {
-    p_concern <- p1; p_other <- p2
-  }
-  if (p_concern - p_other > 15)
+  diff_pp <- abs(p1 - p2)
+  mx_pp   <- max(p1, p2)
+  # Symmetric rule (independent of NMA direction):
+  #   |p1 - p2| >= 15  -> Substantial – favouring one treatment
+  #   else, if max(p1, p2) >= 15 -> Substantial – balanced
+  #   else                       -> No substantial contribution
+  # The previous TE-direction-gated rule mis-classified roughly half the
+  # estimates (the side where bias opposed the NMA direction).
+  # Argument `te` kept for back-compat but no longer consulted.
+  if (diff_pp >= 15)
     "Substantial contribution from bias – favouring one treatment"
-  else if (p1 > 15 && p2 > 15)
+  else if (mx_pp >= 15)
     "Substantial contribution from bias – balanced"
   else
     "No substantial contribution from bias"
@@ -1540,19 +1543,146 @@ moduleC_server <- function(id, processed_data, cinema_module,
       ))
     })
 
-    observeEvent(input$info_contrib, {
+    observeEvent(input$info_pct_biased, {
       showModal(modalDialog(
-        title = tagList(icon("info-circle"), " Evaluation of contribution — Decision guide"),
-        easyClose = TRUE, footer = modalButton("Close"),
-        tags$ul(
-          tags$li(strong("No substantial contribution from bias:"),
-                  " neither treatment has \u226515 pp more than the other"),
-          tags$li(strong("Substantial – balanced:"),
-                  " substantial bias exists but roughly equal in both directions (biases cancel out)"),
-          tags$li(strong("Substantial – favouring one treatment:"),
-                  " one treatment has \u226515 pp more biased contribution than the other")
-        ),
-        tags$small("Note: 15 pp threshold is a guideline \u2014 apply consistently across all estimates.")
+        title    = tagList(icon("info-circle"),
+                           " ④ % Biased contribution — Decision guide"),
+        size     = "l",
+        easyClose = TRUE,
+        footer   = modalButton("Close"),
+        div(style = "font-size:0.92em;",
+          p("Each row of the ROB-MEN table reports two values: ",
+            tags$b("④a"), " (% biased contribution favouring the",
+            " 1st treatment of the comparison) and ",
+            tags$b("④b"),
+            " (% favouring the 2nd treatment). The values come from",
+            " the NMA contribution matrix, weighted by which",
+            " comparisons were rated Suspected bias in Tab 1 and the",
+            " Direction-of-bias selection."),
+
+          tags$h5("How ④a / ④b are computed"),
+          tags$ol(
+            tags$li("Take the contribution-matrix row for the NMA",
+                    " estimate of interest. Each column is one direct",
+                    " pairwise comparison and the entry is its %",
+                    " contribution to the estimate."),
+            tags$li("Filter to columns where the pairwise comparison",
+                    " was rated ", em("Suspected bias"),
+                    " in Tab 1's overall judgement (③)."),
+            tags$li("For each retained column, read its ",
+                    tags$b("Direction of bias"),
+                    " (user-selected, or Egger sign as fallback)."),
+            tags$li("Allocate the column's % contribution to ④a or ④b",
+                    " depending on whether the favoured treatment",
+                    " matches the estimate's t1 or t2."),
+            tags$li("Sum within each side. Display ④a and ④b in",
+                    " percentage points, rounded to 1 decimal.")
+          ),
+
+          tags$h5("Reading the badges"),
+          tags$ul(
+            tags$li("Cells where ", code("|④a − ④b| > 15 pp"),
+                    " get an orange highlight — this is the threshold",
+                    " that drives ", tags$b("⒤a Contribution "),
+                    "(see its decision guide)."),
+            tags$li("0 % means no biased contribution to that side. The",
+                    " two values do not need to sum to 100 % — only",
+                    " the biased portion is allocated; the unbiased",
+                    " contribution does not appear here.")
+          ),
+
+          tags$h5("What changes ④"),
+          tags$ul(
+            tags$li("Editing ", tags$b("Within-study bias (①)"),
+                    " or ", tags$b("Across-study bias (②)"),
+                    " — pushes the comparison's overall ③ toward",
+                    " Suspected, expanding the set of biased",
+                    " contributions."),
+            tags$li("Editing ", tags$b("Direction of bias"),
+                    " — re-allocates a column's contribution between",
+                    " ④a and ④b without changing the totals."),
+            tags$li("Both update ④ live (no Run button needed)."),
+          ),
+
+          tags$hr(),
+          tags$small(style = "color:#666;",
+            "Reference: Papakonstantinou T, et al.",
+            em(" CINeMA: percentage contribution from each comparison."),
+            " 2021. & Chiocchia V, et al.",
+            em(" ROB-MEN."), " BMC Med 2021;19:304.")
+        )
+      ))
+    })
+
+        observeEvent(input$info_contrib, {
+      showModal(modalDialog(
+        title    = tagList(icon("info-circle"),
+                           " ⒤a Evaluation of contribution — Decision guide"),
+        size     = "l",
+        easyClose = TRUE,
+        footer   = modalButton("Close"),
+        div(style = "font-size:0.92em;",
+          p("This judgement summarises how much of the NMA estimate's",
+            " contribution comes from biased pairwise comparisons, and",
+            " whether the bias points in one direction or balances",
+            " across treatments."),
+
+          tags$h5("Auto rule (symmetric, ≥ 15 pp threshold)"),
+          tags$table(class = "table table-bordered table-sm",
+            style = "font-size:0.95em;",
+            tags$thead(tags$tr(
+              tags$th("|④a − ④b|"),
+              tags$th("max(④a, ④b)"),
+              tags$th("→ ⒤a Contribution")
+            )),
+            tags$tbody(
+              tags$tr(tags$td("≥ 15 pp"),
+                      tags$td(em("any value")),
+                      tags$td(strong(style = "color:#721c24;",
+                                     "Substantial — favouring one treatment"))),
+              tags$tr(tags$td("< 15 pp"),
+                      tags$td("≥ 15 pp"),
+                      tags$td(strong(style = "color:#856404;",
+                                     "Substantial — balanced")),
+                      title = "At least one side has substantial biased contribution but the two sides are within 15 pp of each other"),
+              tags$tr(tags$td("< 15 pp"),
+                      tags$td("< 15 pp"),
+                      tags$td(strong(style = "color:#155724;",
+                                     "No substantial contribution")))
+            )
+          ),
+
+          tags$h5("Reading the rule"),
+          tags$ul(
+            tags$li(strong("Favouring one treatment:"),
+                    " the % biased contribution differs by ≥ 15 pp",
+                    " between t1 and t2 — the bias systematically pushes",
+                    " the estimate toward one treatment."),
+            tags$li(strong("Balanced:"),
+                    " at least one side carries ≥ 15 pp of biased",
+                    " contribution, but the two sides are within 15 pp",
+                    " of each other — biases exist but partially cancel."),
+            tags$li(strong("No substantial:"),
+                    " neither side reaches the 15 pp threshold — biased",
+                    " comparisons contribute little to this estimate.")
+          ),
+
+          tags$h5("Earlier asymmetric rule (now removed)"),
+          p(style = "color:#666;",
+            "Versions before this release gated the rule on the NMA",
+            " direction (TE > 0 vs ≤ 0). That meant when bias opposed",
+            " the NMA point estimate, ⒤a stayed at \"No substantial\"",
+            " regardless of magnitude — leaving roughly half of",
+            " comparisons mis-classified. The current rule uses",
+            " the symmetric absolute difference instead."),
+
+          tags$hr(),
+          tags$small(style = "color:#666;",
+            "Note: 15 pp threshold is a guideline — apply consistently",
+            " across all estimates. Reference: Chiocchia V, et al.",
+            " ROB-MEN: a tool to assess Risk Of Bias due to Missing",
+            " Evidence in Network meta-analysis. BMC Med 2021;19:304.")
+        )
       ))
     })
 
@@ -2221,7 +2351,12 @@ moduleC_server <- function(id, processed_data, cinema_module,
       header_row <- tags$tr(style = "background:#6c3483; color:white; font-weight:bold;",
         tags$th(style = th_style, "NMA estimate"),
         tags$th(style = paste0(th_style, "text-align:center;"),
-          div(HTML("④ % Biased contrib.")),
+          div(style = "display:inline-flex; align-items:center; gap:4px; justify-content:center;",
+            HTML("④ % Biased contrib."),
+            actionButton(ns("info_pct_biased"), label = icon("question-circle"),
+              class = "btn btn-xs btn-link",
+              style = "padding:0; color:rgba(255,255,255,0.8); font-size:1em;",
+              title = "Decision guide")),
           tags$small(style = "font-weight:normal; opacity:0.85;", "Favours 1st treat.")),
         tags$th(style = paste0(th_style, "text-align:center;"),
           div(HTML("④ % Biased contrib.")),
