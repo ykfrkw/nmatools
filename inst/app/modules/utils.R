@@ -267,12 +267,17 @@ build_netmeta_forest <- function(net, opts = list()) {
 
   # Columns
   leftcols  <- "studlab"
-  if (isTRUE(opts$show_k)) leftcols <- c(leftcols, "k")
+  leftlabs  <- "Treatment"
+  if (isTRUE(opts$show_k)) {
+    leftcols <- c(leftcols, "k")
+    leftlabs <- c(leftlabs, "Direct\nstudies")
+  }
+  if (isTRUE(opts$show_n_total) && !is.null(opts$trt_n) &&
+      length(opts$trt_n) > 0) {
+    leftcols <- c(leftcols, "N_total")
+    leftlabs <- c(leftlabs, "Total\nN")
+  }
   rightcols <- c("effect", "ci")
-  if (isTRUE(opts$show_weight))
-    rightcols <- c(rightcols,
-                   if (identical(pooled_kind, "random")) "w.random"
-                   else                                  "w.common")
 
   # xlim
   xlim <- NULL
@@ -289,26 +294,27 @@ build_netmeta_forest <- function(net, opts = list()) {
   # this iteration; the toggle is informational. Documented in spec-09.
 
   # forest.meta defaults to fontsize = 12; that renders ~tiny when the
-  # PNG is later downscaled by imageOutput's width="100%". Bump baseline to
-  # 14pt so labels stay legible after browser scaling, with optional 12pt
-  # for dense plots via $smaller_text. Heading/study fonts get an extra
-  # nudge per pmatools::plot_forest's defaults.
-  fs_base    <- if (isTRUE(opts$smaller_text)) 12 else 14
+  # PNG is later downscaled by imageOutput's width="100%". Caller picks
+  # the baseline via opts$fontsize_pt (continuous slider in module_D).
+  # Heading/study fonts get an extra nudge per pmatools::plot_forest.
+  fs_base    <- as.numeric(opts$fontsize_pt %||% 14)
+  if (is.na(fs_base) || fs_base <= 0) fs_base <- 14
   fs_study   <- fs_base
   fs_heading <- fs_base + 1
   fs_axis    <- fs_base
-  spacing    <- if (isTRUE(opts$smaller_text)) 0.9 else 1.05
+  # Spacing scales gently with font size so labels don't crowd at 8pt and
+  # don't waste vertical space at 18pt. Centred at 1.0 for fs=12.
+  spacing    <- max(0.7, min(1.4, 0.65 + fs_base / 30))
 
   # ---- CINeMA confidence colouring (default ON) -------------------------
-  # forest.netmeta paints rows in net$trts order, *excluding* the reference
-  # group. col.square / col.square.lines / col.study all accept either a
-  # single value or a per-row vector matched against that order. Pulling
-  # the colour vector from opts$confidence keeps the inline forest visually
-  # consistent with the league table and the network graph, both of which
-  # already use the CINeMA palette by default.
+  # forest.netmeta paints rows in net$trts order. With drop.reference.group
+  # = FALSE the reference treatment is INCLUDED as its own row; we pin it
+  # to the "High" palette colour so it visually anchors the bucket. The
+  # col.* vectors are matched against the row order, so we build them in
+  # net$trts order (no exclusion).
   conf_vec  <- opts$confidence %||% character()
   ref_trt   <- opts$reference %||% net$reference.group %||% net$trts[1]
-  trts_plot <- setdiff(net$trts, ref_trt)
+  drop_ref  <- isTRUE(opts$drop_reference %||% FALSE)
   use_cinema_color <- isTRUE(opts$cinema_color %||% TRUE)
   cinema_pal <- opts$cinema_palette %||% c(
     "High"     = "#1e8449",
@@ -321,9 +327,12 @@ build_netmeta_forest <- function(net, opts = list()) {
     "Major concerns" = "#c0392b",
     "Not assessed"   = "#bfbfbf")
 
+  trts_in_order <- if (drop_ref) setdiff(net$trts, ref_trt) else net$trts
+
   col_cinema <- NULL
-  if (use_cinema_color && length(conf_vec) > 0 && length(trts_plot) > 0) {
-    col_cinema <- vapply(trts_plot, function(t) {
+  if (use_cinema_color && length(trts_in_order) > 0) {
+    col_cinema <- vapply(trts_in_order, function(t) {
+      if (identical(t, ref_trt)) return(unname(cinema_pal["High"]))
       cv <- conf_vec[t]
       if (is.null(cv) || is.na(cv) || !nzchar(cv) ||
           !cv %in% names(cinema_pal))
@@ -332,31 +341,48 @@ build_netmeta_forest <- function(net, opts = list()) {
     }, character(1))
   }
 
+  # ---- Optional add.data column (e.g. Total N per treatment) ------------
+  # forest.netmeta requires add.data row names to match the treatment names
+  # (in alphabetical order, regardless of sortvar). Build the frame
+  # accordingly so the column lines up.
+  add_data <- NULL
+  if (isTRUE(opts$show_n_total) && !is.null(opts$trt_n) &&
+      length(opts$trt_n) > 0) {
+    add_trts <- sort(net$trts)
+    n_aligned <- as.integer(opts$trt_n[add_trts])
+    n_aligned[is.na(n_aligned)] <- 0L
+    add_data <- data.frame(N_total = n_aligned, stringsAsFactors = FALSE)
+    rownames(add_data) <- add_trts
+  }
+
   # Build the call. Pass-through args via list so we can drop NULLs cleanly.
   call_args <- list(
-    x                = net,
-    pooled           = pooled_kind,
-    reference.group  = ref_trt,
-    leftcols         = leftcols,
-    rightcols        = rightcols,
-    backtransf       = backtransf,
-    print.tau2       = isTRUE(opts$print_hetstat),
-    print.I2         = isTRUE(opts$print_hetstat),
-    overall.hetstat  = isTRUE(opts$print_hetstat),
-    fontsize         = fs_base,
-    fs.study         = fs_study,
-    fs.heading       = fs_heading,
-    fs.axis          = fs_axis,
-    spacing          = spacing,
-    smlab            = opts$smlab %||% NULL,
-    label.left       = opts$label_left  %||% NULL,
-    label.right      = opts$label_right %||% NULL
+    x                    = net,
+    pooled               = pooled_kind,
+    reference.group      = ref_trt,
+    drop.reference.group = drop_ref,
+    leftcols             = leftcols,
+    leftlabs             = leftlabs,
+    rightcols            = rightcols,
+    backtransf           = backtransf,
+    print.tau2           = isTRUE(opts$print_hetstat),
+    print.I2             = isTRUE(opts$print_hetstat),
+    overall.hetstat      = isTRUE(opts$print_hetstat),
+    fontsize             = fs_base,
+    fs.study             = fs_study,
+    fs.heading           = fs_heading,
+    fs.axis              = fs_axis,
+    spacing              = spacing,
+    smlab                = opts$smlab %||% NULL,
+    label.left           = opts$label_left  %||% NULL,
+    label.right          = opts$label_right %||% NULL
   )
   if (!is.null(col_cinema)) {
     call_args$col.square       <- col_cinema
     call_args$col.square.lines <- col_cinema
     call_args$col.study        <- col_cinema
   }
+  if (!is.null(add_data)) call_args$add.data <- add_data
   if (!is.null(sortvar)) call_args$sortvar <- sortvar
   if (!is.null(xlim))    call_args$xlim    <- xlim
   # NB: `prediction` is a forest.netsplit / forest.meta arg, NOT a

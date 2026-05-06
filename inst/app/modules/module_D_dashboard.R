@@ -129,10 +129,6 @@ moduleD_ui <- function(id) {
       )
     ),
     uiOutput(ns("netgraph_plot_ui")),
-    div(style = "margin-top:8px;",
-      downloadButton(ns("dl_netgraph"), "Download Network PNG",
-                     class = "btn btn-outline-secondary btn-sm",
-                     icon  = icon("image"))),
     br(),
 
     hr(),
@@ -169,14 +165,15 @@ moduleD_ui <- function(id) {
         fluidRow(
           column(4, checkboxInput(ns("forest_show_k"),
                                   "Show k (number of studies) column", TRUE)),
-          column(4, checkboxInput(ns("forest_show_w"),
-                                  "Show weight column", FALSE)),
+          column(4, checkboxInput(ns("forest_show_n"),
+                                  "Show total N column", TRUE)),
           column(4, checkboxInput(ns("forest_print_hetstat"),
                                   "Show heterogeneity row (tau², I²)", FALSE))
         ),
         fluidRow(
-          column(4, checkboxInput(ns("forest_smaller_text"),
-                                  "Smaller text (dense plots)", FALSE)),
+          column(4, sliderInput(ns("forest_fontsize"),
+                                "Font size (pt)",
+                                min = 8, max = 18, value = 14, step = 0.5)),
           column(8, textInput(ns("forest_smlab"),
                               "Header text (blank = auto)", value = ""))
         )
@@ -197,46 +194,13 @@ moduleD_ui <- function(id) {
     wellPanel(
       h4("Export"),
 
-      # --- Primary: {netmetaviz}-compatible CSV ---------------------------
-      div(style = "border:1px solid #cce5ff; background:#f0f7ff;
-                   border-radius:0.5rem; padding:14px 16px; margin-bottom:14px;",
-        fluidRow(
-          column(8,
-            h5(style = "margin-top:0;",
-               icon("file-csv"), " {netmetaviz} CSV ",
-               tags$span(style = "background:#0d6efd; color:white;
-                          padding:2px 8px; border-radius:3px; font-size:0.7em;
-                          margin-left:6px; vertical-align:middle;",
-                         "RECOMMENDED")),
-            p(style = "margin-bottom:6px;",
-              "The reproducible artefact for ",
-              tags$a("{netmetaviz}", target = "_blank",
-                     href = "https://github.com/CINeMA-team/netmetaviz"),
-              "-based visualisation pipelines. Schema matches the CINeMA",
-              " web tool's exported CSV (one row per comparison, all six",
-              " domain ratings, confidence, downgrade reasons).")
-          ),
-          column(4,
-            downloadButton(ns("dl_nmv_csv"), "Download CSV",
-                           class = "btn btn-primary btn-lg btn-block",
-                           icon  = icon("file-csv")),
-            tags$div(style = "margin-top:8px;",
-              actionButton(ns("save_to_env"), "Save to R environment",
-                           class = "btn btn-outline-secondary btn-sm btn-block",
-                           icon  = icon("r-project")))
-          )
-        )
-      ),
-
-      # --- Bundle export (ZIP) — Phase A -----------------------------------
       div(style = "border:1px solid #d4d4d8; background:#fafafa;
-                   border-radius:0.5rem; padding:14px 16px; margin-bottom:14px;",
+                   border-radius:0.5rem; padding:14px 16px;",
         h5(style = "margin-top:0;",
            icon("file-archive"), " Bundle export (ZIP)"),
         p(style = "font-size:0.9em; color:#555; margin-bottom:8px;",
-          "Bundle the analysis artefacts you tick below into a single",
-          " ZIP. Local/global tests and the pairwise meta-analysis",
-          " appendix are coming in a follow-up phase."),
+          "All analysis artefacts in a single ZIP. Untick anything you",
+          " don't want; everything is selected by default."),
         fluidRow(
           column(8,
             checkboxGroupInput(ns("bundle_items"),
@@ -259,54 +223,23 @@ moduleD_ui <- function(id) {
                                                                = "pairwise_docx"),
               selected = c("r_script", "netmeta_rds", "cinema_csv",
                            "netgraph_png", "forest_png",
-                           "summary_docx", "league_docx", "robmen_docx",
-                           "tests_docx", "pairwise_docx"))
+                           "summary_docx", "summary_xlsx",
+                           "league_docx",  "league_xlsx",
+                           "robmen_docx",  "robmen_xlsx",
+                           "tests_docx",   "pairwise_docx"))
           ),
           column(4,
             downloadButton(ns("dl_bundle"), "Download Bundle (ZIP)",
                            class = "btn btn-primary btn-block",
                            icon  = icon("file-archive")),
+            tags$div(style = "margin-top:8px;",
+              actionButton(ns("save_to_env"),
+                           "Save CINeMA data frame to R environment",
+                           class = "btn btn-outline-secondary btn-sm btn-block",
+                           icon  = icon("r-project"))),
             tags$small(style = "color:#888; display:block; margin-top:6px;",
               "Tick at least one item.")
           )
-        )
-      ),
-
-      # --- Secondary: raw / convenience exports ---------------------------
-      h5(style = "color:#666; font-size:0.95em; margin-top:14px;",
-         "Other formats"),
-      fluidRow(
-        column(4,
-          h6(icon("file-csv"), " CSV"),
-          p(style = "font-size:0.85em; color:#666;",
-            "Raw table — all domains, override reasons, and network estimates."),
-          downloadButton(ns("dl_csv"), "Download CSV",
-                         class = "btn btn-outline-secondary btn-sm btn-block",
-                         icon  = icon("file-csv"))
-        ),
-        column(4,
-          h6(icon("file-excel"), " Excel (.xlsx)"),
-          p(style = "font-size:0.85em; color:#666;",
-            "Colour-coded workbook (openxlsx)."),
-          if (.HAS_OPENXLSX) {
-            downloadButton(ns("dl_xlsx"), "Download Excel",
-                           class = "btn btn-outline-success btn-sm btn-block",
-                           icon  = icon("file-excel"))
-          } else {
-            div(class = "alert alert-warning",
-                style = "font-size:0.85em; padding:6px 10px;",
-                icon("exclamation-circle"),
-                strong(" openxlsx not installed."), br(),
-                code('install.packages("openxlsx")'))
-          }
-        ),
-        column(4,
-          h6(icon("image"), " Forest Plot (PNG)"),
-          p(style = "font-size:0.85em; color:#666;",
-            "NMA estimates with CINeMA confidence colours."),
-          downloadButton(ns("dl_forest"), "Download PNG",
-                         class = "btn btn-outline-primary btn-sm btn-block",
-                         icon  = icon("image"))
         )
       )
     ),
@@ -727,144 +660,6 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       }
     })
 
-    # ------------------------------------------------------------------
-    # DOWNLOAD: CSV
-    # ------------------------------------------------------------------
-    output$dl_csv <- downloadHandler(
-      filename = function() {
-        paste0("nma_evaluation_", format(Sys.Date(), "%Y%m%d"), ".csv")
-      },
-      content = function(file) {
-        df <- tryCatch(export_df(), error = function(e) NULL)
-        req(!is.null(df))
-        write.csv(df, file, row.names = FALSE, na = "")
-      }
-    )
-
-    # ------------------------------------------------------------------
-    # DOWNLOAD: Excel (openxlsx)
-    # ------------------------------------------------------------------
-    output$dl_xlsx <- downloadHandler(
-      filename = function() {
-        paste0("nma_evaluation_", format(Sys.Date(), "%Y%m%d"), ".xlsx")
-      },
-      content = function(file) {
-        req(.HAS_OPENXLSX)
-        cr <- tryCatch(cinema_data(), error = function(e) NULL)
-        req(!is.null(cr))
-
-        wb <- openxlsx::createWorkbook()
-
-        # ---------- Sheet 1: Summary ----------
-        sheet1 <- summary_df()
-        openxlsx::addWorksheet(wb, "CINeMA + ROB-MEN")
-        openxlsx::writeData(wb, "CINeMA + ROB-MEN", sheet1)
-
-        colour_map <- c(
-          "No concerns"    = "70AD47",
-          "Some concerns"  = "FFC000",
-          "Major concerns" = "C00000",
-          "Not assessed"   = "BFBFBF"
-        )
-        conf_map <- c(
-          "High"     = "4472C4",
-          "Moderate" = "5B9BD5",
-          "Low"      = "ED7D31",
-          "Very low" = "C00000"
-        )
-        robmen_map <- c(
-          "Low risk"      = "4CAF50",
-          "Some concerns" = "FF9800",
-          "High risk"     = "F44336",
-          "Not assessed"  = "9E9E9E"
-        )
-
-        domain_col_names <- c("D1: Within-study bias", "D2: Reporting bias",
-                              "D3: Indirectness", "D4: Imprecision",
-                              "D5: Heterogeneity", "D6: Incoherence")
-
-        for (col_name in domain_col_names) {
-          col_num <- match(col_name, names(sheet1))
-          if (is.na(col_num)) next
-          vals <- sheet1[[col_name]]
-          for (row_i in seq_along(vals)) {
-            bg <- colour_map[as.character(vals[row_i])]
-            if (!is.na(bg)) {
-              openxlsx::addStyle(wb, "CINeMA + ROB-MEN",
-                style = openxlsx::createStyle(
-                  fgFill     = paste0("#", bg),
-                  fontColour = if (as.character(vals[row_i]) == "Some concerns")
-                                 "#000000" else "#FFFFFF"
-                ),
-                rows = row_i + 1, cols = col_num, gridExpand = FALSE)
-            }
-          }
-        }
-
-        conf_col <- match("Confidence", names(sheet1))
-        if (!is.na(conf_col)) {
-          vals <- sheet1[["Confidence"]]
-          for (row_i in seq_along(vals)) {
-            bg <- conf_map[as.character(vals[row_i])]
-            if (!is.na(bg)) {
-              openxlsx::addStyle(wb, "CINeMA + ROB-MEN",
-                style = openxlsx::createStyle(
-                  fgFill = paste0("#", bg), fontColour = "#FFFFFF",
-                  textDecoration = "bold"
-                ),
-                rows = row_i + 1, cols = conf_col, gridExpand = FALSE)
-            }
-          }
-        }
-
-        if ("ROB-MEN" %in% names(sheet1)) {
-          rob_col <- match("ROB-MEN", names(sheet1))
-          vals    <- sheet1[["ROB-MEN"]]
-          for (row_i in seq_along(vals)) {
-            bg <- robmen_map[as.character(vals[row_i])]
-            if (!is.na(bg)) {
-              openxlsx::addStyle(wb, "CINeMA + ROB-MEN",
-                style = openxlsx::createStyle(
-                  fgFill = paste0("#", bg), fontColour = "#FFFFFF",
-                  textDecoration = "bold"
-                ),
-                rows = row_i + 1, cols = rob_col, gridExpand = FALSE)
-            }
-          }
-        }
-
-        openxlsx::addStyle(wb, "CINeMA + ROB-MEN",
-          style      = openxlsx::createStyle(textDecoration = "bold"),
-          rows       = 1,
-          cols       = seq_len(ncol(sheet1)),
-          gridExpand = FALSE)
-        openxlsx::setColWidths(wb, "CINeMA + ROB-MEN", cols = 1,                   widths = 25)
-        openxlsx::setColWidths(wb, "CINeMA + ROB-MEN", cols = 2:ncol(sheet1), widths = 18)
-
-        # ---------- Sheet 2: Network estimates ----------
-        te_sheet <- cr$te_df %>%
-          transmute(
-            Comparison         = comparison,
-            `Effect size (TE)` = round(TE, 4),
-            `Lower 95% CI`     = round(lower, 4),
-            `Upper 95% CI`     = round(upper, 4),
-            `95% CI (text)`    = paste0("[", round(lower, 3),
-                                        ", ", round(upper, 3), "]")
-          )
-        openxlsx::addWorksheet(wb, "Network estimates")
-        openxlsx::writeData(wb, "Network estimates", te_sheet)
-        openxlsx::addStyle(wb, "Network estimates",
-          style      = openxlsx::createStyle(textDecoration = "bold"),
-          rows       = 1,
-          cols       = seq_len(ncol(te_sheet)),
-          gridExpand = FALSE)
-        openxlsx::setColWidths(wb, "Network estimates",
-                               cols   = seq_len(ncol(te_sheet)),
-                               widths = 20)
-
-        openxlsx::saveWorkbook(wb, file, overwrite = TRUE)
-      }
-    )
 
     # ------------------------------------------------------------------
     # OUTPUT: Network graph (base R plot via netmeta::netgraph)
@@ -1060,28 +855,9 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       )
     })
 
-    # ------------------------------------------------------------------
-    # DOWNLOAD: Network graph PNG (uses netgraph_args_r so the file
-    # mirrors whatever is currently on screen).
-    # ------------------------------------------------------------------
-    output$dl_netgraph <- downloadHandler(
-      filename = function() {
-        paste0("netgraph_", format(Sys.Date(), "%Y%m%d"), ".png")
-      },
-      content = function(file) {
-        built <- netgraph_args_r()
-        h_px  <- input$netgraph_height %||% 600
-        png(file, width = 1200, height = max(800, h_px * 2), res = 150)
-        on.exit(dev.off())
-        tryCatch(
-          do.call(netgraph, c(built$args, list(main = built$title))),
-          error = function(e) {
-            netgraph(built$net, plastic = FALSE,
-                     main = paste("Evidence network (", e$message, ")"))
-          }
-        )
-      }
-    )
+    # NB: dedicated dl_netgraph removed — users either right-click the
+    # inline plot to copy/save, or pick "Network graph (PNG)" in the
+    # Bundle Export ZIP.
 
     # ------------------------------------------------------------------
     # OUTPUT: Inline forest plot (plotly, CINeMA confidence colours)
@@ -1155,6 +931,18 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       smlab_user <- trimws(input$forest_smlab %||% "")
       smlab <- if (nzchar(smlab_user)) smlab_user else NULL
 
+      # Per-treatment total N — used by the "Total N" column when
+      # show_n_total is on. Zero-imputed for treatments with no
+      # sample-size info so forest.netmeta can still render the column
+      # without misalignment.
+      trt_n_named <- tryCatch(compute_trt_n(cr$df), error = function(e) NULL)
+      trt_n_vec   <- if (!is.null(trt_n_named)) {
+        v <- as.integer(round(trt_n_named[net$trts]))
+        v[is.na(v)] <- 0L
+        names(v) <- net$trts
+        v
+      } else NULL
+
       list(
         reference     = ref,
         sortvar       = input$forest_sort %||% "pscore",
@@ -1163,9 +951,10 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         xlim          = xlim,
         log_scale     = isTRUE(input$forest_log_scale %||% TRUE) && is_ratio,
         show_k        = isTRUE(input$forest_show_k        %||% TRUE),
-        show_weight   = isTRUE(input$forest_show_w        %||% FALSE),
+        show_n_total  = isTRUE(input$forest_show_n        %||% TRUE),
+        trt_n         = trt_n_vec,
         print_hetstat = isTRUE(input$forest_print_hetstat %||% FALSE),
-        smaller_text  = isTRUE(input$forest_smaller_text  %||% FALSE),
+        fontsize_pt   = as.numeric(input$forest_fontsize  %||% 14),
         smlab         = smlab
       )
     })
@@ -1363,39 +1152,10 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       )
     })
 
-    # ------------------------------------------------------------------
-    # DOWNLOAD: Forest plot PNG (matches the inline view; same builder)
-    # ------------------------------------------------------------------
-    output$dl_forest <- downloadHandler(
-      filename = function() {
-        paste0("forest_plot_", format(Sys.Date(), "%Y%m%d"), ".png")
-      },
-      content = function(file) {
-        cr <- tryCatch(cinema_data(), error = function(e) NULL)
-        req(!is.null(cr), !is.null(cr$net))
-        # Print-ready: 2x DPI on a deliberately oversized canvas, then
-        # magick-trim and add a 50px white border so the result is tight
-        # against the content but still has print margins.
-        grDevices::png(file, width = 3000L, height = 3600L, res = 300)
-        tryCatch(build_netmeta_forest(cr$net, forest_opts_r()),
-                 finally = grDevices::dev.off())
-        trim_png_in_place(file, border_px = 50)
-      }
-    )
-
-    # ------------------------------------------------------------------
-    # DOWNLOAD: netmetaviz-compatible CSV
-    # ------------------------------------------------------------------
-    output$dl_nmv_csv <- downloadHandler(
-      filename = function() {
-        paste0("cinema_netmetaviz_", format(Sys.Date(), "%Y%m%d"), ".csv")
-      },
-      content = function(file) {
-        df <- tryCatch(nmv_cinema_df(), error = function(e) NULL)
-        req(!is.null(df))
-        write.csv(df, file, row.names = FALSE, na = "")
-      }
-    )
+    # NB: dl_forest and dl_nmv_csv removed — both formats live inside the
+    # Bundle Export ZIP now. The save_to_env action button stays, since
+    # it's not a download but writes the CINeMA data frame into the
+    # user's R global environment.
 
     # ------------------------------------------------------------------
     # DOWNLOAD: Bundle ZIP (spec Phase A)
