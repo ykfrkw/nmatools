@@ -992,17 +992,31 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
           "Configure analysis settings. These are applied to the CINeMA",
           " and ROB-MEN tabs."),
         fluidRow(
-          column(4,
+          column(3,
             selectInput(ns("ref_treatment"), "Reference treatment",
                         choices = all_trts, selected = default_ref)
           ),
-          column(4,
+          column(3,
             selectInput(ns("model_type"), "Effects model",
                         choices = c("Random effects" = "random",
                                     "Common effects"  = "common"),
                         selected = "random")
           ),
-          column(4,
+          column(3,
+            selectInput(ns("tau_method"),
+                        tagList(
+                          HTML("Random-effects \u03c4\u00b2 estimator"),
+                          tags$span(
+                            style = "font-weight:normal; font-size:0.8em; color:#666;",
+                            " (only used when model = random)")),
+                        choices = c(
+                          "REML (Restricted maximum likelihood)" = "REML",
+                          "DL (DerSimonian\u2013Laird)"               = "DL",
+                          "ML (Maximum likelihood)"              = "ML"
+                        ),
+                        selected = "REML")
+          ),
+          column(3,
             numericInput(ns("delta"),
                          "Clinical threshold \u03b4 (effect-size scale)",
                          value = delta_def, step = 0.05, min = 0.01)
@@ -1085,6 +1099,7 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
         effect_measure        = em_selected() %||% "SMD",
         ref_treatment         = input$ref_treatment,
         model_type            = input$model_type,
+        tau_method            = input$tau_method %||% "REML",
         delta                 = input$delta %||% 0.2,
         prior_mean            = 0,
         prior_sd              = 100,

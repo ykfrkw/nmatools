@@ -249,6 +249,11 @@ moduleB_server <- function(id, processed_data,
       mt <- if (!is.null(s)) s$model_type else NULL
       mt %||% "random"
     }
+    tau_get <- function() {
+      s <- cur_settings()
+      tm <- if (!is.null(s)) s$tau_method else NULL
+      tm %||% "REML"
+    }
     ref_get <- function() {
       s <- cur_settings()
       r <- if (!is.null(s)) s$ref_treatment else NULL
@@ -373,6 +378,7 @@ moduleB_server <- function(id, processed_data,
             sm                  = sm_use,
             common              = (mt_use == "common"),
             random              = (mt_use == "random"),
+            method.tau          = tau_get(),
             details.chkmultiarm = FALSE
           ),
           error = function(e) { net_err <<- conditionMessage(e); NULL }
