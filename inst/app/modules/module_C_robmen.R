@@ -240,8 +240,14 @@ disabled_cell <- function(label, title = "") {
 #   Group C (is_group_c = TRUE): unobserved — no studies at all for this comparison
 make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
                         within_default = "", n_total = NA_integer_,
-                        bg = "white", is_group_c = FALSE, is_group_b = FALSE) {
+                        bg = "white", is_group_c = FALSE, is_group_b = FALSE,
+                        bias_required = FALSE) {
   sid <- safe_id(ck)
+  # bias_required = TRUE when the across-study auto judgement indicates
+  # bias and the algorithm therefore needs the user to specify which
+  # treatment the bias points to. Caller computes this from across_default.
+  # When FALSE we render a "—" placeholder instead of the dropdown so the
+  # table doesn't look like every row needs manual input.
 
   # ---- "Reporting this outcome" cell: k (editable) / N (editable), auto-filled ----
   reporting_cell <- if (is_group_b || is_group_c) {
@@ -347,8 +353,9 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
   }
 
   # ---- Direction of bias cell ----
-  # Used in pct_biased() when Egger's sign is unavailable (k < 10).
-  # Values "t1"/"t2" map to the canonical alphabetical t1/t2 of this comparison.
+  # Only rendered when the across-study auto judgement signals bias —
+  # otherwise pct_biased() doesn't actually consume the user's choice and
+  # showing the dropdown just clutters the table.
   bias_dir_choices <- setNames(
     c("", "t1", "t2"),
     c("(unknown)",
@@ -358,15 +365,47 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
   bias_dir_cell <- if (is_group_c) {
     disabled_cell("N/A",
       title = "Group C (unobserved): no studies — direction not applicable")
+  } else if (!isTRUE(bias_required)) {
+    tags$td(style = "padding:4px 8px; text-align:center; color:#9ca3af;",
+      tags$span(
+        title = paste0("Direction-of-bias input not needed: across-study",
+                       " auto judgement does not flag bias for this row"),
+        "—"))
   } else {
     tags$td(style = "padding:4px 6px;",
-      selectInput(ns(paste0("bias_dir_", sid)), label = NULL,
-                  choices = bias_dir_choices, selected = "", width = "130px")
+      div(style = "display:flex; gap:6px; align-items:center;",
+        selectInput(ns(paste0("bias_dir_", sid)), label = NULL,
+                    choices = bias_dir_choices, selected = "", width = "130px"),
+        tags$span(
+          style = "background:#fef3c7; color:#92400e; font-size:0.7em;
+                   padding:2px 6px; border-radius:10px; white-space:nowrap;
+                   border:1px solid #fcd34d;",
+          title = paste0("Across-study bias detected — please specify",
+                         " which treatment the bias points to."),
+          "needs input"))
     )
   }
 
-  tags$tr(style = paste0("background:", bg, ";"),
-    tags$td(style = "padding:4px 8px; white-space:nowrap;", strong(ck)),
+  # Faint-grey background for fully auto-rated rows so the eye is drawn
+  # to rows that need user attention.
+  needs_attention <- isTRUE(bias_required) || is_group_b
+  row_bg <- if (needs_attention) bg else "#fbfbfb"
+  ck_cell <- if (needs_attention) {
+    tags$td(style = "padding:4px 8px; white-space:nowrap;
+                     border-left:3px solid #f59e0b;",
+      tags$span(
+        style = "color:#b45309; margin-right:4px;",
+        title = "This row needs your input — see highlighted cells",
+        icon("triangle-exclamation")),
+      strong(ck))
+  } else {
+    tags$td(style = "padding:4px 8px; white-space:nowrap;
+                     border-left:3px solid transparent;",
+      strong(ck))
+  }
+
+  tags$tr(style = paste0("background:", row_bg, ";"),
+    ck_cell,
     reporting_cell,
     sr_total_cell,
     within_cell,
@@ -1756,10 +1795,15 @@ moduleC_server <- function(id, processed_data, cinema_module,
         eg_row <- eg %>% filter(comp_key == ck)
         ad <- if (nrow(eg_row) > 0 && !is.na(eg_row$across_auto[1]))
                 eg_row$across_auto[1] else NA
+        # Direction-of-bias dropdown only shown when across-study
+        # auto judgement actually flags bias.
+        bias_req <- !is.na(ad) &&
+                    ad %in% c("Suspected bias", "Some concerns")
         make_pw_row(ns, ck, dir_c$t1[i], dir_c$t2[i], dir_c$n_direct[i],
                     across_default = ad,
                     within_default = "",
-                    n_total = dir_c$n_total[i])
+                    n_total = dir_c$n_total[i],
+                    bias_required = bias_req)
       })
 
       # Group C rows with "→ Group B" toggle button

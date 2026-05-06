@@ -76,7 +76,9 @@ ui <- fluidPage(
 
   navbarPage(
     id    = "main_navbar",
-    title = NULL,
+    title = tags$span(style = "font-family: Monaco, Menlo, monospace;
+                               font-weight:600; color:#18181b;",
+                      "nmatools::cinema()"),
     tabPanel("Configuration",            moduleA_ui("module_a")),
     tabPanel("① Within-study bias", moduleB_d1_ui("module_b")),
     tabPanel("② Reporting bias",    moduleB_d2_ui("module_b")),

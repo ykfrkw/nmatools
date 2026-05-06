@@ -226,35 +226,34 @@ build_netmeta_forest <- function(net, opts = list()) {
       sortvar <- if (identical(small_v, "undesirable")) ps[net$trts]
                  else                                    -ps[net$trts]
     }
-  } else if (identical(sort_key, "cinema_pscore")) {
-    # Two-tier sort: CINeMA confidence bucket first
-    # (High+Moderate above Low+Very low), then P-score within each bucket
-    # (highest P-score on top of its bucket). Requires opts$confidence —
-    # a per-treatment named character vector with values from the
-    # CINeMA confidence vocabulary ("High" / "Moderate" / "Low" /
-    # "Very low" / "Not set"). Treatments missing from the vector default
-    # to the "poor" bucket so they don't accidentally float above
-    # well-rated rivals.
-    conf_vec <- opts$confidence %||% character()
-    ps       <- get_pscore_vec()
-    if (length(conf_vec) > 0) {
-      bucket <- vapply(net$trts, function(t) {
-        cv <- conf_vec[t]
-        if (is.null(cv) || is.na(cv) || !nzchar(cv)) "poor"
-        else if (cv %in% c("High", "Moderate", "No concerns")) "good"
-        else                                                   "poor"
-      }, character(1))
-      bucket_offset <- ifelse(bucket == "good", 0, 1000)
-      pscore_part <- if (!is.null(ps)) {
-        if (identical(small_v, "undesirable"))  ps[net$trts]
-        else                                   -ps[net$trts]
-      } else 0
-      sortvar <- bucket_offset + pscore_part
-    } else if (!is.null(ps)) {
-      # No confidence info → fall back to plain P-score
-      sortvar <- if (identical(small_v, "undesirable")) ps[net$trts]
-                 else                                    -ps[net$trts]
+  } else if (identical(sort_key, "pscore_reverse")) {
+    # Worst P-score first; mirror image of "pscore".
+    ps <- get_pscore_vec()
+    if (!is.null(ps)) {
+      sortvar <- if (identical(small_v, "undesirable")) -ps[net$trts]
+                 else                                    ps[net$trts]
     }
+  } else if (identical(sort_key, "cinema_pscore")) {
+    # Three-tier sort: CINeMA confidence bucket first (High+Moderate above
+    # Low+Very low+Not set above the reference). Within each bucket order
+    # by P-score (best first). Reference is its own bucket pinned to the
+    # bottom because it has no CINeMA judgement.
+    conf_vec <- opts$confidence %||% character()
+    ref_trt_local <- opts$reference %||% net$reference.group %||% net$trts[1]
+    ps       <- get_pscore_vec()
+    bucket <- vapply(net$trts, function(t) {
+      if (identical(t, ref_trt_local)) return("ref")
+      cv <- conf_vec[t]
+      if (is.null(cv) || is.na(cv) || !nzchar(cv)) return("poor")
+      if (cv %in% c("High", "Moderate", "No concerns")) "good" else "poor"
+    }, character(1))
+    bucket_offset <- ifelse(bucket == "good",  0,
+                     ifelse(bucket == "poor", 1000, 2000))
+    pscore_part <- if (!is.null(ps)) {
+      if (identical(small_v, "undesirable"))  ps[net$trts]
+      else                                   -ps[net$trts]
+    } else 0
+    sortvar <- bucket_offset + pscore_part
   } else if (identical(sort_key, "estimate")) {
     # Use the random/common TE column from netmeta's league table.
     te_mat <- net$TE.random %||% net$TE.common
@@ -307,38 +306,52 @@ build_netmeta_forest <- function(net, opts = list()) {
   spacing    <- max(0.7, min(1.4, 0.65 + fs_base / 30))
 
   # ---- CINeMA confidence colouring (default ON) -------------------------
-  # forest.netmeta paints rows in net$trts order. With drop.reference.group
-  # = FALSE the reference treatment is INCLUDED as its own row; we pin it
-  # to the "High" palette colour so it visually anchors the bucket. The
-  # col.* vectors are matched against the row order, so we build them in
-  # net$trts order (no exclusion).
+  # Tri-tone palette: dark for axis label + square border (col.study /
+  # col.square.lines), light pastel for the square fill (col.square) so
+  # the border + label still pop. Reference treatment is rendered in
+  # neutral grey because it has no CINeMA judgement of its own.
   conf_vec  <- opts$confidence %||% character()
   ref_trt   <- opts$reference %||% net$reference.group %||% net$trts[1]
   drop_ref  <- isTRUE(opts$drop_reference %||% FALSE)
   use_cinema_color <- isTRUE(opts$cinema_color %||% TRUE)
-  cinema_pal <- opts$cinema_palette %||% c(
+  cinema_pal_dark <- opts$cinema_palette %||% c(
     "High"     = "#1e8449",
     "Moderate" = "#2471a3",
     "Low"      = "#e67e22",
     "Very low" = "#c0392b",
-    "Not set"  = "#bfbfbf",
+    "Not set"  = "#7f7f7f",
     "No concerns"    = "#1e8449",
     "Some concerns"  = "#e67e22",
     "Major concerns" = "#c0392b",
-    "Not assessed"   = "#bfbfbf")
+    "Not assessed"   = "#7f7f7f")
+  cinema_pal_light <- opts$cinema_palette_light %||% c(
+    "High"     = "#bce4cb",
+    "Moderate" = "#bcd5ec",
+    "Low"      = "#f5d6b3",
+    "Very low" = "#eec4bf",
+    "Not set"  = "#dcdcdc",
+    "No concerns"    = "#bce4cb",
+    "Some concerns"  = "#f5d6b3",
+    "Major concerns" = "#eec4bf",
+    "Not assessed"   = "#dcdcdc")
 
   trts_in_order <- if (drop_ref) setdiff(net$trts, ref_trt) else net$trts
 
-  col_cinema <- NULL
+  pick_pal <- function(t, pal) {
+    if (identical(t, ref_trt)) return(unname(pal["Not set"]))
+    cv <- conf_vec[t]
+    if (is.null(cv) || is.na(cv) || !nzchar(cv) || !cv %in% names(pal))
+      return(unname(pal["Not set"]))
+    unname(pal[cv])
+  }
+
+  col_cinema_dark <- NULL
+  col_cinema_light <- NULL
   if (use_cinema_color && length(trts_in_order) > 0) {
-    col_cinema <- vapply(trts_in_order, function(t) {
-      if (identical(t, ref_trt)) return(unname(cinema_pal["High"]))
-      cv <- conf_vec[t]
-      if (is.null(cv) || is.na(cv) || !nzchar(cv) ||
-          !cv %in% names(cinema_pal))
-        return(unname(cinema_pal["Not set"]))
-      unname(cinema_pal[cv])
-    }, character(1))
+    col_cinema_dark  <- vapply(trts_in_order, pick_pal, character(1),
+                                pal = cinema_pal_dark)
+    col_cinema_light <- vapply(trts_in_order, pick_pal, character(1),
+                                pal = cinema_pal_light)
   }
 
   # ---- Optional add.data column (e.g. Total N per treatment) ------------
@@ -355,6 +368,18 @@ build_netmeta_forest <- function(net, opts = list()) {
     rownames(add_data) <- add_trts
   }
 
+  # ---- Font family (Japanese / CJK support) -----------------------------
+  # forest.meta hands `fontfamily` to grid::gpar() for every text run.
+  # CAVEAT: meta::forest renders text via grid which on most R installs
+  # ignores font fallback for non-Latin glyphs and produces 豆腐 when the
+  # smlab / label.left / label.right contain CJK characters. Reliable
+  # CJK rendering needs the {showtext} + {sysfonts} pair: install
+  # showtext, register a CJK font (e.g. via sysfonts::font_add_google
+  # or font_add with a local TTF), then call showtext::showtext_auto()
+  # before invoking the renderer. The Display Options "Plot font family"
+  # input lets the user point at a registered family name.
+  font_family <- opts$fontfamily %||% ""
+
   # Build the call. Pass-through args via list so we can drop NULLs cleanly.
   call_args <- list(
     x                    = net,
@@ -369,6 +394,7 @@ build_netmeta_forest <- function(net, opts = list()) {
     print.I2             = isTRUE(opts$print_hetstat),
     overall.hetstat      = isTRUE(opts$print_hetstat),
     fontsize             = fs_base,
+    fontfamily           = font_family,
     fs.study             = fs_study,
     fs.heading           = fs_heading,
     fs.axis              = fs_axis,
@@ -377,10 +403,10 @@ build_netmeta_forest <- function(net, opts = list()) {
     label.left           = opts$label_left  %||% NULL,
     label.right          = opts$label_right %||% NULL
   )
-  if (!is.null(col_cinema)) {
-    call_args$col.square       <- col_cinema
-    call_args$col.square.lines <- col_cinema
-    call_args$col.study        <- col_cinema
+  if (!is.null(col_cinema_dark)) {
+    call_args$col.square       <- col_cinema_light  # fill (light)
+    call_args$col.square.lines <- col_cinema_dark   # border (dark)
+    call_args$col.study        <- col_cinema_dark   # treatment label
   }
   if (!is.null(add_data)) call_args$add.data <- add_data
   if (!is.null(sortvar)) call_args$sortvar <- sortvar
@@ -419,6 +445,59 @@ build_netmeta_forest <- function(net, opts = list()) {
 #   fuzz       : magick image_trim's fuzz tolerance, 0..100; small values
 #                are sufficient for solid-white plot backgrounds
 # ----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# .cairo_png_or_default: open a PNG device using cairo when available so
+# unicode (CJK) glyphs render correctly. Falls back to the platform default
+# (quartz on macOS) when cairo isn't compiled in. Identical signature to
+# grDevices::png() for the args we pass.
+# ----------------------------------------------------------------------------
+.cairo_png <- function(filename, width, height, res, family = "") {
+  use_cairo <- isTRUE(capabilities("cairo"))
+  if (use_cairo) {
+    grDevices::png(filename = filename, width = width, height = height,
+                   res = res, type = "cairo", family = family)
+  } else {
+    grDevices::png(filename = filename, width = width, height = height,
+                   res = res)
+  }
+}
+
+# ----------------------------------------------------------------------------
+# .with_cjk_font: wrap an expression in a showtext block so CJK glyphs
+# render through showtext's freetype path instead of the device's grid font.
+# No-op when showtext / sysfonts aren't installed; in that case CJK text
+# may render as 豆腐 — that's a known meta::forest + grid limitation.
+#
+# The first call lazily registers the user-supplied font family with
+# sysfonts (treating it as a Google Fonts name when it contains a space,
+# else as a local font filename). Subsequent calls reuse the registered
+# font.
+# ----------------------------------------------------------------------------
+.cjk_registered <- new.env(parent = emptyenv())
+
+.with_cjk_font <- function(expr, family = "", dpi = 150) {
+  if (!requireNamespace("showtext", quietly = TRUE) ||
+      !requireNamespace("sysfonts", quietly = TRUE) ||
+      !nzchar(family))
+    return(expr)
+  if (is.null(.cjk_registered[[family]])) {
+    ok <- tryCatch({
+      sysfonts::font_add_google(family, family)
+      TRUE
+    }, error = function(e) FALSE)
+    if (!ok) ok <- tryCatch({
+      sysfonts::font_add(family, regular = family)
+      TRUE
+    }, error = function(e) FALSE)
+    .cjk_registered[[family]] <- ok
+  }
+  if (!isTRUE(.cjk_registered[[family]])) return(expr)
+  showtext::showtext_opts(dpi = dpi)
+  showtext::showtext_begin()
+  on.exit(showtext::showtext_end(), add = TRUE)
+  force(expr)
+}
+
 trim_png_in_place <- function(path, border_px = 25, fuzz = 2) {
   if (!requireNamespace("magick", quietly = TRUE)) return(invisible(FALSE))
   ok <- tryCatch({
