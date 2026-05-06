@@ -353,9 +353,15 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
   }
 
   # ---- Direction of bias cell ----
-  # Only rendered when the across-study auto judgement signals bias —
-  # otherwise pct_biased() doesn't actually consume the user's choice and
-  # showing the dropdown just clutters the table.
+  # Two visual states, swapped client-side via conditionalPanel:
+  #   * placeholder "—" — when no signal calls for direction-of-bias input
+  #   * dropdown + "needs input" badge — when *any* of these is true:
+  #       - across-study auto judgement signalled bias (bias_required),
+  #       - user picked Overall = Suspected bias for this row,
+  #       - user picked Within-study = Suspected bias,
+  #       - user picked Across-study = Suspected bias.
+  # Putting the toggle on the client means selecting "Suspected" anywhere
+  # in the row immediately exposes the dropdown, with no server roundtrip.
   bias_dir_choices <- setNames(
     c("", "t1", "t2"),
     c("(unknown)",
@@ -365,24 +371,37 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
   bias_dir_cell <- if (is_group_c) {
     disabled_cell("N/A",
       title = "Group C (unobserved): no studies — direction not applicable")
-  } else if (!isTRUE(bias_required)) {
-    tags$td(style = "padding:4px 8px; text-align:center; color:#9ca3af;",
-      tags$span(
-        title = paste0("Direction-of-bias input not needed: across-study",
-                       " auto judgement does not flag bias for this row"),
-        "—"))
   } else {
+    ov_id     <- ns(paste0("ov_pw_",   sid))
+    within_id <- ns(paste0("within_",  sid))
+    across_id <- ns(paste0("across_",  sid))
+    req_lit   <- if (isTRUE(bias_required)) "true" else "false"
+    suspected <- "'Suspected bias'"
+    cond_show <- sprintf(
+      "%s || input['%s'] == %s || input['%s'] == %s || input['%s'] == %s",
+      req_lit, ov_id, suspected, within_id, suspected, across_id, suspected)
+    cond_hide <- sprintf("!(%s)", cond_show)
+
+    placeholder_block <- tags$span(
+      style = "color:#9ca3af;",
+      title = paste0("Direction-of-bias input not needed unless any of",
+                     " Within / Across / Overall is set to Suspected bias."),
+      "—")
+
+    dropdown_block <- div(style = "display:flex; gap:6px; align-items:center;",
+      selectInput(ns(paste0("bias_dir_", sid)), label = NULL,
+                  choices = bias_dir_choices, selected = "", width = "130px"),
+      tags$span(
+        style = "background:#fef3c7; color:#92400e; font-size:0.7em;
+                 padding:2px 6px; border-radius:10px; white-space:nowrap;
+                 border:1px solid #fcd34d; font-weight:600;",
+        title = paste0("Suspected bias detected — please specify which",
+                       " treatment the bias points to."),
+        "needs input"))
+
     tags$td(style = "padding:4px 6px;",
-      div(style = "display:flex; gap:6px; align-items:center;",
-        selectInput(ns(paste0("bias_dir_", sid)), label = NULL,
-                    choices = bias_dir_choices, selected = "", width = "130px"),
-        tags$span(
-          style = "background:#fef3c7; color:#92400e; font-size:0.7em;
-                   padding:2px 6px; border-radius:10px; white-space:nowrap;
-                   border:1px solid #fcd34d;",
-          title = paste0("Across-study bias detected — please specify",
-                         " which treatment the bias points to."),
-          "needs input"))
+      conditionalPanel(condition = cond_hide, placeholder_block),
+      conditionalPanel(condition = cond_show, dropdown_block)
     )
   }
 
