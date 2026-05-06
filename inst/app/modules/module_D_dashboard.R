@@ -102,9 +102,21 @@ moduleD_ui <- function(id) {
             selected = "number.of.studies")),
           column(4, selectInput(ns("netgraph_seq"), "Treatment order (around circle)",
             choices = c("Optimal (minimise crossings)" = "optimal",
-                        "Alphabetic"                   = "alphabetic",
-                        "Most-common-outer"            = "common"),
+                        "Alphabetic"                   = "alphabetic"),
             selected = "optimal"))
+        ),
+        fluidRow(
+          column(4, selectInput(ns("netgraph_edge_color"), "Edge colour",
+            choices = c("CINeMA confidence"           = "cinema",
+                        "Within-study bias (Domain 1)" = "wsb",
+                        "Monochrome"                  = "mono"),
+            selected = "cinema")),
+          column(4, sliderInput(ns("netgraph_rotate"),
+                                "Rotation (°)", -180, 180, 0, step = 5)),
+          column(4, sliderInput(ns("netgraph_edge_label_pos"),
+                                "Edge-label position (0 = node A → 1 = node B)",
+                                min = 0.1, max = 0.9, value = 0.45,
+                                step = 0.05))
         ),
         fluidRow(
           column(4, checkboxInput(ns("netgraph_show_labels"),
@@ -117,6 +129,10 @@ moduleD_ui <- function(id) {
       )
     ),
     uiOutput(ns("netgraph_plot_ui")),
+    div(style = "margin-top:8px;",
+      downloadButton(ns("dl_netgraph"), "Download Network PNG",
+                     class = "btn btn-outline-secondary btn-sm",
+                     icon  = icon("image"))),
     br(),
 
     hr(),
@@ -733,65 +749,112 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       plotOutput(ns("netgraph_plot"), height = paste0(h, "px"))
     })
 
-    output$netgraph_plot <- renderPlot({
+    # ------------------------------------------------------------------
+    # netgraph_args_r: shared builder (reactive) used by both the inline
+    # renderPlot and the dl_netgraph download handler. Returns a flat list
+    # ready for do.call(netgraph, ...) plus the chosen plot title.
+    #
+    # All five user requests for this turn live here:
+    #   * seq mapping fix — the dropdown's "alphabetic" value used to be
+    #     passed verbatim to netgraph(), which only accepts "optimal" or
+    #     a treatment-name vector. Anything else triggered an error and
+    #     the previous tryCatch fell back silently to a monochrome plot.
+    #     Now we translate "alphabetic" -> sort(net$trts).
+    #   * edge_color — separate dropdown (cinema / wsb / mono) controls
+    #     how the positional `col` vector is built; "mono" uses a single
+    #     dark grey so the user can pick that explicitly rather than
+    #     getting it as a silent error fallback.
+    #   * rotate — wired to netgraph()'s rotate arg (degrees).
+    #   * pos.number.of.studies — wired to the slider so the user can
+    #     nudge labels off overlaps.
+    #   * Both inline AND export use this same builder so the downloaded
+    #     PNG always matches what's on screen.
+    # ------------------------------------------------------------------
+    netgraph_args_r <- reactive({
       cr <- tryCatch(cinema_data(), error = function(e) NULL)
       req(!is.null(cr), !is.null(cr$net))
 
       net    <- cr$net
       merged <- cinema_merged()
+      n_trts <- length(net$trts)
+      df_raw <- tryCatch(cr$df, error = function(e) NULL)
 
-      # Build per-comparison confidence colours for edge colouring
-      pal         <- current_palette()
-      conf_col_map <- if ((input$palette %||% "pastel") == "classic") pal$conf else pal$conf_txt
-      conf_final  <- ifelse(nzchar(merged$confidence),
-                            merged$confidence, merged$suggested_confidence)
-      conf_final[!nzchar(conf_final)] <- "Not set"
-
-      # Build per-comparison confidence lookup keyed by "A:B" (both orderings)
-      conf_key_lookup <- list()
-      for (i in seq_along(conf_final)) {
-        parts <- strsplit(merged$comparison[i], " vs ")[[1]]
-        if (length(parts) == 2) {
-          k1 <- paste(parts[1], parts[2], sep = ":")
-          k2 <- paste(parts[2], parts[1], sep = ":")
-          conf_key_lookup[[k1]] <- conf_final[i]
-          conf_key_lookup[[k2]] <- conf_final[i]
+      # ---- Edge colours ------------------------------------------------
+      # Build a per-comparison key-->rating lookup that works for either
+      # ordering of the pair (the merged table uses one canonical order;
+      # net$comparisons might use the other).
+      build_lookup <- function(values) {
+        out <- list()
+        for (i in seq_along(values)) {
+          parts <- strsplit(merged$comparison[i], " vs ")[[1]]
+          if (length(parts) == 2) {
+            out[[paste(parts[1], parts[2], sep = ":")]] <- values[i]
+            out[[paste(parts[2], parts[1], sep = ":")]] <- values[i]
+          }
         }
+        out
       }
 
-      # Get ordered comparison list from the network object.
-      # netmeta::netgraph() expects col as a POSITIONAL vector matching the
-      # internal comparison order (net$comparisons, alphabetically sorted pairs).
       net_comps <- if (!is.null(net$comparisons)) {
         net$comparisons
       } else {
-        # Fallback: generate all pairs in the same alphabetical order netmeta uses
         trts_sorted <- sort(net$trts)
         nt <- length(trts_sorted)
         comps_fb <- character()
         for (ii in seq_len(nt - 1))
           for (jj in seq(ii + 1, nt))
-            comps_fb <- c(comps_fb, paste(trts_sorted[ii], trts_sorted[jj], sep = ":"))
+            comps_fb <- c(comps_fb,
+                          paste(trts_sorted[ii], trts_sorted[jj], sep = ":"))
         comps_fb
       }
 
-      # Positional edge color vector (same length & order as net_comps)
-      edge_cols <- vapply(net_comps, function(k) {
-        cv <- conf_key_lookup[[k]]
-        if (is.null(cv) || is.na(cv)) return("#BFBFBF")
-        res <- conf_col_map[cv]
-        if (is.na(res)) "#BFBFBF" else unname(res)
-      }, character(1))
+      pal         <- current_palette()
+      ec_choice   <- input$netgraph_edge_color %||% "cinema"
 
-      n_trts <- length(net$trts)
-      df_raw <- tryCatch(cr$df, error = function(e) NULL)
+      if (identical(ec_choice, "mono")) {
+        edge_cols <- rep("#444444", length(net_comps))
+        ec_label  <- "monochrome"
+      } else if (identical(ec_choice, "wsb")) {
+        # CINeMA Domain 1 (Within-study bias) ratings live on merged$within_study_bias.
+        # Map the three ordinal rating strings to the standard CINeMA palette.
+        wsb_pal <- c(
+          "No concerns"    = unname(.CINEMA_COL["No concerns"]),
+          "Some concerns"  = unname(.CINEMA_COL["Some concerns"]),
+          "Major concerns" = unname(.CINEMA_COL["Major concerns"]),
+          "Not assessed"   = unname(.CINEMA_COL["Not assessed"])
+        )
+        wsb_vec <- merged$within_study_bias %||% rep("Not assessed", nrow(merged))
+        wsb_vec[!nzchar(wsb_vec)] <- "Not assessed"
+        wsb_lookup <- build_lookup(wsb_vec)
+        edge_cols <- vapply(net_comps, function(k) {
+          v <- wsb_lookup[[k]]
+          if (is.null(v) || is.na(v)) return(unname(wsb_pal["Not assessed"]))
+          res <- wsb_pal[v]
+          if (is.na(res)) unname(wsb_pal["Not assessed"]) else unname(res)
+        }, character(1))
+        ec_label <- "Within-study bias (Domain 1)"
+      } else {
+        # CINeMA confidence (default).
+        conf_col_map <- if ((input$palette %||% "pastel") == "classic") pal$conf
+                        else                                            pal$conf_txt
+        conf_final <- ifelse(nzchar(merged$confidence),
+                             merged$confidence, merged$suggested_confidence)
+        conf_final[!nzchar(conf_final)] <- "Not set"
+        conf_lookup <- build_lookup(conf_final)
+        edge_cols <- vapply(net_comps, function(k) {
+          v <- conf_lookup[[k]]
+          if (is.null(v) || is.na(v)) return("#BFBFBF")
+          res <- conf_col_map[v]
+          if (is.na(res)) "#BFBFBF" else unname(res)
+        }, character(1))
+        ec_label <- "CINeMA confidence"
+      }
 
-      # Node size — three modes via Display Options accordion (spec-14)
+      # ---- Node size ---------------------------------------------------
       node_mode <- input$netgraph_node_size %||% "n"
       cex_pts <- if (identical(node_mode, "equal")) {
         rep(2.5, n_trts)
       } else if (identical(node_mode, "k")) {
-        # Number of studies per treatment
         if (!is.null(df_raw) && all(c("t1", "t2", "studlab") %in% names(df_raw))) {
           k_per <- vapply(net$trts, function(trt) {
             length(unique(df_raw$studlab[df_raw$t1 == trt | df_raw$t2 == trt]))
@@ -801,7 +864,6 @@ moduleD_server <- function(id, cinema_module, robmen_module,
           else rep(2.5, n_trts)
         } else rep(2.5, n_trts)
       } else {
-        # Default: by total sample size
         if (!is.null(df_raw) && "n" %in% names(df_raw) && any(!is.na(df_raw$n))) {
           trt_n <- data.frame(
             trt = c(df_raw$t1, df_raw$t2),
@@ -820,46 +882,79 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         } else rep(2.5, n_trts)
       }
 
+      # ---- Misc options ------------------------------------------------
       thickness_arg   <- input$netgraph_edge_width %||% "number.of.studies"
-      seq_arg         <- input$netgraph_seq        %||% "optimal"
       show_labels     <- isTRUE(input$netgraph_show_labels %||% TRUE)
       show_edge_label <- isTRUE(input$netgraph_edge_label  %||% TRUE)
       labels_arg      <- if (show_labels) net$trts else rep("", n_trts)
+      rotate_arg      <- as.numeric(input$netgraph_rotate %||% 0)
+      pos_lab_arg     <- as.numeric(input$netgraph_edge_label_pos %||% 0.45)
 
-      build_args <- function(extra = list()) {
-        base <- list(
-          x                = net,
-          seq              = seq_arg,
-          plastic          = FALSE,
-          points           = TRUE,
-          pch              = 21,
-          cex.points       = cex_pts,
-          col.points       = "black",
-          bg.points        = "gray",
-          thickness        = thickness_arg,
-          number.of.studies = show_edge_label,
-          pos.number.of.studies = 0.45,
-          multiarm         = FALSE,
-          labels           = labels_arg
+      # Map seq dropdown to a value netgraph actually accepts.
+      seq_choice <- input$netgraph_seq %||% "optimal"
+      seq_arg <- if (identical(seq_choice, "alphabetic")) sort(net$trts)
+                 else                                      "optimal"
+
+      list(
+        net   = net,
+        title = paste0("Evidence network (edge colour = ", ec_label, ")"),
+        args  = list(
+          x                     = net,
+          seq                   = seq_arg,
+          plastic               = FALSE,
+          points                = TRUE,
+          pch                   = 21,
+          cex.points            = cex_pts,
+          col.points            = "black",
+          bg.points             = "gray",
+          thickness             = thickness_arg,
+          number.of.studies     = show_edge_label,
+          pos.number.of.studies = pos_lab_arg,
+          rotate                = rotate_arg,
+          multiarm              = FALSE,
+          labels                = labels_arg,
+          col                   = edge_cols
         )
-        utils::modifyList(base, extra)
-      }
+      )
+    })
 
+    # Render the network graph using the shared args builder.
+    output$netgraph_plot <- renderPlot({
+      built <- netgraph_args_r()
       tryCatch(
-        do.call(netgraph, build_args(list(
-          col  = edge_cols,
-          main = "Evidence network (edge color = CINeMA confidence)"
-        ))),
+        do.call(netgraph, c(built$args, list(main = built$title))),
         error = function(e) {
-          tryCatch(
-            do.call(netgraph, build_args(list(main = "Evidence network"))),
-            error = function(e2) {
-              netgraph(net, plastic = FALSE, main = "Evidence network")
-            }
-          )
+          # If something below the col-handling errors out, surface it
+          # rather than silently going monochrome — the previous fallback
+          # masked the seq-value bug for over a year.
+          netgraph(built$net, plastic = FALSE,
+                   main = paste("Evidence network — fallback (", e$message, ")"))
         }
       )
     })
+
+    # ------------------------------------------------------------------
+    # DOWNLOAD: Network graph PNG (uses netgraph_args_r so the file
+    # mirrors whatever is currently on screen).
+    # ------------------------------------------------------------------
+    output$dl_netgraph <- downloadHandler(
+      filename = function() {
+        paste0("netgraph_", format(Sys.Date(), "%Y%m%d"), ".png")
+      },
+      content = function(file) {
+        built <- netgraph_args_r()
+        h_px  <- input$netgraph_height %||% 600
+        png(file, width = 1200, height = max(800, h_px * 2), res = 150)
+        on.exit(dev.off())
+        tryCatch(
+          do.call(netgraph, c(built$args, list(main = built$title))),
+          error = function(e) {
+            netgraph(built$net, plastic = FALSE,
+                     main = paste("Evidence network (", e$message, ")"))
+          }
+        )
+      }
+    )
 
     # ------------------------------------------------------------------
     # OUTPUT: Inline forest plot (plotly, CINeMA confidence colours)
