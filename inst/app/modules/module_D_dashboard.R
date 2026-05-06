@@ -251,10 +251,13 @@ moduleD_ui <- function(id) {
                 "League table — landscape Word"                = "league_docx",
                 "League table — Excel"                         = "league_xlsx",
                 "ROB-MEN evaluation — landscape Word"          = "robmen_docx",
-                "ROB-MEN evaluation — Excel"                   = "robmen_xlsx"),
+                "ROB-MEN evaluation — Excel"                   = "robmen_xlsx",
+                "Local & global tests of incoherence — Word (Monaco)"
+                                                               = "tests_docx"),
               selected = c("r_script", "netmeta_rds", "cinema_csv",
                            "netgraph_png", "forest_png",
-                           "summary_docx", "league_docx", "robmen_docx"))
+                           "summary_docx", "league_docx", "robmen_docx",
+                           "tests_docx"))
           ),
           column(4,
             downloadButton(ns("dl_bundle"), "Download Bundle (ZIP)",
@@ -1657,6 +1660,21 @@ moduleD_server <- function(id, cinema_module, robmen_module,
             }
           }, error = function(e) {
             message("robmen_xlsx failed: ", conditionMessage(e))
+          })
+        }
+
+        # 12. Local & global tests of incoherence — Word (Phase C)
+        if ("tests_docx" %in% items) {
+          fn <- paste0("tests_of_inconsistency_", date_tag, ".docx")
+          tryCatch({
+            write_test_results_docx(
+              cr$net, file.path(stage, fn),
+              title    = "Local & Global Tests of Inconsistency",
+              subtitle = paste("Generated:", format(Sys.time(),
+                                                    "%Y-%m-%d %H:%M")))
+            files_in_zip <<- c(files_in_zip, fn)
+          }, error = function(e) {
+            message("tests_docx failed: ", conditionMessage(e))
           })
         }
 

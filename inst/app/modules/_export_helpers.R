@@ -240,6 +240,100 @@ build_league_table_df <- function(net,
 }
 
 # ----------------------------------------------------------------------------
+# write_test_results_docx
+# ----------------------------------------------------------------------------
+# Capture netmeta::decomp.design() (global Q test of inconsistency by design
+# / between-designs / total) and netmeta::netsplit() (local node-splitting
+# test) into a Word document. Both outputs are R console listings whose
+# alignment matters, so we render each captured line as one paragraph in
+# Monaco at 9pt, with internal spaces converted to non-breaking spaces so
+# Word does not collapse them.
+#
+# Returns invisibly the path written; throws if officer is missing or
+# either of the captures fails outright. Individual lines that capture
+# but contain only whitespace are still written (blank Monaco paragraph)
+# to keep the visual structure intact.
+# ----------------------------------------------------------------------------
+write_test_results_docx <- function(net, file,
+                                    title = "Local & Global Tests of Inconsistency",
+                                    subtitle = NULL) {
+  if (!requireNamespace("officer", quietly = TRUE))
+    stop("officer is required for Word export")
+  if (is.null(net)) stop("write_test_results_docx: net is required")
+
+  # Capture each test; treat failures as a one-line error block instead of
+  # aborting the whole document so the user always gets *something*.
+  capture_block <- function(expr_label, expr_fn) {
+    out <- tryCatch(
+      utils::capture.output(print(expr_fn())),
+      error = function(e)
+        paste0("[", expr_label, " failed: ", conditionMessage(e), "]"))
+    if (length(out) == 0)
+      out <- paste0("[", expr_label, " produced no output.]")
+    out
+  }
+
+  decomp_lines <- capture_block(
+    "decomp.design",
+    function() netmeta::decomp.design(net))
+  netsplit_lines <- capture_block(
+    "netsplit",
+    function() netmeta::netsplit(net))
+
+  mono <- officer::fp_text(font.family = "Monaco", font.size = 9)
+  preserve_ws <- function(s) gsub(" ", " ", s, fixed = TRUE)
+
+  add_code_block <- function(doc, lines) {
+    for (ln in lines) {
+      ln_safe <- if (is.na(ln) || !nzchar(ln)) " " else preserve_ws(ln)
+      doc <- officer::body_add_fpar(doc,
+                                    officer::fpar(officer::ftext(ln_safe,
+                                                                 prop = mono)))
+    }
+    doc
+  }
+
+  doc <- officer::read_docx()
+  doc <- officer::body_add_par(doc, title, style = "heading 1")
+  if (!is.null(subtitle) && nzchar(subtitle))
+    doc <- officer::body_add_par(doc, subtitle, style = "Normal")
+
+  doc <- officer::body_add_par(doc,
+                               "Decomposition of Q statistic (decomp.design)",
+                               style = "heading 2")
+  doc <- officer::body_add_par(doc,
+    paste0("Global test of incoherence based on the design-by-treatment ",
+           "interaction model (Higgins et al. 2012). Significant Q values ",
+           "indicate inconsistency in the network."),
+    style = "Normal")
+  doc <- add_code_block(doc, decomp_lines)
+
+  doc <- officer::body_add_par(doc,
+                               "Local test of inconsistency (netsplit)",
+                               style = "heading 2")
+  doc <- officer::body_add_par(doc,
+    paste0("Per-comparison node-splitting test (Dias et al. 2010). ",
+           "Compares direct vs indirect evidence; small p-values flag ",
+           "loops with potential incoherence."),
+    style = "Normal")
+  doc <- add_code_block(doc, netsplit_lines)
+
+  # Portrait A4 — these listings read better as a tall page.
+  ps <- officer::prop_section(
+    page_size    = officer::page_size(orient = "portrait",
+                                      width  = 8.27,
+                                      height = 11.69),
+    page_margins = officer::page_mar(top = 0.75, bottom = 0.75,
+                                     left = 0.75, right = 0.75,
+                                     header = 0.5, footer = 0.5,
+                                     gutter = 0)
+  )
+  doc <- officer::body_set_default_section(doc, ps)
+  print(doc, target = file)
+  invisible(file)
+}
+
+# ----------------------------------------------------------------------------
 # build_robmen_export_df
 # ----------------------------------------------------------------------------
 # `robmen_results` is the list returned by moduleC_server's robmen_results
