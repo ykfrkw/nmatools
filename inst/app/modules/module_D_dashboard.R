@@ -155,7 +155,7 @@ moduleD_ui <- function(id) {
               "Alphabetic"                                     = "alpha"),
             selected = "pscore")),
           column(4, sliderInput(ns("forest_height"),
-                                "Plot height (px) — 0 = auto",
+                                "Display height (px) — 0 = auto-fit",
                                 min = 0, max = 1800, value = 0, step = 50))
         ),
         fluidRow(
@@ -1173,24 +1173,6 @@ moduleD_server <- function(id, cinema_module, robmen_module,
     # ------------------------------------------------------------------
     # OUTPUT: Inline forest plot (netmeta::forest, rendered as PNG)
     # ------------------------------------------------------------------
-    # Auto-height (px) for the inline forest based on the number of
-    # treatment rows (excluding the reference) plus a few extra rows for
-    # heading / overall / hetstat. Mirrors pmatools::plot_forest's
-    # auto-margin idea — the natural height of the plot scales with k so
-    # the renderer doesn't waste a 600px slot on a 3-treatment network.
-    forest_natural_height_px <- reactive({
-      cr <- tryCatch(cinema_data(), error = function(e) NULL)
-      if (is.null(cr) || is.null(cr$net)) return(420L)
-      n_rows  <- max(1L, length(cr$net$trts) - 1L)
-      n_extra <- if (isTRUE(input$forest_print_hetstat %||% FALSE)) 4L else 3L
-      # forest.netmeta lays out rows in grid units; per_row of ~28 px keeps
-      # the actual plot tight against the bottom axis at 150 DPI without
-      # leaving the top half of the device empty.
-      per_row <- if (isTRUE(input$forest_smaller_text %||% FALSE)) 24L else 30L
-      base_px <- 140L  # axis ticks + axis labels + small margins
-      as.integer(min(2000L, max(380L, base_px + (n_rows + n_extra) * per_row)))
-    })
-
     output$forest_plot_ui <- renderUI({
       cr <- tryCatch(cinema_data(), error = function(e) NULL)
       if (is.null(cr)) {
@@ -1198,12 +1180,14 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                    icon("exclamation-circle"),
                    " Run Module B (CINeMA) first."))
       }
+      # height = "auto" lets the browser keep the trimmed PNG's aspect
+      # ratio. The slider, when non-zero, becomes a manual override
+      # measured in CSS pixels.
       slider_h <- input$forest_height %||% 0
       h <- if (is.null(slider_h) || is.na(slider_h) || slider_h <= 0)
-             forest_natural_height_px()
-           else slider_h
+             "auto" else paste0(slider_h, "px")
       imageOutput(ns("forest_plot_image"),
-                  height = paste0(h, "px"),
+                  height = h,
                   width  = "100%")
     })
 
@@ -1211,17 +1195,13 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       cr <- tryCatch(cinema_data(), error = function(e) NULL)
       req(!is.null(cr), !is.null(cr$net))
 
-      slider_h <- input$forest_height %||% 0
-      h_px <- if (is.null(slider_h) || is.na(slider_h) || slider_h <= 0)
-                forest_natural_height_px()
-              else slider_h
-      # Wider PNG + higher DPI so the text remains crisp when the browser
-      # downsizes the image to fit the imageOutput container width.
-      png_w   <- 1500L
-      png_res <- 150L
-      tmp     <- tempfile(fileext = ".png")
-      grDevices::png(tmp, width = png_w, height = max(420L, h_px),
-                     res = png_res)
+      # Strategy: render onto a deliberately oversized canvas so
+      # forest.netmeta has plenty of room to lay out, then magick-trim the
+      # whitespace and add a 25px breathing border. The final PNG matches
+      # the actual content extent regardless of how many treatments the
+      # network has.
+      tmp <- tempfile(fileext = ".png")
+      grDevices::png(tmp, width = 1500L, height = 1800L, res = 150)
       tryCatch(
         build_netmeta_forest(cr$net, forest_opts_r()),
         error = function(e) {
@@ -1231,6 +1211,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         },
         finally = grDevices::dev.off()
       )
+      trim_png_in_place(tmp, border_px = 25)
 
       list(src         = tmp,
            contentType = "image/png",
@@ -1392,17 +1373,13 @@ moduleD_server <- function(id, cinema_module, robmen_module,
       content = function(file) {
         cr <- tryCatch(cinema_data(), error = function(e) NULL)
         req(!is.null(cr), !is.null(cr$net))
-        slider_h <- input$forest_height %||% 0
-        h_px <- if (is.null(slider_h) || is.na(slider_h) || slider_h <= 0)
-                  forest_natural_height_px()
-                else slider_h
-        # Print-ready: 2x the inline DPI and 2x height for sharper output.
-        grDevices::png(file,
-                       width  = 3000,
-                       height = max(900L, h_px * 2L),
-                       res    = 300)
-        on.exit(grDevices::dev.off())
-        build_netmeta_forest(cr$net, forest_opts_r())
+        # Print-ready: 2x DPI on a deliberately oversized canvas, then
+        # magick-trim and add a 50px white border so the result is tight
+        # against the content but still has print margins.
+        grDevices::png(file, width = 3000L, height = 3600L, res = 300)
+        tryCatch(build_netmeta_forest(cr$net, forest_opts_r()),
+                 finally = grDevices::dev.off())
+        trim_png_in_place(file, border_px = 50)
       }
     )
 
@@ -1565,20 +1542,14 @@ moduleD_server <- function(id, cinema_module, robmen_module,
           }
         }
 
-        # 5. Forest plot PNG
+        # 5. Forest plot PNG (matches the inline view; trimmed)
         if ("forest_png" %in% items) {
           opts <- tryCatch(forest_opts_r(), error = function(e) NULL)
           if (!is.null(opts)) {
             fn   <- paste0("forest_plot_", date_tag, ".png")
-            slider_h <- input$forest_height %||% 0
-            h_px <- if (is.null(slider_h) || is.na(slider_h) || slider_h <= 0)
-                      tryCatch(forest_natural_height_px(),
-                               error = function(e) 600L)
-                    else slider_h
-            grDevices::png(file.path(stage, fn),
-                           width  = 3000,
-                           height = max(900L, h_px * 2L),
-                           res    = 300)
+            png_path <- file.path(stage, fn)
+            grDevices::png(png_path, width = 3000L, height = 3600L,
+                           res = 300)
             tryCatch(build_netmeta_forest(cr$net, opts),
                      error = function(e) {
                        plot.new()
@@ -1586,6 +1557,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                                           conditionMessage(e)))
                      },
                      finally = grDevices::dev.off())
+            trim_png_in_place(png_path, border_px = 50)
             files_in_zip <- c(files_in_zip, fn)
           }
         }

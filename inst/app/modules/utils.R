@@ -375,6 +375,41 @@ build_netmeta_forest <- function(net, opts = list()) {
 }
 
 # ----------------------------------------------------------------------------
+# trim_png_in_place: render-then-trim helper for plot PNGs
+# ----------------------------------------------------------------------------
+# forest.netmeta and netgraph both lay out into the device using grid units
+# that don't fill the canvas, so even a "right-sized" png() leaves visible
+# whitespace at the top / bottom. The cleanest fix is to render onto a
+# generous canvas, then post-process with magick::image_trim() to crop the
+# whitespace away and add a small (configurable) border for breathing room.
+#
+# Mutates `path` in place — reads, trims, writes back. No-op if magick is
+# unavailable so the caller can keep the un-trimmed output rather than
+# failing the render entirely.
+#
+# Args
+#   path       : png file path to mutate
+#   border_px  : white border to add after trim (per-side); default 25
+#   fuzz       : magick image_trim's fuzz tolerance, 0..100; small values
+#                are sufficient for solid-white plot backgrounds
+# ----------------------------------------------------------------------------
+trim_png_in_place <- function(path, border_px = 25, fuzz = 2) {
+  if (!requireNamespace("magick", quietly = TRUE)) return(invisible(FALSE))
+  ok <- tryCatch({
+    img <- magick::image_read(path)
+    img <- magick::image_trim(img, fuzz = fuzz)
+    if (border_px > 0) {
+      img <- magick::image_border(
+        img, color = "white",
+        geometry = sprintf("%dx%d", border_px, border_px))
+    }
+    magick::image_write(img, path = path, format = "png")
+    TRUE
+  }, error = function(e) FALSE)
+  invisible(ok)
+}
+
+# ----------------------------------------------------------------------------
 # get_contrib_matrix: extract the contribution matrix from a netcontrib object.
 # Tries multiple field names across different netmeta versions.
 # ----------------------------------------------------------------------------
