@@ -999,22 +999,21 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
           column(3,
             selectInput(ns("model_type"), "Effects model",
                         choices = c("Random effects" = "random",
-                                    "Common effects"  = "common"),
+                                    "Common effect"  = "common"),
                         selected = "random")
           ),
           column(3,
-            selectInput(ns("tau_method"),
-                        tagList(
-                          HTML("Random-effects \u03c4\u00b2 estimator"),
-                          tags$span(
-                            style = "font-weight:normal; font-size:0.8em; color:#666;",
-                            " (only used when model = random)")),
-                        choices = c(
-                          "REML (Restricted maximum likelihood)" = "REML",
-                          "DL (DerSimonian\u2013Laird)"               = "DL",
-                          "ML (Maximum likelihood)"              = "ML"
-                        ),
-                        selected = "REML")
+            conditionalPanel(
+              condition = sprintf("input['%s'] == 'random'", ns("model_type")),
+              selectInput(ns("tau_method"),
+                          "Random-effects \u03c4\u00b2 estimator",
+                          choices = c(
+                            "REML (Restricted maximum likelihood)" = "REML",
+                            "DL (DerSimonian\u2013Laird)"               = "DL",
+                            "ML (Maximum likelihood)"              = "ML"
+                          ),
+                          selected = "REML")
+            )
           ),
           column(3,
             numericInput(ns("delta"),
