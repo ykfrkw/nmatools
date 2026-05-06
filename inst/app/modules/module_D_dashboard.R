@@ -234,20 +234,27 @@ moduleD_ui <- function(id) {
            icon("file-archive"), " Bundle export (ZIP)"),
         p(style = "font-size:0.9em; color:#555; margin-bottom:8px;",
           "Bundle the analysis artefacts you tick below into a single",
-          " ZIP. Word/Excel formats and the pairwise meta-analysis",
+          " ZIP. Local/global tests and the pairwise meta-analysis",
           " appendix are coming in a follow-up phase."),
         fluidRow(
           column(8,
             checkboxGroupInput(ns("bundle_items"),
               label = NULL,
               choices = c(
-                "R script (reproducibility template)" = "r_script",
-                "netmeta object (.rds)"               = "netmeta_rds",
-                "{netmetaviz}-format CSV"             = "cinema_csv",
-                "Network graph (PNG)"                 = "netgraph_png",
-                "Forest plot (PNG)"                   = "forest_png"),
+                "R script (reproducibility template)"          = "r_script",
+                "netmeta object (.rds)"                        = "netmeta_rds",
+                "{netmetaviz}-format CSV"                      = "cinema_csv",
+                "Network graph (PNG)"                          = "netgraph_png",
+                "Forest plot (PNG)"                            = "forest_png",
+                "CINeMA Summary table — landscape Word"        = "summary_docx",
+                "CINeMA Summary table — Excel"                 = "summary_xlsx",
+                "League table — landscape Word"                = "league_docx",
+                "League table — Excel"                         = "league_xlsx",
+                "ROB-MEN evaluation — landscape Word"          = "robmen_docx",
+                "ROB-MEN evaluation — Excel"                   = "robmen_xlsx"),
               selected = c("r_script", "netmeta_rds", "cinema_csv",
-                           "netgraph_png", "forest_png"))
+                           "netgraph_png", "forest_png",
+                           "summary_docx", "league_docx", "robmen_docx"))
           ),
           column(4,
             downloadButton(ns("dl_bundle"), "Download Bundle (ZIP)",
@@ -446,6 +453,72 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         )
 
       out
+    })
+
+    # ------------------------------------------------------------------
+    # summary_export_pack: Summary table + per-cell colour matrices for
+    # Word/Excel export. Body cells coloured by the CINeMA domain rating
+    # palette; the Confidence column uses the confidence palette so it
+    # visually matches the on-screen Summary Table.
+    # ------------------------------------------------------------------
+    summary_export_pack <- reactive({
+      df <- summary_df()
+      n  <- nrow(df)
+      bg <- matrix(NA_character_, nrow = n, ncol = ncol(df))
+      tx <- matrix(NA_character_, nrow = n, ncol = ncol(df))
+
+      domain_cols <- which(startsWith(names(df), "D"))   # D1: ... D6: ...
+      conf_col    <- which(names(df) == "Confidence")
+
+      for (j in domain_cols) {
+        for (i in seq_len(n)) {
+          v <- df[i, j]
+          if (!is.null(v) && !is.na(v) && nzchar(v) && v %in% names(.CINEMA_COL)) {
+            bg[i, j] <- unname(.CINEMA_COL[v])
+            tx[i, j] <- unname(.CINEMA_TXT[v])
+          }
+        }
+      }
+      pal <- current_palette()
+      conf_bg_pal  <- pal$conf
+      conf_txt_pal <- pal$conf_txt
+      if (length(conf_col) == 1) {
+        for (i in seq_len(n)) {
+          v <- df[i, conf_col]
+          if (!is.null(v) && !is.na(v) && nzchar(v) && v %in% names(conf_bg_pal)) {
+            bg[i, conf_col] <- unname(conf_bg_pal[v])
+            tx[i, conf_col] <- unname(conf_txt_pal[v])
+          }
+        }
+      }
+      list(df = df, cell_colors = bg, cell_text_colors = tx)
+    })
+
+    # ------------------------------------------------------------------
+    # league_export_pack: lower-triangle league table + colour matrices.
+    # ------------------------------------------------------------------
+    league_export_pack <- reactive({
+      cr     <- cinema_data()
+      merged <- cinema_merged()
+      sm <- if (!is.null(nma_settings_r))
+              nma_settings_r()$effect_measure %||%
+                tryCatch(cr$net$sm, error = function(e) "")
+            else tryCatch(cr$net$sm, error = function(e) "")
+      pal <- current_palette()
+      build_league_table_df(cr$net, merged, sm = sm,
+                            conf_bg  = pal$conf,
+                            conf_txt = pal$conf_txt)
+    })
+
+    # ------------------------------------------------------------------
+    # robmen_export_pack: ROB-MEN table extracted from moduleC's results.
+    # Returns NULL when ROB-MEN has not produced anything yet.
+    # ------------------------------------------------------------------
+    robmen_export_pack <- reactive({
+      rb <- robmen_data()
+      df <- build_robmen_export_df(rb)
+      if (is.null(df) || nrow(df) == 0) return(NULL)
+      list(df = df, cell_colors = NULL, cell_text_colors = NULL)
     })
 
     # ------------------------------------------------------------------
@@ -1477,6 +1550,114 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                      finally = grDevices::dev.off())
             files_in_zip <- c(files_in_zip, fn)
           }
+        }
+
+        # ---- Phase B: tables to Word + Excel -------------------------
+        # Each item is wrapped in tryCatch so a single missing table
+        # doesn't abort the whole ZIP — the user gets whatever else
+        # they asked for.
+
+        # 6. Summary Table — Word (landscape)
+        if ("summary_docx" %in% items) {
+          fn <- paste0("cinema_summary_", date_tag, ".docx")
+          tryCatch({
+            pack <- summary_export_pack()
+            write_landscape_table_docx(
+              pack$df, file.path(stage, fn),
+              title    = "CINeMA Summary Table",
+              subtitle = paste("Generated:", format(Sys.time(),
+                                                    "%Y-%m-%d %H:%M")),
+              cell_colors      = pack$cell_colors,
+              cell_text_colors = pack$cell_text_colors)
+            files_in_zip <<- c(files_in_zip, fn)
+          }, error = function(e) {
+            message("summary_docx failed: ", conditionMessage(e))
+          })
+        }
+
+        # 7. Summary Table — Excel
+        if ("summary_xlsx" %in% items) {
+          fn <- paste0("cinema_summary_", date_tag, ".xlsx")
+          tryCatch({
+            pack <- summary_export_pack()
+            write_table_xlsx(
+              pack$df, file.path(stage, fn), sheet = "Summary",
+              cell_colors      = pack$cell_colors,
+              cell_text_colors = pack$cell_text_colors)
+            files_in_zip <<- c(files_in_zip, fn)
+          }, error = function(e) {
+            message("summary_xlsx failed: ", conditionMessage(e))
+          })
+        }
+
+        # 8. League Table — Word (landscape)
+        if ("league_docx" %in% items) {
+          fn <- paste0("league_table_", date_tag, ".docx")
+          tryCatch({
+            pack <- league_export_pack()
+            write_landscape_table_docx(
+              pack$df, file.path(stage, fn),
+              title    = "League Table",
+              subtitle = "Lower triangle: NMA estimate of column vs row.",
+              footer   = paste0("Cell colour = CINeMA confidence",
+                                " (High / Moderate / Low / Very low)."),
+              cell_colors      = pack$cell_colors,
+              cell_text_colors = pack$cell_text_colors)
+            files_in_zip <<- c(files_in_zip, fn)
+          }, error = function(e) {
+            message("league_docx failed: ", conditionMessage(e))
+          })
+        }
+
+        # 9. League Table — Excel
+        if ("league_xlsx" %in% items) {
+          fn <- paste0("league_table_", date_tag, ".xlsx")
+          tryCatch({
+            pack <- league_export_pack()
+            write_table_xlsx(
+              pack$df, file.path(stage, fn), sheet = "League",
+              cell_colors      = pack$cell_colors,
+              cell_text_colors = pack$cell_text_colors)
+            files_in_zip <<- c(files_in_zip, fn)
+          }, error = function(e) {
+            message("league_xlsx failed: ", conditionMessage(e))
+          })
+        }
+
+        # 10. ROB-MEN evaluation — Word (landscape)
+        if ("robmen_docx" %in% items) {
+          fn <- paste0("robmen_table_", date_tag, ".docx")
+          tryCatch({
+            pack <- robmen_export_pack()
+            if (is.null(pack)) {
+              message("robmen_docx skipped: no ROB-MEN results yet")
+            } else {
+              write_landscape_table_docx(
+                pack$df, file.path(stage, fn),
+                title    = "ROB-MEN Evaluation",
+                subtitle = "Risk of bias due to missing evidence (Chiocchia 2021).")
+              files_in_zip <<- c(files_in_zip, fn)
+            }
+          }, error = function(e) {
+            message("robmen_docx failed: ", conditionMessage(e))
+          })
+        }
+
+        # 11. ROB-MEN evaluation — Excel
+        if ("robmen_xlsx" %in% items) {
+          fn <- paste0("robmen_table_", date_tag, ".xlsx")
+          tryCatch({
+            pack <- robmen_export_pack()
+            if (is.null(pack)) {
+              message("robmen_xlsx skipped: no ROB-MEN results yet")
+            } else {
+              write_table_xlsx(pack$df, file.path(stage, fn),
+                               sheet = "ROB-MEN")
+              files_in_zip <<- c(files_in_zip, fn)
+            }
+          }, error = function(e) {
+            message("robmen_xlsx failed: ", conditionMessage(e))
+          })
         }
 
         if (length(files_in_zip) == 0) {
