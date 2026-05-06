@@ -227,6 +227,38 @@ moduleD_ui <- function(id) {
         )
       ),
 
+      # --- Bundle export (ZIP) — Phase A -----------------------------------
+      div(style = "border:1px solid #d4d4d8; background:#fafafa;
+                   border-radius:0.5rem; padding:14px 16px; margin-bottom:14px;",
+        h5(style = "margin-top:0;",
+           icon("file-archive"), " Bundle export (ZIP)"),
+        p(style = "font-size:0.9em; color:#555; margin-bottom:8px;",
+          "Bundle the analysis artefacts you tick below into a single",
+          " ZIP. Word/Excel formats and the pairwise meta-analysis",
+          " appendix are coming in a follow-up phase."),
+        fluidRow(
+          column(8,
+            checkboxGroupInput(ns("bundle_items"),
+              label = NULL,
+              choices = c(
+                "R script (reproducibility template)" = "r_script",
+                "netmeta object (.rds)"               = "netmeta_rds",
+                "{netmetaviz}-format CSV"             = "cinema_csv",
+                "Network graph (PNG)"                 = "netgraph_png",
+                "Forest plot (PNG)"                   = "forest_png"),
+              selected = c("r_script", "netmeta_rds", "cinema_csv",
+                           "netgraph_png", "forest_png"))
+          ),
+          column(4,
+            downloadButton(ns("dl_bundle"), "Download Bundle (ZIP)",
+                           class = "btn btn-primary btn-block",
+                           icon  = icon("file-archive")),
+            tags$small(style = "color:#888; display:block; margin-top:6px;",
+              "Tick at least one item.")
+          )
+        )
+      ),
+
       # --- Secondary: raw / convenience exports ---------------------------
       h5(style = "color:#666; font-size:0.95em; margin-top:14px;",
          "Other formats"),
@@ -1278,6 +1310,187 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         df <- tryCatch(nmv_cinema_df(), error = function(e) NULL)
         req(!is.null(df))
         write.csv(df, file, row.names = FALSE, na = "")
+      }
+    )
+
+    # ------------------------------------------------------------------
+    # DOWNLOAD: Bundle ZIP (spec Phase A)
+    # ------------------------------------------------------------------
+    # Builds a ZIP of every artefact the user ticked in the Bundle export
+    # checkbox group. Reuses the same builders as the per-format download
+    # handlers (build_netmeta_forest, netgraph_args_r, nmv_cinema_df) so the
+    # bundle is byte-identical to what the individual buttons would
+    # produce. Word/Excel/test/pairwise items are recognised in the choices
+    # list but NOT yet implemented here — they are wired in Phase B-D.
+    # ------------------------------------------------------------------
+    build_r_script <- function(net, ref_trt, sm) {
+      # Reproducibility template that loads the bundled netmeta_object.rds
+      # and re-runs the headline outputs. Users will customise; the goal is
+      # to give them a working starting point that matches what's in the
+      # ZIP.
+      paste(c(
+        "# =====================================================================",
+        "# nmatools — bundle reproducibility script",
+        sprintf("# Generated: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+        "# =====================================================================",
+        "# This script reproduces the headline outputs for the network",
+        "# meta-analysis bundled in this ZIP. Run from the unzipped folder.",
+        "",
+        "library(netmeta)",
+        "library(meta)",
+        "",
+        "# ---- Load the network object ----------------------------------------",
+        "net <- readRDS(\"netmeta_object.rds\")",
+        "summary(net)",
+        "",
+        sprintf("# Effect measure: %s", sm %||% "(unset)"),
+        sprintf("# Reference treatment: %s", ref_trt %||% "(auto)"),
+        "",
+        "# ---- Forest plot (matches forest_plot.png in this bundle) -----------",
+        "# Re-render with whatever Display Options you prefer.",
+        sprintf("forest(net, reference.group = \"%s\")",
+                ref_trt %||% (net$reference.group %||% sort(net$trts)[1])),
+        "",
+        "# ---- Network graph (matches netgraph.png in this bundle) ------------",
+        "netgraph(net, plastic = FALSE, number.of.studies = TRUE)",
+        "",
+        "# ---- League table ---------------------------------------------------",
+        "league <- netleague(net)",
+        "print(league)",
+        "",
+        "# ---- Decomposition / global test of inconsistency -------------------",
+        "decomp.design(net)",
+        "",
+        "# ---- Local test of inconsistency (per design) -----------------------",
+        "netsplit(net)",
+        "",
+        "# ---- {netmetaviz}-format CSV ----------------------------------------",
+        "# cinema_netmetaviz_<date>.csv in this bundle is suitable for direct",
+        "# use with the {netmetaviz} package or the CINeMA web tool.",
+        "# Read it with:",
+        "# dat <- read.csv(\"cinema_netmetaviz_<date>.csv\",",
+        "#                 check.names = FALSE)",
+        ""), collapse = "\n")
+    }
+
+    output$dl_bundle <- downloadHandler(
+      filename = function() {
+        paste0("nmatools_bundle_", format(Sys.Date(), "%Y%m%d"), ".zip")
+      },
+      content = function(file) {
+        items <- input$bundle_items
+        if (is.null(items) || length(items) == 0) {
+          # Avoid an empty ZIP: at least one human-readable file the user
+          # can see when they unzip.
+          tmp <- tempfile()
+          dir.create(tmp); on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+          writeLines(c("No items were selected.",
+                       "Tick at least one box in the Bundle export panel."),
+                     file.path(tmp, "README.txt"))
+          old_wd <- setwd(tmp); on.exit(setwd(old_wd), add = TRUE)
+          utils::zip(zipfile = file, files = "README.txt")
+          return()
+        }
+
+        cr <- tryCatch(cinema_data(), error = function(e) NULL)
+        req(!is.null(cr), !is.null(cr$net))
+
+        # Stage every artefact in a temp directory; final step is a single
+        # zip() call relative to that directory so the archive's top-level
+        # entries are clean (no nested temp paths).
+        stage <- tempfile("nmatools_bundle_")
+        dir.create(stage, recursive = TRUE)
+        on.exit(unlink(stage, recursive = TRUE), add = TRUE)
+
+        date_tag <- format(Sys.Date(), "%Y%m%d")
+        ref_trt  <- input$forest_ref %||%
+                    tryCatch(cr$net$reference.group, error = function(e) NULL) %||%
+                    sort(cr$net$trts)[1]
+        sm_val   <- if (!is.null(nma_settings_r))
+                      nma_settings_r()$effect_measure %||%
+                        tryCatch(cr$net$sm, error = function(e) "")
+                    else tryCatch(cr$net$sm, error = function(e) "")
+
+        files_in_zip <- character(0)
+
+        # 1. R script
+        if ("r_script" %in% items) {
+          fn <- "reproducibility.R"
+          writeLines(build_r_script(cr$net, ref_trt, sm_val),
+                     file.path(stage, fn))
+          files_in_zip <- c(files_in_zip, fn)
+        }
+
+        # 2. netmeta object (RDS)
+        if ("netmeta_rds" %in% items) {
+          fn <- "netmeta_object.rds"
+          saveRDS(cr$net, file = file.path(stage, fn))
+          files_in_zip <- c(files_in_zip, fn)
+        }
+
+        # 3. {netmetaviz} CSV
+        if ("cinema_csv" %in% items) {
+          df <- tryCatch(nmv_cinema_df(), error = function(e) NULL)
+          if (!is.null(df)) {
+            fn <- paste0("cinema_netmetaviz_", date_tag, ".csv")
+            write.csv(df, file = file.path(stage, fn),
+                      row.names = FALSE, na = "")
+            files_in_zip <- c(files_in_zip, fn)
+          }
+        }
+
+        # 4. Network graph PNG
+        if ("netgraph_png" %in% items) {
+          built <- tryCatch(netgraph_args_r(), error = function(e) NULL)
+          if (!is.null(built)) {
+            fn <- paste0("netgraph_", date_tag, ".png")
+            grDevices::png(file.path(stage, fn),
+                           width = 1200, height = 900, res = 150)
+            tryCatch(
+              do.call(netgraph,
+                      c(built$args, list(main = built$title))),
+              error = function(e) {
+                netgraph(built$net, plastic = FALSE,
+                         main = paste("Evidence network (", e$message, ")"))
+              },
+              finally = grDevices::dev.off())
+            files_in_zip <- c(files_in_zip, fn)
+          }
+        }
+
+        # 5. Forest plot PNG
+        if ("forest_png" %in% items) {
+          opts <- tryCatch(forest_opts_r(), error = function(e) NULL)
+          if (!is.null(opts)) {
+            fn   <- paste0("forest_plot_", date_tag, ".png")
+            h_px <- input$forest_height %||% 600
+            grDevices::png(file.path(stage, fn),
+                           width  = 2200,
+                           height = max(800, h_px * 2),
+                           res    = 220)
+            tryCatch(build_netmeta_forest(cr$net, opts),
+                     error = function(e) {
+                       plot.new()
+                       title(main = paste("Forest plot unavailable:",
+                                          conditionMessage(e)))
+                     },
+                     finally = grDevices::dev.off())
+            files_in_zip <- c(files_in_zip, fn)
+          }
+        }
+
+        if (length(files_in_zip) == 0) {
+          writeLines("No artefacts could be produced from the selected items.",
+                     file.path(stage, "README.txt"))
+          files_in_zip <- "README.txt"
+        }
+
+        # zip() needs to be called from inside the staging directory so the
+        # archive entries are stored as top-level filenames instead of
+        # absolute paths.
+        old_wd <- setwd(stage); on.exit(setwd(old_wd), add = TRUE)
+        utils::zip(zipfile = file, files = files_in_zip,
+                   flags   = "-q9X")
       }
     )
 
