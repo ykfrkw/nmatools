@@ -21,6 +21,30 @@ library(netmeta)
 library(meta)
 library(shinycssloaders)
 library(bslib)
+library(future)
+library(promises)
+
+# -----------------------------------------------------------------------------
+# Async background-compute plan (spec-13 phase 2)
+# -----------------------------------------------------------------------------
+# Used by Module C (ROB-MEN) to pre-render forest/funnel PNGs while the user
+# is still on Module A/B. `multisession` works on every OS but spawns child R
+# processes that consume the same RAM budget as the parent — on shinyapps.io
+# free tier this can be tight, so worker count is overridable via
+# NMATOOLS_BG_WORKERS. Set to 0 to disable async (falls back to sequential
+# in the calling session, still non-blocking when the trigger fires from
+# observeEvent because the work is wrapped in a future that resolves
+# immediately).
+# -----------------------------------------------------------------------------
+local({
+  workers <- suppressWarnings(as.integer(Sys.getenv("NMATOOLS_BG_WORKERS", "2")))
+  if (is.na(workers) || workers < 0) workers <- 2L
+  if (workers == 0L) {
+    future::plan(future::sequential)
+  } else {
+    future::plan(future::multisession, workers = workers)
+  }
+})
 
 # shadcn-inspired bslib theme — Inter font, zinc palette, soft borders
 nma_theme <- bslib::bs_theme(

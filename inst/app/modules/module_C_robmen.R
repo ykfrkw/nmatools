@@ -609,6 +609,95 @@ moduleC_server <- function(id, processed_data, cinema_module,
     }, ignoreNULL = TRUE, ignoreInit = TRUE)
 
     # ------------------------------------------------------------------
+    # Background diagnostic plot cache (spec-13 phase 2)
+    # ------------------------------------------------------------------
+    # robmen_plot_cache: NULL while computing, list-of-rows once resolved.
+    # Each row matches build_robmen_plots() return shape:
+    #   list(comp_key, forest_path, funnel_path, k, error)
+    # robmen_plot_run_id: monotonically increasing run counter. The future
+    # closure captures the current id; on promise fulfilment we discard
+    # results whose id is no longer the latest (= stale, user re-ran NMA).
+    # ------------------------------------------------------------------
+    robmen_plot_cache  <- reactiveVal(NULL)
+    robmen_plot_run_id <- reactiveVal(0L)
+
+    observeEvent(auto_egger_trigger(), {
+      tick <- auto_egger_trigger()
+      if (is.null(tick) || tick == 0) return()
+
+      this_run <- isolate(robmen_plot_run_id()) + 1L
+      robmen_plot_run_id(this_run)
+      robmen_plot_cache(NULL)  # → spinner state in UI
+
+      comps_df <- tryCatch(direct_comps_df(), error = function(e) NULL)
+      pw_df    <- tryCatch(pairwise_data(),   error = function(e) NULL)
+      net_sm   <- tryCatch(nma_net()$sm,      error = function(e) NULL)
+      if (is.null(comps_df) || is.null(pw_df) || nrow(comps_df) == 0) return()
+      if (is.null(net_sm) || !nzchar(net_sm)) net_sm <- "MD"
+
+      # Build subsets in the calling session (cheap; avoids shipping the full
+      # pairwise frame to the worker).
+      comps_list <- lapply(seq_len(nrow(comps_df)), function(i) list(
+        comp_key = comps_df$comp_key[i],
+        t1       = comps_df$t1[i],
+        t2       = comps_df$t2[i]))
+      subsets <- lapply(seq_len(nrow(comps_df)), function(i) {
+        t1_i <- comps_df$t1[i]; t2_i <- comps_df$t2[i]
+        idx  <- (pw_df$t1 == t1_i & pw_df$t2 == t2_i) |
+                (pw_df$t1 == t2_i & pw_df$t2 == t1_i)
+        sub  <- pw_df[idx, , drop = FALSE]
+        if (nrow(sub) == 0) return(data.frame(studlab = character(0),
+                                              y = numeric(0),
+                                              se = numeric(0)))
+        y_can <- ifelse(sub$t1 == t1_i & sub$t2 == t2_i, sub$y, -sub$y)
+        data.frame(studlab = as.character(sub$studlab),
+                   y       = y_can,
+                   se      = sub$se,
+                   stringsAsFactors = FALSE)
+      })
+
+      out_dir <- file.path(tempdir(), paste0("robmen_run_", this_run))
+      dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+      # Capture helper into the closure so the worker has access regardless
+      # of namespace strategy. `future` globals discovery picks this up
+      # automatically; the explicit assignment makes it survive future
+      # refactors.
+      builder <- build_robmen_plots
+      run_id_local <- this_run
+      sm_local     <- net_sm
+      out_dir_loc  <- out_dir
+
+      fut <- future::future({
+        lapply(seq_along(comps_list), function(i) {
+          builder(comp         = comps_list[[i]],
+                  study_subset = subsets[[i]],
+                  sm           = sm_local,
+                  run_id       = run_id_local,
+                  out_dir      = out_dir_loc)
+        })
+      }, seed = TRUE)
+
+      promises::then(fut,
+        onFulfilled = function(rows) {
+          # Discard if a newer run started while this one was computing.
+          if (isolate(robmen_plot_run_id()) != this_run) return(NULL)
+          robmen_plot_cache(rows)
+        },
+        onRejected = function(err) {
+          if (isolate(robmen_plot_run_id()) != this_run) return(NULL)
+          # Surface the failure as a sentinel row the UI can render.
+          robmen_plot_cache(list(list(
+            comp_key    = "<top-level error>",
+            forest_path = NA_character_,
+            funnel_path = NA_character_,
+            k           = 0L,
+            error       = paste("future failed:", conditionMessage(err)))))
+        })
+      NULL
+    }, ignoreNULL = TRUE, ignoreInit = TRUE)
+
+    # ------------------------------------------------------------------
     # All pairwise comparisons
     # ------------------------------------------------------------------
     direct_comps_df <- reactive({
@@ -1668,7 +1757,17 @@ moduleC_server <- function(id, processed_data, cinema_module,
                          tagList(icon("arrow-right"), " Update CINeMA Domain 2"),
                          class = "btn btn-primary",
                          title = "Send ROB-MEN ratings to CINeMA Module B (Domain 2)")
-        )
+        ),
+
+        # ---- Section 3: Diagnostic plots (spec-13 phase 2) ------------
+        hr(),
+        h4(tagList(icon("chart-bar"), " Diagnostic plots (forest & funnel)")),
+        p(style = "font-size:0.88em; color:#555; margin:0 0 8px 0;",
+          "Pre-rendered while NMA was running. Forest plots are produced",
+          " for every direct comparison; funnel plots only when",
+          tags$strong(" ≥ 10 studies"),
+          " (Egger's threshold)."),
+        uiOutput(ns("robmen_bg_plots_section"))
       )
     })
 
@@ -2243,6 +2342,135 @@ moduleC_server <- function(id, processed_data, cinema_module,
         })
       }
     }, ignoreNULL = TRUE, ignoreInit = FALSE)
+
+    # ==================================================================
+    # Diagnostic plots section (spec-13 phase 2)
+    # ==================================================================
+    output$robmen_bg_plots_section <- renderUI({
+      cache <- robmen_plot_cache()
+
+      # Spinner placeholder while the future is in flight.
+      if (is.null(cache)) {
+        return(div(
+          style = "padding:20px; text-align:center; color:#666;",
+          tags$span(class = "spinner-border spinner-border-sm",
+                    role = "status", `aria-hidden` = "true"),
+          tags$span(style = "margin-left:8px;",
+                    "Computing diagnostic plots …")
+        ))
+      }
+
+      if (length(cache) == 0)
+        return(div(class = "alert alert-info",
+                   "No comparisons available for diagnostic plots."))
+
+      # Build per-comparison expanders.
+      blocks <- lapply(cache, function(row) {
+        ck   <- row$comp_key
+        sid  <- safe_id(ck)
+        k    <- row$k
+
+        # Top-level error row (sentinel from onRejected).
+        if (!is.na(row$error) && identical(ck, "<top-level error>")) {
+          return(div(class = "alert alert-danger",
+                     style = "margin:6px 0;",
+                     icon("triangle-exclamation"),
+                     strong(" Background plot pipeline failed: "),
+                     row$error))
+        }
+
+        forest_block <- if (!is.na(row$forest_path) &&
+                            file.exists(row$forest_path)) {
+          tagList(
+            h6(style = "margin:6px 0 2px 0;", "Forest"),
+            imageOutput(ns(paste0("robmen_bg_forest_", sid)),
+                        width = "100%", height = "auto",
+                        inline = FALSE)
+          )
+        } else if (!is.na(row$error)) {
+          div(class = "alert alert-warning",
+              style = "font-size:0.87em; margin:6px 0;",
+              icon("triangle-exclamation"),
+              " Forest plot unavailable: ", row$error)
+        } else {
+          div(style = "color:#888; font-size:0.87em;",
+              icon("info-circle"),
+              " Forest plot not produced (k = 0).")
+        }
+
+        funnel_block <- if (!is.na(row$funnel_path) &&
+                            file.exists(row$funnel_path)) {
+          tagList(
+            h6(style = "margin:6px 0 2px 0;", "Funnel"),
+            imageOutput(ns(paste0("robmen_bg_funnel_", sid)),
+                        width = "100%", height = "auto",
+                        inline = FALSE)
+          )
+        } else {
+          div(style = "color:#888; font-size:0.87em; padding:12px 0;",
+              icon("info-circle"),
+              if (k < 10) {
+                paste0(" Funnel plot omitted (k = ", k, " < 10, ",
+                       "Egger threshold).")
+              } else {
+                " Funnel plot unavailable."
+              })
+        }
+
+        tags$details(
+          style = "border:1px solid #e4e4e7; border-radius:0.5rem;",
+          "padding-left:10px; padding-right:10px; margin-bottom:8px;",
+          tags$summary(
+            style = "cursor:pointer; padding:8px 4px; font-weight:600;",
+            paste0(ck, "  (k = ", k, ")"),
+            tags$span(style = "margin-left:10px; font-size:0.8em; color:#52525b;",
+                      if (!is.na(row$forest_path)) "[Forest]" else "",
+                      if (!is.na(row$funnel_path)) " [Funnel]" else "")
+          ),
+          fluidRow(
+            column(6, forest_block),
+            column(6, funnel_block)
+          )
+        )
+      })
+
+      tagList(blocks)
+    })
+
+    # Per-comparison renderImage outputs are created lazily once the
+    # cache resolves. observe() reruns whenever the cache reactiveVal
+    # updates — i.e. once per Run Analysis click.
+    observe({
+      cache <- robmen_plot_cache()
+      if (is.null(cache) || length(cache) == 0) return()
+
+      for (row in cache) {
+        local({
+          r <- row
+          if (is.na(r$comp_key) || identical(r$comp_key, "<top-level error>"))
+            return()
+          sid <- safe_id(r$comp_key)
+
+          if (!is.na(r$forest_path)) {
+            output[[paste0("robmen_bg_forest_", sid)]] <- renderImage({
+              list(src         = r$forest_path,
+                   contentType = "image/png",
+                   width       = "100%",
+                   alt         = paste("Forest plot:", r$comp_key))
+            }, deleteFile = FALSE)
+          }
+
+          if (!is.na(r$funnel_path)) {
+            output[[paste0("robmen_bg_funnel_", sid)]] <- renderImage({
+              list(src         = r$funnel_path,
+                   contentType = "image/png",
+                   width       = "100%",
+                   alt         = paste("Funnel plot:", r$comp_key))
+            }, deleteFile = FALSE)
+          }
+        })
+      }
+    })
 
     # ------------------------------------------------------------------
     # RETURN
