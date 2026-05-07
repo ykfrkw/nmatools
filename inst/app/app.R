@@ -61,13 +61,15 @@ source("modules/module_D_dashboard.R")
 
 ui <- fluidPage(
   theme = nma_theme,
-  titlePanel(div(
-    tags$h2(style = "font-family: Monaco, Menlo, monospace;
-                     font-weight:600; color:#18181b; margin:0;",
-            "nmatools::cinema()"),
-    tags$div(style = "color:#52525b; font-size:0.95em; margin-top:2px;",
-             "netmeta + CINeMA + ROB-MEN")
-  )),
+  tags$div(
+    style = "padding:1.5rem 0; border-bottom:1px solid #e4e4e7; margin-bottom:1rem;",
+    tags$h1("nmatools",
+            style = "margin:0; font-size:1.5rem; display:inline-block; color:#18181b;"),
+    tags$span(
+      style = "color:#71717a; font-size:0.95rem; margin-left:0.75rem;",
+      "netmeta + CINeMA + ROB-MEN"
+    )
+  ),
   tags$head(tags$style(HTML("
     .alert { padding:10px; border-radius:0.5rem; margin-bottom:10px; }
     .alert-info    { background:#eff6ff; border:1px solid #bfdbfe;
