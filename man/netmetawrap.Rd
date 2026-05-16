@@ -23,6 +23,7 @@ netmetawrap(
   netsplit_args = list(),
   a4_rows_per_page = 45L,
   funnel_min_studies = 10L,
+  rare_events = c("auto", "always", "never"),
   trim = TRUE,
   trim_fuzz = 30L,
   .subnet_label = NULL
@@ -72,6 +73,21 @@ Default: \code{45}.}
 \item{funnel_min_studies}{Minimum number of studies (k) per pairwise
 comparison required to draw a contour-enhanced funnel plot.
 Default: \code{10L}.}
+
+\item{rare_events}{One of \code{"auto"} (default), \code{"always"}, \code{"never"}.
+Controls the rare-event NMA workflow for binary outcomes:
+\itemize{
+\item \code{"auto"}: run diagnostics; if \code{rare_flow = TRUE} (low event rate
+and/or many zero-arm studies; criteria mirror \code{pmatools}), switch the
+primary \code{netmetabin} call to common-effect Mantel-Haenszel without
+continuity correction (Efthimiou et al. 2019, Stat Med 38:2992-3012)
+and additionally fit a 4-method sensitivity panel
+(MH / NCH / IV-FE-CC / IV-RE-CC).
+\item \code{"always"}: skip the auto-detection and force the rare-event workflow.
+\item \code{"never"}: skip diagnostics and the sensitivity panel entirely;
+keep the existing IV default.
+For continuous outcomes the argument is ignored.
+}}
 
 \item{trim}{Trim whitespace from output PDFs via \code{magick}. Default: \code{TRUE}.}
 
