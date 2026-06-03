@@ -8,6 +8,18 @@
 #   D  - Dashboard & Export           (module_D_dashboard.R)
 # =============================================================================
 
+# Force a UTF-8 CTYPE locale before sourcing modules. Without this, an app
+# launched in a C / POSIX locale reads the module files in native encoding,
+# leaving non-ASCII string literals (①②③, en-dash, →, ≥) marked as
+# Encoding "unknown". Those then fail to match the UTF-8-marked choice
+# strings in `%in%` / selectInput(selected=), so auto-judgements silently
+# fall back to "(auto)" and headings render as mojibake. The source(...,
+# encoding = "UTF-8") calls below are the locale-independent guarantee;
+# this block additionally fixes the runtime locale where possible.
+for (.loc in c("en_US.UTF-8", "C.UTF-8", "en_US.utf8", "C.utf8")) {
+  if (nzchar(suppressWarnings(Sys.setlocale("LC_CTYPE", .loc)))) break
+}
+
 library(shiny)
 library(DT)
 library(readxl)
@@ -50,14 +62,14 @@ nma_theme <- bslib::bs_theme(
   "navbar-light-color"       = "#52525b"
 )
 
-source("modules/utils.R")            # shared constants and helpers (load first)
-source("modules/_d1_sens_judge.R")   # pure RoB sensitivity flowchart (used by Module B)
-source("modules/_robmen_bg_plots.R") # pure forest/funnel builder (spec-13 phase 1; used by Module C)
-source("modules/_export_helpers.R")  # Word/Excel writers + table builders (Bundle Export Phase B+)
-source("modules/module_A_data_input.R")
-source("modules/module_B_cinema.R")
-source("modules/module_C_robmen.R")
-source("modules/module_D_dashboard.R")
+source("modules/utils.R",            encoding = "UTF-8")  # shared constants and helpers (load first)
+source("modules/_d1_sens_judge.R",   encoding = "UTF-8")  # pure RoB sensitivity flowchart (used by Module B)
+source("modules/_robmen_bg_plots.R", encoding = "UTF-8")  # pure forest/funnel builder (spec-13 phase 1; used by Module C)
+source("modules/_export_helpers.R",  encoding = "UTF-8")  # Word/Excel writers + table builders (Bundle Export Phase B+)
+source("modules/module_A_data_input.R", encoding = "UTF-8")
+source("modules/module_B_cinema.R",     encoding = "UTF-8")
+source("modules/module_C_robmen.R",     encoding = "UTF-8")
+source("modules/module_D_dashboard.R",  encoding = "UTF-8")
 
 ui <- fluidPage(
   theme = nma_theme,
