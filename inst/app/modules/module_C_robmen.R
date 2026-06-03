@@ -18,17 +18,18 @@
 #   PAIRWISE COMPARISONS TABLE — assessed per comparison:
 #     Within-study assessment (Groups A & B):
 #       Qualitative judgment using ROB-ME Step 2 signalling questions.
-#       Output: "No bias detected" | "Some concerns" | "Suspected bias"
+#       Output: "No bias detected" | "Suspected bias favouring X"
 #
 #     Across-study assessment (all groups):
 #       Qualitative conditions (grey literature search, novel agent bias,
 #       prior pub bias evidence) + quantitative (Egger's test if k>=10).
-#       Output: "No bias detected" | "Some concerns" | "Suspected bias"
+#       Output: "No bias detected" | "Suspected bias favouring X"
 #
 #     Pairwise overall judgement:
-#       EITHER component = "Suspected bias" -> overall = "Suspected bias"
+#       EITHER component = "Suspected bias favouring X" -> overall carries X
 #       BOTH = "No bias detected" -> "No bias detected"
-#       otherwise -> "Some concerns"
+#       If both components are suspected in conflicting directions, the
+#       within-study direction takes precedence.
 #       For Group C (unobserved): = across-study assessment only
 #
 #   ROB-MEN TABLE — assessed per NMA estimate (Table 5, Chiocchia 2021):
@@ -41,9 +42,9 @@
 #           "No evidence" | "Evidence reinforcing" | "Evidence not reinforcing"
 #     Final rating: Low risk | Some concerns | High risk
 #
-# ALGORITHM NOTE — 15 pp threshold (Chiocchia 2021):
-#   "Balanced"               = substantial bias in BOTH directions (difference <=15 pp)
-#   "Favouring one treatment" = bias favouring one treatment exceeds other by >15 pp
+# ALGORITHM NOTE — contribution threshold:
+#   The user chooses a percentage-point threshold and applies it consistently
+#   across all estimates; 15 pp is the default.
 #
 # LICENSE NOTE:
 #   This module is an INDEPENDENT IMPLEMENTATION of the ROB-MEN methodology
@@ -70,25 +71,24 @@ library(netmeta)
 # --------------------------------------------------------------------------
 # ROBMEN_COLOURS defined in utils.R
 
-WITHIN_CHOICES  <- c(
-  "(select)" = "",
-  "No bias detected",
-  "Some concerns",
-  "Suspected bias"
-)
-ACROSS_CHOICES  <- c(
-  "(select)" = "",
-  "No bias detected",
-  "Some concerns",
-  "Suspected bias",
-  "Insufficient data"
-)
-OVERALL_PW_CHOICES <- c(
-  "(auto)" = "",
-  "No bias detected",
-  "Some concerns",
-  "Suspected bias"
-)
+NO_BIAS <- "No bias detected"
+SUSPECTED_PREFIX <- "Suspected bias favouring "
+
+bias_label <- function(treatment) paste0(SUSPECTED_PREFIX, treatment)
+
+pairwise_bias_choices <- function(t1, t2, select_label = "(select)") {
+  choices <- c(NO_BIAS, bias_label(t1), bias_label(t2))
+  stats::setNames(c("", choices), c(select_label, choices))
+}
+
+pairwise_overall_choices <- function(t1, t2) {
+  choices <- c(NO_BIAS, bias_label(t1), bias_label(t2))
+  stats::setNames(c("", choices), c("(auto)", choices))
+}
+
+WITHIN_CHOICES <- pairwise_bias_choices
+ACROSS_CHOICES <- pairwise_bias_choices
+OVERALL_PW_CHOICES <- pairwise_overall_choices
 CONTRIB_CHOICES <- c(
   "(auto)"                      = "",
   "No substantial"              = "No substantial contribution from bias",
@@ -110,8 +110,8 @@ BIAS_BG <- c(
   "No bias"           = "#E2EFDA",
   "Some concerns"     = "#FFF2CC",
   "Suspected bias"    = "#FFE0E0",
+  "Suspected bias favouring" = "#FFE0E0",
   "High risk"         = "#FFE0E0",
-  "Insufficient data" = "#F5F5F5",
   "(select)"          = "white"
 )
 
@@ -124,51 +124,85 @@ safe_id <- function(x) gsub("[^a-zA-Z0-9]", "_", x)
 
 # %||% / get_contrib_matrix defined in utils.R
 
+rating_bg <- function(val, bg_map = BIAS_BG) {
+  val <- as.character(val %||% "")
+  if (startsWith(val, SUSPECTED_PREFIX)) return("#FFE0E0")
+  bg <- bg_map[val]
+  if (is.na(bg)) "white" else bg
+}
+
+is_no_bias <- function(r) {
+  as.character(r %||% "") %in% c(NO_BIAS, "No bias", "No suspected bias")
+}
+
+is_suspected <- function(r) {
+  r <- as.character(r %||% "")
+  startsWith(r, SUSPECTED_PREFIX) || r %in% c("Suspected bias", "High risk")
+}
+
+favoured_from_rating <- function(r, t1 = NULL, t2 = NULL) {
+  r <- as.character(r %||% "")
+  if (identical(r, "Suspected bias favouring t1")) return(t1 %||% "t1")
+  if (identical(r, "Suspected bias favouring t2")) return(t2 %||% "t2")
+  if (!startsWith(r, SUSPECTED_PREFIX)) return(NA_character_)
+  fav <- sub(paste0("^", SUSPECTED_PREFIX), "", r)
+  if (!nzchar(fav)) NA_character_ else fav
+}
+
+direction_from_rating <- function(r, t1, t2) {
+  fav <- favoured_from_rating(r, t1, t2)
+  if (is.na(fav)) return(NA_character_)
+  if (identical(fav, t1)) return("t1")
+  if (identical(fav, t2)) return("t2")
+  NA_character_
+}
+
 # Pairwise overall judgement rule (Chiocchia 2021 / 2023 guidance)
 # Short-circuit logic:
-#   1. If within-study = "Suspected bias" → overall = "Suspected bias"
+#   1. If within-study = "Suspected bias favouring X" → overall carries X
 #      (across-study assessment is not needed)
 #   2. Else check across-study:
-#      If across = "Suspected bias" → overall = "Suspected bias"
+#      If across = "Suspected bias favouring X" → overall carries X
 #      Else → "No bias detected"
-is_suspected <- function(r) {
-  as.character(r) %in% c("Suspected bias", "High risk")  # backward compat
-}
-compute_overall_pw <- function(within_r, across_r) {
-  if (is_suspected(within_r))  return("Suspected bias")
-  if (is_suspected(across_r))  return("Suspected bias")
-  "No bias detected"
+compute_overall_pw <- function(within_r, across_r, t1 = NULL, t2 = NULL) {
+  if (is_suspected(within_r)) {
+    fav <- favoured_from_rating(within_r, t1, t2)
+    if (!is.na(fav)) return(bias_label(fav))
+    return("Suspected bias")
+  }
+  if (is_suspected(across_r)) {
+    fav <- favoured_from_rating(across_r, t1, t2)
+    if (!is.na(fav)) return(bias_label(fav))
+    return("Suspected bias")
+  }
+  NO_BIAS
 }
 
 # Map the Pairwise Comparisons Table judgement to the indirect-evidence
 # assessment used only for ROB-MEN "only indirect" estimates.
-derive_indirect_bias <- function(pairwise_overall, bias_dir = "") {
+derive_indirect_bias <- function(pairwise_overall, t1 = NULL, t2 = NULL) {
   pairwise_overall <- as.character(pairwise_overall %||% "")
-  bias_dir <- as.character(bias_dir %||% "")
 
-  if (pairwise_overall %in% c("No bias detected", "No bias"))
+  if (is_no_bias(pairwise_overall))
     return("No suspected bias")
-  if (pairwise_overall == "Some concerns")
-    return("Some concerns")
   if (is_suspected(pairwise_overall)) {
-    if (bias_dir == "t1") return("Suspected bias favouring t1")
-    if (bias_dir == "t2") return("Suspected bias favouring t2")
-    return("Some concerns")
+    dir <- direction_from_rating(pairwise_overall, t1 %||% "t1", t2 %||% "t2")
+    if (!is.na(dir) && dir == "t1") return("Suspected bias favouring t1")
+    if (!is.na(dir) && dir == "t2") return("Suspected bias favouring t2")
   }
   "No suspected bias"
 }
 
 # ROB-ME Step 2 decision logic (Page & Sterne, BMJ 2023)
 # q1: "no" | "unclear" | "yes"
-# q2: "no" | "unclear" | "yes"  (only relevant when q1 == "yes")
-robme_derive_rating <- function(q1, q2 = "") {
+# q2: "no" | "unclear" | "t1" | "t2"  (only relevant when q1 == "yes")
+robme_derive_rating <- function(q1, q2 = "", t1 = "t1", t2 = "t2") {
   if (!nzchar(q1)) return("")
-  if (q1 == "no")      return("No bias")
-  if (q1 == "unclear") return("Some concerns")
+  if (q1 %in% c("no", "unclear")) return(NO_BIAS)
   # q1 == "yes"
-  if (q2 == "yes")     return("High risk")
-  if (q2 == "no")      return("Some concerns")
-  "Some concerns"  # q2 unclear or not yet answered
+  if (q2 == "t1") return(bias_label(t1))
+  if (q2 == "t2") return(bias_label(t2))
+  NO_BIAS
 }
 
 # Final ROB-MEN rating per NMA estimate (Chiocchia 2021, Table 5 / 2023, Table 2).
@@ -241,21 +275,25 @@ compute_overall_robmen <- function(contrib_eval, sse_eval,
 #   te > 0  (NMA favours t2): biased evidence favouring t2 is the concerning side
 #   te <= 0 (NMA favours t1): biased evidence favouring t1 is the concerning side
 # ----------------------------------------------------------------------------
-compute_auto_contrib <- function(te, pct_fav_t1, pct_fav_t2) {
+compute_auto_contrib <- function(te, pct_fav_t1, pct_fav_t2,
+                                 threshold_pp = 15) {
   p1 <- if (length(pct_fav_t1) == 0 || is.na(pct_fav_t1[1])) 0 else pct_fav_t1[1]
   p2 <- if (length(pct_fav_t2) == 0 || is.na(pct_fav_t2[1])) 0 else pct_fav_t2[1]
+  threshold_pp <- suppressWarnings(as.numeric(threshold_pp)[1])
+  if (is.na(threshold_pp) || !is.finite(threshold_pp) || threshold_pp < 0)
+    threshold_pp <- 15
   diff_pp <- abs(p1 - p2)
   mx_pp   <- max(p1, p2)
   # Symmetric rule (independent of NMA direction):
-  #   |p1 - p2| >= 15  -> Substantial – favouring one treatment
-  #   else, if max(p1, p2) >= 15 -> Substantial – balanced
+  #   |p1 - p2| >= threshold -> Substantial – favouring one treatment
+  #   else, if max(p1, p2) >= threshold -> Substantial – balanced
   #   else                       -> No substantial contribution
   # The previous TE-direction-gated rule mis-classified roughly half the
   # estimates (the side where bias opposed the NMA direction).
   # Argument `te` kept for back-compat but no longer consulted.
-  if (diff_pp >= 15)
+  if (diff_pp >= threshold_pp)
     "Substantial contribution from bias – favouring one treatment"
-  else if (mx_pp >= 15)
+  else if (mx_pp >= threshold_pp)
     "Substantial contribution from bias – balanced"
   else
     "No substantial contribution from bias"
@@ -263,8 +301,7 @@ compute_auto_contrib <- function(te, pct_fav_t1, pct_fav_t2) {
 
 # Style badge for a rating value
 rating_badge <- function(val, bg_map = BIAS_BG) {
-  bg <- bg_map[as.character(val)]
-  if (is.na(bg)) bg <- "white"
+  bg <- rating_bg(val, bg_map)
   if (nzchar(as.character(val)) && as.character(val) != "(select)") {
     tags$span(style = paste0("background:", bg,
       "; padding:2px 6px; border-radius:3px; font-size:0.85em;"), val)
@@ -284,55 +321,6 @@ disabled_cell <- function(label, title = "") {
   )
 }
 
-# Direction-of-bias input shared by Group A/B/C rows. Group C has no
-# within-study cell and Group B has no across-study cell, so callers choose
-# which inputs participate in the client-side reveal condition.
-bias_direction_cell <- function(ns, sid, t1, t2, bias_required = FALSE,
-                                use_within = TRUE, use_across = TRUE) {
-  bias_dir_choices <- setNames(
-    c("", "t1", "t2"),
-    c("(unknown)",
-      paste0("Favours ", t1),
-      paste0("Favours ", t2))
-  )
-  ov_id      <- ns(paste0("ov_pw_", sid))
-  within_id  <- ns(paste0("within_", sid))
-  across_id  <- ns(paste0("across_", sid))
-  suspected  <- "'Suspected bias'"
-  cond_parts <- c(if (isTRUE(bias_required)) "true" else "false",
-                  sprintf("input['%s'] == %s", ov_id, suspected))
-  if (isTRUE(use_within))
-    cond_parts <- c(cond_parts,
-                    sprintf("input['%s'] == %s", within_id, suspected))
-  if (isTRUE(use_across))
-    cond_parts <- c(cond_parts,
-                    sprintf("input['%s'] == %s", across_id, suspected))
-  cond_show <- paste(cond_parts, collapse = " || ")
-  cond_hide <- sprintf("!(%s)", cond_show)
-
-  placeholder_block <- tags$span(
-    style = "color:#9ca3af;",
-    title = paste0("Direction-of-bias input not needed unless the pairwise",
-                   " comparison is judged as suspected bias."),
-    "\u2014")
-
-  dropdown_block <- div(style = "display:flex; gap:6px; align-items:center;",
-    selectInput(ns(paste0("bias_dir_", sid)), label = NULL,
-                choices = bias_dir_choices, selected = "", width = "130px"),
-    tags$span(
-      style = "background:#fef3c7; color:#92400e; font-size:0.7em;
-               padding:2px 6px; border-radius:10px; white-space:nowrap;
-               border:1px solid #fcd34d; font-weight:600;",
-      title = paste0("Suspected bias detected -- specify which treatment",
-                     " the bias points to."),
-      "needs input"))
-
-  tags$td(style = "padding:4px 6px;",
-    conditionalPanel(condition = cond_hide, placeholder_block),
-    conditionalPanel(condition = cond_show, dropdown_block)
-  )
-}
-
 # Build one <tr> for the Pairwise Comparisons Table
 # Groups (Chiocchia 2021):
 #   Group A (is_group_a = TRUE, default): observed for this outcome — direct evidence exists
@@ -343,11 +331,8 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
                         bg = "white", is_group_c = FALSE, is_group_b = FALSE,
                         bias_required = FALSE) {
   sid <- safe_id(ck)
-  # bias_required = TRUE when the across-study auto judgement indicates
-  # bias and the algorithm therefore needs the user to specify which
-  # treatment the bias points to. Caller computes this from across_default.
-  # When FALSE we render a "—" placeholder instead of the dropdown so the
-  # table doesn't look like every row needs manual input.
+  bias_choices <- pairwise_bias_choices(t1, t2)
+  overall_choices <- pairwise_overall_choices(t1, t2)
 
   # ---- "Reporting this outcome" cell: k (editable) / N (editable), auto-filled ----
   reporting_cell <- if (is_group_b || is_group_c) {
@@ -398,17 +383,17 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
   } else if (is_group_b) {
     tags$td(style = "padding:4px 8px;",
       selectInput(ns(paste0("within_", sid)), label = NULL,
-                  choices = WITHIN_CHOICES,
+                  choices = bias_choices,
                   selected = if (nzchar(within_default)) within_default else "",  # nolint
-                  width = "140px")
+                  width = "190px")
     )
   } else {
     tags$td(style = "padding:4px 8px;",
       div(style = "display:flex; gap:4px; align-items:flex-start;",
         selectInput(ns(paste0("within_", sid)), label = NULL,
-                    choices = WITHIN_CHOICES,
+                    choices = bias_choices,
                     selected = if (nzchar(within_default)) within_default else "",  # nolint
-                    width = "130px"),
+                    width = "190px"),
         actionButton(ns(paste0("robme_q_", sid)),
                      label = "ROB-ME",
                      class = "btn btn-xs btn-outline-info",
@@ -429,35 +414,33 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
     tags$td(style = "padding:4px 8px;",
       div(
         selectInput(ns(paste0("across_", sid)), label = NULL,
-                    choices = ACROSS_CHOICES,
+                    choices = bias_choices,
                     selected = if (!is.null(across_default) && !is.na(across_default))
                                  across_default else "",
-                    width = "130px")
+                    width = "190px")
       )
     )
   } else {
+    funnel_button <- if (!is.na(n_direct) && n_direct >= 10) {
+      actionButton(ns(paste0("funnel_btn_", sid)),
+                   label = tagList(icon("chart-bar"), " Funnel"),
+                   class = "btn btn-xs btn-outline-secondary",
+                   style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
+                   title = "Show contour-enhanced funnel plot, Egger's test, trim-and-fill")
+    } else {
+      NULL
+    }
     tags$td(style = "padding:4px 8px;",
       div(style = "display:flex; gap:4px; align-items:flex-start;",
         selectInput(ns(paste0("across_", sid)), label = NULL,
-                    choices = ACROSS_CHOICES,
+                    choices = bias_choices,
                     selected = if (!is.null(across_default) && !is.na(across_default))
                                  across_default else "",
-                    width = "130px"),
-        actionButton(ns(paste0("funnel_btn_", sid)),
-                     label = tagList(icon("chart-bar"), " Funnel"),
-                     class = "btn btn-xs btn-outline-secondary",
-                     style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
-                     title = "Show contour-enhanced funnel plot, Egger's test, trim-and-fill")
+                    width = "190px"),
+        funnel_button
       )
     )
   }
-
-  bias_dir_cell <- bias_direction_cell(
-    ns, sid, t1, t2,
-    bias_required = bias_required,
-    use_within    = !is_group_c,
-    use_across    = !is_group_b
-  )
 
   # Faint-grey background for fully auto-rated rows so the eye is drawn
   # to rows that need user attention.
@@ -485,9 +468,8 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
     across_cell,
     tags$td(style = "padding:4px 8px;",
       selectInput(ns(paste0("ov_pw_", sid)), label = NULL,
-                  choices = OVERALL_PW_CHOICES, selected = "", width = "150px")
-    ),
-    bias_dir_cell
+                  choices = overall_choices, selected = "", width = "190px")
+    )
   )
 }
 
@@ -505,7 +487,7 @@ make_robmen_row <- function(ns, comp, te, lo, hi, pct_t1, pct_t2,
                             sm = "",
                             t1 = NULL,
                             t2 = NULL,
-                            bias_dir = "",
+                            contrib_threshold_pp = 15,
                             bg = "white") {
   sid <- safe_id(comp)
   te_str <- format_te_ci(te, lo, hi, sm)
@@ -530,12 +512,16 @@ make_robmen_row <- function(ns, comp, te, lo, hi, pct_t1, pct_t2,
     tags$span(style = "color:#aaa; font-style:italic;", "—")
   }
 
-  # 15 pp threshold: highlight if |pct_t1 - pct_t2| > 15 (Chiocchia 2021)
+  contrib_threshold_pp <- suppressWarnings(as.numeric(contrib_threshold_pp)[1])
+  if (is.na(contrib_threshold_pp) || !is.finite(contrib_threshold_pp) ||
+      contrib_threshold_pp < 0)
+    contrib_threshold_pp <- 15
+  # User-set threshold: highlight if |pct_t1 - pct_t2| reaches it.
   diff_pp    <- abs(pct_t1 - pct_t2)
-  thresh_hit <- !is.na(diff_pp) && diff_pp > 15
-  # Direction-of-bias accent: mark the column that user-specified bias points to
-  bias_t1 <- identical(bias_dir, "t1")
-  bias_t2 <- identical(bias_dir, "t2")
+  thresh_hit <- !is.na(diff_pp) && diff_pp >= contrib_threshold_pp
+  # Direction accent: mark the side carrying more biased contribution.
+  bias_t1 <- pct_t1 > 0 && pct_t1 > pct_t2
+  bias_t2 <- pct_t2 > 0 && pct_t2 > pct_t1
   pct_cell_style <- function(pct, is_t1) {
     base <- "padding:4px 8px; text-align:center;"
     bias_hit <- (bias_t1 && is_t1) || (bias_t2 && !is_t1)
@@ -554,23 +540,23 @@ make_robmen_row <- function(ns, comp, te, lo, hi, pct_t1, pct_t2,
     extras <- list()
     if (bias_hit)
       extras[[length(extras) + 1L]] <- tags$span(
-        title = paste0("Direction of bias points to ",
+        title = paste0("Biased contribution favours the ",
                        if (is_t1) "1st" else "2nd", " treatment"),
         style = "margin-left:4px; color:#9a3412;",
         HTML("&#10148;"))
     if (thresh_hit && pct == max(pct_t1, pct_t2))
       extras[[length(extras) + 1L]] <- tags$span(
         title = paste0("Difference = ", round(diff_pp, 1),
-                       " pp > 15 pp threshold (Chiocchia 2021):",
+                       " pp; threshold = ", contrib_threshold_pp, " pp:",
                        " may be 'Substantial contribution'"),
         style = "margin-left:4px; color:#856404;", HTML("&#9888;"))
     do.call(tagList, c(list(val_str), extras))
   }
   indirect_bias_cell <- if (identical(evidence_type, "indirect")) {
     choices <- setNames(
-      c("", "No suspected bias", "Some concerns",
+      c("", "No suspected bias",
         "Suspected bias favouring t1", "Suspected bias favouring t2"),
-      c("(auto)", "No suspected bias", "Some concerns",
+      c("(auto)", "No suspected bias",
         paste0("Suspected bias favouring ", t1),
         paste0("Suspected bias favouring ", t2))
     )
@@ -688,7 +674,7 @@ moduleC_ui <- function(id) {
                     HTML("③ Pairwise overall<br><small>judgement per comparison<br>(per Group)</small>")),
           tags$span(style = "color:#6c3483; font-size:1.2em; font-weight:bold;", "→"),
           tags$span(style = "background:#4a235a; color:white; padding:3px 8px; border-radius:3px;",
-                    HTML("④ % Biased contribution<br><small>via contribution matrix<br>(15 pp threshold)</small>")),
+                    HTML("④ % Biased contribution<br><small>via contribution matrix<br>(user threshold)</small>")),
           tags$span(style = "color:#6c3483; font-size:1.2em; font-weight:bold;", "→"),
           tags$span(style = "background:#4a235a; color:white; padding:3px 8px; border-radius:3px;",
                     HTML("Indirect evidence bias<br><small>only indirect estimates</small>")),
@@ -701,10 +687,9 @@ moduleC_ui <- function(id) {
           HTML("① ② ③: <b>Tab 1 — Pairwise Assessment</b>&emsp;|&emsp;④ ⑤: <b>Tab 2 — ROB-MEN Final Rating</b>"),
           tags$br(),
           tags$small(
-            "Tab 1 pairwise: \u2460 OR \u2461 = Suspected bias \u2192 ",
-            em("Suspected bias"),
+            "Tab 1 pairwise: \u2460 OR \u2461 = suspected bias favouring X \u2192 ",
+            em("suspected bias favouring X"),
             " | Both = No bias detected \u2192 ", em("No bias detected"),
-            " | all others \u2192 ", em("Some concerns"),
             HTML(" &mdash; "),
             "Tab 2 (Table 5): No contribution \u2192 Low | Balanced+no small-study effects \u2192 Low | ",
             "Favouring one treatment+small-study effects reinforcing \u2192 High | ",
@@ -721,6 +706,14 @@ moduleC_ui <- function(id) {
       tags$small("Mark indirect comparisons as Group B in Tab 1 if you know",
                  " studies exist for that comparison but did not report this outcome.")),
 
+    div(style = "display:flex; align-items:center; gap:8px; margin:8px 0 12px 0;",
+      numericInput(ns("contrib_threshold_pp"),
+                   label = "Contribution threshold (pp)",
+                   value = 15, min = 0, step = 1, width = "170px"),
+      tags$small(style = "color:#666; max-width:520px;",
+                 "User-set threshold applied consistently across all NMA estimates.")
+    ),
+
     hr(),
     uiOutput(ns("robmen_main_ui"))
   )
@@ -735,6 +728,11 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    contrib_threshold_pp <- reactive({
+      val <- suppressWarnings(as.numeric(input$contrib_threshold_pp)[1])
+      if (is.na(val) || !is.finite(val) || val < 0) 15 else val
+    })
 
     # ------------------------------------------------------------------
     # Data accessors
@@ -887,7 +885,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
                  (t1 == comps$t2[i] & t2 == comps$t1[i]))
         n_s <- nrow(sub)
 
-        if (n_s < 2) {
+        if (n_s < 10) {
           return(data.frame(
             comp_key    = comps$comp_key[i],
             n_s         = n_s,
@@ -898,13 +896,10 @@ moduleC_server <- function(id, processed_data, cinema_module,
             nmr_te      = NA_real_,
             nmr_lo      = NA_real_,
             nmr_hi      = NA_real_,
-            across_auto = "Insufficient data",
+            across_auto = "",
             stringsAsFactors = FALSE
           ))
         }
-        # Chiocchia 2021: Egger's test recommended only when ≥ 10 studies.
-        # Flag comparisons with 2–9 studies so the user is warned.
-        n_few_flag <- (n_s < 10)
 
         # Normalise y to canonical direction: positive = t2c (alphabetically larger)
         sub <- sub %>%
@@ -947,15 +942,18 @@ moduleC_server <- function(id, processed_data, cinema_module,
                nmr_te = NA_real_, nmr_lo = NA_real_, nmr_hi = NA_real_)
         })
 
-        across_auto <- if (length(eg$p) == 0 || is.na(eg$p)) "Insufficient data"
-        else if (eg$p >= 0.10) "No bias detected"
-        else if (eg$p >= 0.05) "Some concerns"
-        else                   "Suspected bias"
+        across_auto <- if (length(eg$p) == 0 || is.na(eg$p) || eg$p >= 0.05) {
+          NO_BIAS
+        } else if (!is.na(eg$bias) && sign(eg$bias) < 0) {
+          bias_label(comps$t1[i])
+        } else {
+          bias_label(comps$t2[i])
+        }
 
         data.frame(
           comp_key    = comps$comp_key[i],
           n_s         = n_s,
-          n_few       = n_few_flag,
+          n_few       = FALSE,
           egger_p     = eg$p,
           egger_bias  = eg$bias,
           egger_eff   = eg$eff,
@@ -984,12 +982,9 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
     # ------------------------------------------------------------------
     # ROB-ME Step 2 Helper: per-comparison modal with Q1 + Q2
-    # Decision logic (Page & Sterne, BMJ 2023):
-    #   Q1=No            → No bias
-    #   Q1=Unclear       → Some concerns
-    #   Q1=Yes + Q2=No   → Some concerns
-    #   Q1=Yes + Q2=Yes  → High risk
-    #   Q1=Yes + Q2=?    → Some concerns
+    # Decision logic mapped to ROB-MEN's two pairwise categories:
+    #   No suspected selective non-reporting → No bias detected
+    #   Suspected selective non-reporting → Suspected bias favouring X
     # ------------------------------------------------------------------
     robme_observers_created <- reactiveVal(FALSE)
 
@@ -1017,9 +1012,9 @@ moduleC_server <- function(id, processed_data, cinema_module,
                   style = "font-size:0.9em;",
                   strong("ROB-ME Step 2 — Within-study bias (Selective non-reporting)"),
                   br(),
-                  "Page MJ, Sterne JAC et al. BMJ 2023. Assesses whether any eligible",
-                  " study failed to report the outcome of interest, likely because of",
-                  " the direction, magnitude or statistical significance of the result."),
+                  "Page MJ, Sterne JAC et al. BMJ 2023. Assesses whether eligible",
+                  " studies are missing results for the outcome because of the",
+                  " direction, magnitude or statistical significance of those results."),
 
               # Forest plot for reference
               h5(style = "margin-top:12px;",
@@ -1204,14 +1199,16 @@ moduleC_server <- function(id, processed_data, cinema_module,
               ns(paste0("robme_q2_", sid_i)),
               label = tagList(
                 strong("Q2:"),
-                " Is there a clear indication that results are missing because of",
+                " Are the missing results suspected to be omitted because of",
                 " their", strong(" direction, magnitude or statistical significance"),
-                " (p-value)?"),
-              choices = c(
-                "(select)" = "",
-                "No / Probably no — missing for other reasons" = "no",
-                "Unclear"                                       = "unclear",
-                "Yes / Probably yes — results omitted due to their value" = "yes"
+                " and, if so, which treatment would the omission favour?"),
+              choices = stats::setNames(
+                c("", "no", "unclear", "t1", "t2"),
+                c("(select)",
+                  "No / Probably no — missing for other reasons",
+                  "Unclear — no suspected direction",
+                  paste0("Yes / Probably yes — favouring ", t1_i),
+                  paste0("Yes / Probably yes — favouring ", t2_i))
               ),
               selected = ""
             )
@@ -1222,10 +1219,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
             q1  <- input[[paste0("robme_q1_", sid_i)]] %||% ""
             q2  <- input[[paste0("robme_q2_", sid_i)]] %||% ""
             if (!nzchar(q1)) return(NULL)
-            rating <- robme_derive_rating(q1, q2)
-            bg <- c("No bias" = "#d4edda", "Some concerns" = "#fff3cd",
-                    "High risk" = "#f8d7da")[rating]
-            if (is.na(bg)) bg <- "white"
+            rating <- robme_derive_rating(q1, q2, t1_i, t2_i)
+            bg <- rating_bg(rating)
             div(style = paste0("padding:8px 12px; background:", bg,
                                "; border-radius:4px;"),
                 strong("Derived rating: "), strong(rating))
@@ -1235,17 +1230,9 @@ moduleC_server <- function(id, processed_data, cinema_module,
           observeEvent(input[[paste0("robme_apply_", sid_i)]], {
             q1     <- input[[paste0("robme_q1_", sid_i)]] %||% ""
             q2     <- input[[paste0("robme_q2_", sid_i)]] %||% ""
-            rating <- robme_derive_rating(q1, q2)
+            rating <- robme_derive_rating(q1, q2, t1_i, t2_i)
             if (nzchar(rating)) {
-              # Map legacy robme_derive_rating labels to new Chiocchia 2021 terms
-              rating_map <- c(
-                "No bias"       = "No bias detected",
-                "Some concerns" = "Some concerns",
-                "High risk"     = "Suspected bias"
-              )
-              mapped_rating <- rating_map[rating]
-              if (is.na(mapped_rating)) mapped_rating <- rating
-              updateSelectInput(session, paste0("within_", sid_i), selected = mapped_rating)
+              updateSelectInput(session, paste0("within_", sid_i), selected = rating)
             }
             removeModal()
           }, ignoreNULL = TRUE, ignoreInit = TRUE)
@@ -1371,44 +1358,26 @@ moduleC_server <- function(id, processed_data, cinema_module,
                 # Auto-compute from within/across inputs
                 w_val <- input[[paste0("within_", sid)]]
                 a_val <- input[[paste0("across_", sid)]]
-                if (is.null(w_val) || !nzchar(w_val)) w_val <- "No bias detected"
+                if (is.null(w_val) || !nzchar(w_val)) w_val <- NO_BIAS
                 if (is.null(a_val) || !nzchar(a_val)) {
                   eg_row <- eg %>% filter(comp_key == ck)
                   a_val  <- if (nrow(eg_row) > 0 && !is.na(eg_row$across_auto[1]))
-                              eg_row$across_auto[1] else "Insufficient data"
+                              eg_row$across_auto[1] else NO_BIAS
+                  if (is.null(a_val) || !nzchar(a_val)) a_val <- NO_BIAS
                 }
-                ov_val <- compute_overall_pw(w_val, a_val)
-              }
-
-              if (!is.null(ov_val) && ov_val %in% c("Suspected bias", "Suspected substantial bias")) {
-                pct  <- contribs[col_nm] * 100
-                # The bias_dir dropdown was built using *canonical* (alphabetic
-                # pmin / pmax) treatment labels — the same ordering used to
-                # construct comp_key `ck`. So the user's "t1" / "t2" choice
-                # always refers to (ck_t1, ck_t2), regardless of the order in
-                # which the contribution-matrix column happens to list them.
-                # Bug fix: use ck_t1/ck_t2 rather than parts[1]/parts[2],
-                # which can be inverted depending on netmeta's internal
-                # ordering of the contribution matrix columns.
                 ck_t1 <- pmin(parts[1], parts[2])
                 ck_t2 <- pmax(parts[1], parts[2])
-                favored <- NA_character_
-                dir_manual <- input[[paste0("bias_dir_", sid)]]
-                if (!is.null(dir_manual) && nzchar(dir_manual)) {
-                  favored <- if (dir_manual == "t2") ck_t2 else ck_t1
-                } else {
-                  # Egger fallback: egger_df was computed using canonical
-                  # (ck_t1, ck_t2) treat ordering, so positive sign → ck_t2.
-                  eg_row <- eg %>% filter(comp_key == ck)
-                  if (nrow(eg_row) > 0 && !is.na(eg_row$egger_bias[1])) {
-                    bias_sgn <- sign(eg_row$egger_bias[1])
-                    if (bias_sgn != 0)
-                      favored <- if (bias_sgn > 0) ck_t2 else ck_t1
-                  }
-                }
+                ov_val <- compute_overall_pw(w_val, a_val, ck_t1, ck_t2)
+              }
+
+              if (!is.null(ov_val) && is_suspected(ov_val)) {
+                pct  <- contribs[col_nm] * 100
+                ck_t1 <- pmin(parts[1], parts[2])
+                ck_t2 <- pmax(parts[1], parts[2])
+                favored <- favoured_from_rating(ov_val, ck_t1, ck_t2)
                 if (!is.na(favored)) {
                   if (favored == ne$t2[i]) pct_t2 <- pct_t2 + pct
-                  else                     pct_t1 <- pct_t1 + pct
+                  else if (favored == ne$t1[i]) pct_t1 <- pct_t1 + pct
                 }
               }
             }
@@ -1448,6 +1417,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
         # SSE labels matching SSE_CHOICES exactly
         SSE_IN  <- "Evidence of small-study effects \u2013 reinforcing biased contribution"
         SSE_NOT <- "Evidence of small-study effects \u2013 not reinforcing biased contribution"
+        pb <- tryCatch(pct_biased(), error = function(e) NULL)
 
         lapply(seq_len(nrow(ne)), function(i) {
           t1 <- ne$t1[i]; t2 <- ne$t2[i]
@@ -1480,13 +1450,17 @@ moduleC_server <- function(id, processed_data, cinema_module,
           sse_auto <- if (!ci_available || anyNA(c(nmr_te, nma_te)) || overlaps) {
             "No evidence of small-study effects"
           } else {
-            # User-specified Direction of bias takes precedence over the legacy
-            # shrinkage heuristic. bias_dir = "t1" means bias pulls NMA toward
-            # t1; if NMR (bias-adjusted) moves toward t2 (delta > 0), the SSE
-            # reinforces the biased contribution. Symmetric for "t2".
-            sid_i    <- safe_id(comp)
-            bias_dir <- input[[paste0("bias_dir_", sid_i)]] %||% ""
-            delta    <- nmr_te - nma_te
+            bias_dir <- ""
+            if (!is.null(pb) && nrow(pb) > 0) {
+              pb_row <- pb %>% filter(comparison == comp)
+              if (nrow(pb_row) > 0 &&
+                  !any(is.na(c(pb_row$pct_fav_t1[1], pb_row$pct_fav_t2[1]))) &&
+                  pb_row$pct_fav_t1[1] != pb_row$pct_fav_t2[1]) {
+                bias_dir <- if (pb_row$pct_fav_t1[1] > pb_row$pct_fav_t2[1])
+                              "t1" else "t2"
+              }
+            }
+            delta <- nmr_te - nma_te
             if (nzchar(bias_dir) && bias_dir == "t1") {
               if (sign(delta) > 0) SSE_IN else SSE_NOT
             } else if (nzchar(bias_dir) && bias_dir == "t2") {
@@ -1549,7 +1523,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
             " direction/p-value?) → rating auto-derived."),
           tags$li(strong("Group B:"), " Q1 = Yes by definition. Set rating based on whether",
             " omission appears outcome-selective",
-            " (Q2 = Yes/Unclear → Some concerns or Suspected bias)."),
+            " (suspected selective omission must specify which treatment is favoured)."),
           tags$li(strong("Group C:"), " Not applicable (no studies).")
         ),
         tags$hr(),
@@ -1607,22 +1581,22 @@ moduleC_server <- function(id, processed_data, cinema_module,
               tags$th("\u2192 \u2462 Overall")
             )),
             tags$tbody(
-              tags$tr(tags$td("Suspected bias"), tags$td(em("any value")),
+              tags$tr(tags$td("Suspected bias favouring X"), tags$td(em("any value")),
                       tags$td(strong(style = "color:#721c24;",
-                                     "Suspected bias")),
-                      title = "Within Suspected dominates regardless of Across"),
-              tags$tr(tags$td(em("any value")), tags$td("Suspected bias"),
+                                     "Suspected bias favouring X")),
+                      title = "Within-study suspected bias takes precedence"),
+              tags$tr(tags$td("No bias detected"),
+                      tags$td("Suspected bias favouring X"),
                       tags$td(strong(style = "color:#721c24;",
-                                     "Suspected bias")),
-                      title = "Across Suspected dominates regardless of Within"),
+                                     "Suspected bias favouring X"))),
               tags$tr(tags$td("No bias detected"),
                       tags$td("No bias detected"),
                       tags$td(strong(style = "color:#155724;",
                                      "No bias detected"))),
-              tags$tr(tags$td(em("Otherwise")), tags$td(em("Otherwise")),
-                      tags$td(strong(style = "color:#856404;",
-                                     "Some concerns")),
-                      title = "Any other combination of Some concerns / No bias / Insufficient data")
+              tags$tr(tags$td("Suspected bias favouring X"),
+                      tags$td("Suspected bias favouring Y"),
+                      tags$td("Within-study direction retained"),
+                      title = "Conflict rule: within-study direction takes precedence")
             )
           ),
 
@@ -1641,11 +1615,9 @@ moduleC_server <- function(id, processed_data, cinema_module,
           tags$h5("Why ", em("Suspected bias"), " short-circuits"),
           p("\u2460 and \u2461 describe distinct mechanisms (selective",
             " non-reporting vs publication bias). If either is severe",
-            " enough to be Suspected, the comparison is Suspected",
-            " overall \u2014 Tab 2's contribution-matrix step then needs",
-            " to know which treatment the bias favours.",
-            tags$b(" Direction of bias "),
-            "in the rightmost column makes that explicit."),
+	            " enough to be suspected, the comparison is suspected",
+	            " overall and the treatment favoured by bias is carried in",
+	            " the same judgement label."),
 
           tags$hr(),
           tags$small(style = "color:#666;",
@@ -1671,8 +1643,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
             tags$b("④b"),
             " (% favouring the 2nd treatment). The values come from",
             " the NMA contribution matrix, weighted by which",
-            " comparisons were rated Suspected bias in Tab 1 and the",
-            " Direction-of-bias selection."),
+            " comparisons were rated suspected bias favouring a treatment",
+            " in Tab 1."),
 
           tags$h5("How ④a / ④b are computed"),
           tags$ol(
@@ -1681,11 +1653,10 @@ moduleC_server <- function(id, processed_data, cinema_module,
                     " pairwise comparison and the entry is its %",
                     " contribution to the estimate."),
             tags$li("Filter to columns where the pairwise comparison",
-                    " was rated ", em("Suspected bias"),
+                    " was rated ", em("Suspected bias favouring X"),
                     " in Tab 1's overall judgement (③)."),
-            tags$li("For each retained column, read its ",
-                    tags$b("Direction of bias"),
-                    " (user-selected, or Egger sign as fallback)."),
+            tags$li("For each retained column, extract the favoured",
+                    " treatment from the judgement label."),
             tags$li("Allocate the column's % contribution to ④a or ④b",
                     " depending on whether the favoured treatment",
                     " matches the estimate's t1 or t2."),
@@ -1695,8 +1666,9 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
           tags$h5("Reading the badges"),
           tags$ul(
-            tags$li("Cells where ", code("|④a − ④b| > 15 pp"),
-                    " get an orange highlight — this is the threshold",
+            tags$li("Cells where ", code("|④a − ④b|"),
+                    " reaches the user-set threshold get an orange highlight.",
+                    " This threshold",
                     " that drives ", tags$b("⒤a Contribution "),
                     "(see its decision guide)."),
             tags$li("0 % means no biased contribution to that side. The",
@@ -1712,9 +1684,9 @@ moduleC_server <- function(id, processed_data, cinema_module,
                     " — pushes the comparison's overall ③ toward",
                     " Suspected, expanding the set of biased",
                     " contributions."),
-            tags$li("Editing ", tags$b("Direction of bias"),
-                    " — re-allocates a column's contribution between",
-                    " ④a and ④b without changing the totals."),
+            tags$li("Changing the favoured treatment in a suspected",
+                    " judgement re-allocates a column's contribution",
+                    " between ④a and ④b."),
             tags$li("Both update ④ live (no Run button needed)."),
           ),
 
@@ -1728,7 +1700,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
       ))
     })
 
-        observeEvent(input$info_contrib, {
+    observeEvent(input$info_contrib, {
+      thr <- contrib_threshold_pp()
       showModal(modalDialog(
         title    = tagList(icon("info-circle"),
                            " ⒤a Evaluation of contribution — Decision guide"),
@@ -1741,7 +1714,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
             " whether the bias points in one direction or balances",
             " across treatments."),
 
-          tags$h5("Auto rule (symmetric, ≥ 15 pp threshold)"),
+          tags$h5(paste0("Auto rule (symmetric, user threshold = ", thr, " pp)")),
           tags$table(class = "table table-bordered table-sm",
             style = "font-size:0.95em;",
             tags$thead(tags$tr(
@@ -1750,17 +1723,17 @@ moduleC_server <- function(id, processed_data, cinema_module,
               tags$th("→ ⒤a Contribution")
             )),
             tags$tbody(
-              tags$tr(tags$td("≥ 15 pp"),
+              tags$tr(tags$td(paste0("≥ ", thr, " pp")),
                       tags$td(em("any value")),
                       tags$td(strong(style = "color:#721c24;",
                                      "Substantial — favouring one treatment"))),
-              tags$tr(tags$td("< 15 pp"),
-                      tags$td("≥ 15 pp"),
+              tags$tr(tags$td(paste0("< ", thr, " pp")),
+                      tags$td(paste0("≥ ", thr, " pp")),
                       tags$td(strong(style = "color:#856404;",
                                      "Substantial — balanced")),
-                      title = "At least one side has substantial biased contribution but the two sides are within 15 pp of each other"),
-              tags$tr(tags$td("< 15 pp"),
-                      tags$td("< 15 pp"),
+                      title = "At least one side has substantial biased contribution but the two sides are within the user-set threshold of each other"),
+              tags$tr(tags$td(paste0("< ", thr, " pp")),
+                      tags$td(paste0("< ", thr, " pp")),
                       tags$td(strong(style = "color:#155724;",
                                      "No substantial contribution")))
             )
@@ -1769,31 +1742,28 @@ moduleC_server <- function(id, processed_data, cinema_module,
           tags$h5("Reading the rule"),
           tags$ul(
             tags$li(strong("Favouring one treatment:"),
-                    " the % biased contribution differs by ≥ 15 pp",
+                    paste0(" the % biased contribution differs by ≥ ", thr, " pp"),
                     " between t1 and t2 — the bias systematically pushes",
                     " the estimate toward one treatment."),
             tags$li(strong("Balanced:"),
-                    " at least one side carries ≥ 15 pp of biased",
-                    " contribution, but the two sides are within 15 pp",
+                    paste0(" at least one side carries ≥ ", thr, " pp of biased"),
+                    " contribution, but the two sides are within the threshold",
                     " of each other — biases exist but partially cancel."),
             tags$li(strong("No substantial:"),
-                    " neither side reaches the 15 pp threshold — biased",
+                    " neither side reaches the user-set threshold — biased",
                     " comparisons contribute little to this estimate.")
           ),
 
-          tags$h5("Earlier asymmetric rule (now removed)"),
+          tags$h5("Threshold status"),
           p(style = "color:#666;",
-            "Versions before this release gated the rule on the NMA",
-            " direction (TE > 0 vs ≤ 0). That meant when bias opposed",
-            " the NMA point estimate, ⒤a stayed at \"No substantial\"",
-            " regardless of magnitude — leaving roughly half of",
-            " comparisons mis-classified. The current rule uses",
-            " the symmetric absolute difference instead."),
+            "The percentage-point threshold is a user judgement, not a",
+            " fixed ROB-MEN rule. Choose it before interpreting the table",
+            " and apply it consistently across all estimates."),
 
           tags$hr(),
           tags$small(style = "color:#666;",
-            "Note: 15 pp threshold is a guideline — apply consistently",
-            " across all estimates. Reference: Chiocchia V, et al.",
+            "Note: the threshold is user-set; 15 pp is only the default.",
+            " Reference: Chiocchia V, et al.",
             " ROB-MEN: a tool to assess Risk Of Bias due to Missing",
             " Evidence in Network meta-analysis. BMC Med 2021;19:304.")
         )
@@ -1871,6 +1841,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
     })
 
     observeEvent(input$info_robmen_alg, {
+      thr <- contrib_threshold_pp()
       showModal(modalDialog(
         title    = tagList(icon("info-circle"),
                            " ⒤ ROB-MEN final rating algorithm",
@@ -1903,7 +1874,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
                                      "Low risk")),
                       title = "No biased contribution -> nothing for SSE to reinforce"),
               tags$tr(tags$td("No substantial contribution"),
-                      tags$td("Some concerns / suspected"),
+                      tags$td("Suspected bias favouring X"),
                       tags$td(em("any value")),
                       tags$td(strong(style = "color:#856404;",
                                      "Some concerns"))),
@@ -1940,7 +1911,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
             tags$li(strong("Low risk:"),
                     " bias does not materially shape this estimate —",
                     " either no biased pairwise contribution is large",
-                    " enough to matter (≥ 15 pp threshold) or the",
+                    paste0(" enough to matter (user threshold = ", thr, " pp) or the"),
                     " biased contributions cancel and the network shows",
                     " no small-study-effect signal."),
             tags$li(strong("Some concerns:"),
@@ -1960,15 +1931,19 @@ moduleC_server <- function(id, processed_data, cinema_module,
           tags$ul(
             tags$li(tags$b("⒤a"),
                     " — sum of contribution-matrix entries from",
-                    " comparisons rated Suspected bias in Tab 1, weighted",
-                    " by Direction of bias. Auto-judged by the 15 pp",
-                    " threshold."),
+                    " comparisons rated suspected bias favouring a treatment",
+                    " in Tab 1. Auto-judged by the user-set threshold."),
             tags$li(tags$b("⒤b"),
                     " — NMR-adjusted vs unadjusted CI overlap (see",
                     " ⒤b decision guide)."),
             tags$li(tags$b("Indirect evidence bias"),
                     " — for only-indirect estimates, copied from Tab 1",
-                    " Pairwise overall judgement plus Direction of bias."),
+                    " Pairwise overall judgement; the favoured treatment",
+                    " is already explicit in that judgement."),
+            tags$li("The final algorithm compares confirmed directions:",
+                    " ④a favours the first treatment, ④b favours the",
+                    " second treatment, and suspected pairwise labels",
+                    " name the favoured treatment."),
             tags$li("Each cell is editable so a domain expert can override",
                     " the auto rating; ⒤ then auto-syncs from",
                     " whatever values are currently shown.")
@@ -1987,7 +1962,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
     # ------------------------------------------------------------------
     # Auto-compute pairwise overall judgements
     # Group A: combine within + across
-    # Group B: within only (across = "Insufficient data" since no outcome data)
+    # Group B: within only (across has no outcome data, so no-bias default)
     # Group C: across only (within = "Not applicable" → treat as "No bias" in formula)
     # ------------------------------------------------------------------
     observeEvent(input$calc_overall_pw, {
@@ -2012,19 +1987,20 @@ moduleC_server <- function(id, processed_data, cinema_module,
         if (grp == "C") {
           # Group C: within = not applicable → use "No bias detected" in formula
           # across = user's qualitative choice
-          w_val <- "No bias detected"
-          if (is.null(a_val) || !nzchar(a_val)) a_val <- "Insufficient data"
+          w_val <- NO_BIAS
+          if (is.null(a_val) || !nzchar(a_val)) a_val <- NO_BIAS
         } else if (grp == "B") {
-          # Group B: across = "Insufficient data" (no Egger's applicable)
-          if (is.null(w_val) || !nzchar(w_val)) w_val <- "No bias detected"
-          a_val <- "Insufficient data"
+          # Group B: across not applicable; pairwise overall follows within.
+          if (is.null(w_val) || !nzchar(w_val)) w_val <- NO_BIAS
+          a_val <- NO_BIAS
         } else {
           # Group A: both components
-          if (is.null(w_val) || !nzchar(w_val)) w_val <- "No bias detected"
+          if (is.null(w_val) || !nzchar(w_val)) w_val <- NO_BIAS
           if (is.null(a_val) || !nzchar(a_val)) {
             eg_row <- if (!is.null(eg)) eg %>% filter(comp_key == ck) else data.frame()
             a_val  <- if (nrow(eg_row) > 0 && !is.na(eg_row$across_auto[1]))
-                        eg_row$across_auto[1] else "Insufficient data"
+                        eg_row$across_auto[1] else NO_BIAS
+            if (is.null(a_val) || !nzchar(a_val)) a_val <- NO_BIAS
           }
         }
         # normalize legacy labels
@@ -2033,7 +2009,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
         if (!is.null(a_val) && a_val == "No bias") a_val <- "No bias detected"
         if (!is.null(w_val) && w_val == "No bias") w_val <- "No bias detected"
         updateSelectInput(session, paste0("ov_pw_", sid),
-                          selected = compute_overall_pw(w_val, a_val))
+                          selected = compute_overall_pw(w_val, a_val,
+                                                        comps$t1[i], comps$t2[i]))
       }
     })
 
@@ -2066,20 +2043,22 @@ moduleC_server <- function(id, processed_data, cinema_module,
         if (!is.null(a_val) && a_val %in% c("High risk", "No bias"))
           a_val <- if (a_val == "High risk") "Suspected bias" else "No bias detected"
 
-        # Short-circuit: within = Suspected bias → grey out across, set overall
+        # Short-circuit: within suspected → grey out across and carry its direction.
         across_full_id <- session$ns(paste0("across_", sid))
-        if (grp == "A" && !is.null(w_val) && w_val == "Suspected bias") {
+        if (grp == "A" && !is.null(w_val) && is_suspected(w_val)) {
           session$sendCustomMessage("robmen_toggle_across",
                                     list(id = across_full_id, disabled = TRUE))
           updateSelectInput(session, paste0("ov_pw_", sid),
-                            selected = "Suspected bias")
+                            selected = compute_overall_pw(w_val, a_val,
+                                                          comps$t1[i], comps$t2[i]))
         } else if (grp == "A") {
           session$sendCustomMessage("robmen_toggle_across",
                                     list(id = across_full_id, disabled = FALSE))
           # Auto-update pairwise overall when both fields are filled
           if (!is.null(w_val) && nzchar(w_val) && !is.null(a_val) && nzchar(a_val)) {
             updateSelectInput(session, paste0("ov_pw_", sid),
-                              selected = compute_overall_pw(w_val, a_val))
+                              selected = compute_overall_pw(w_val, a_val,
+                                                            comps$t1[i], comps$t2[i]))
           }
         }
       }
@@ -2123,7 +2102,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
             p2 <- if (is.na(pb_row$pct_fav_t2[1])) 0 else pb_row$pct_fav_t2[1]
           }
         }
-        c_auto <- compute_auto_contrib(ne$te[i], p1, p2)
+        c_auto <- compute_auto_contrib(ne$te[i], p1, p2,
+                                       contrib_threshold_pp())
         updateSelectInput(session, paste0("contrib_eval_", sid), selected = c_auto)
 
         # Indirect-evidence bias is only part of ROB-MEN for only-indirect
@@ -2133,8 +2113,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
           pw_overall <- input[[paste0("ov_pw_", sid)]]
           if (is.null(pw_overall) || !nzchar(pw_overall))
             pw_overall <- "No bias detected"
-          pw_dir <- input[[paste0("bias_dir_", sid)]] %||% ""
-          i_auto <- derive_indirect_bias(pw_overall, pw_dir)
+          i_auto <- derive_indirect_bias(pw_overall, ne$t1[i], ne$t2[i])
           updateSelectInput(session, paste0("indirect_bias_", sid),
                             selected = i_auto)
         }
@@ -2348,18 +2327,16 @@ moduleC_server <- function(id, processed_data, cinema_module,
                 "\u2460 Suspected bias \u2192 Suspected bias (short-circuit)\n",
                 "\u2461 Across = Suspected bias \u2192 Suspected bias\n",
                 "\u2462 Both = No bias detected \u2192 No bias detected\n",
-                "Otherwise \u2192 Some concerns"
+                "Within suspected carries its direction\n",
+                "Across suspected carries its direction\n",
+                "Both No bias detected \u2192 No bias detected\n",
+                "If directions conflict, within-study direction takes precedence"
               ))),
           tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal; font-size:0.8em; margin-top:2px;",
-            HTML("\u2460 Suspected \u2192 Suspected<br>\u2461 Across Suspected \u2192 Suspected<br>Both No bias \u2192 No bias<br>else \u2192 Some concerns"))),
-        tags$th(style = th_style,
-          div(HTML("Direction of bias"),
-            style = "white-space:normal;"),
-          tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal; font-size:0.8em;",
-            HTML("Which treatment does<br>bias favour? (used for ④)")))
+            HTML("Suspected judgement carries direction<br>Both No bias \u2192 No bias")))
       )
 
-      grp_header <- function(label, subtitle = NULL, ncols = 7) {
+      grp_header <- function(label, subtitle = NULL, ncols = 6) {
         tags$tr(style = "background:#6c3483; color:white;",
           tags$td(colspan = ncols, style = "padding:6px 10px; font-weight:bold;",
             label,
@@ -2376,10 +2353,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
         eg_row <- eg %>% filter(comp_key == ck)
         ad <- if (nrow(eg_row) > 0 && !is.na(eg_row$across_auto[1]))
                 eg_row$across_auto[1] else NA
-        # Direction-of-bias dropdown only shown when across-study
-        # auto judgement actually flags bias.
-        bias_req <- !is.na(ad) &&
-                    ad %in% c("Suspected bias", "Some concerns")
+        bias_req <- !is.na(ad) && is_suspected(ad)
         make_pw_row(ns, ck, dir_c$t1[i], dir_c$t2[i], dir_c$n_direct[i],
                     across_default = ad,
                     within_default = "",
@@ -2427,16 +2401,16 @@ moduleC_server <- function(id, processed_data, cinema_module,
             tags$td(style = "padding:4px 8px;",
               div(
                 selectInput(ns(paste0("across_", sid)), label = NULL,
-                            choices = ACROSS_CHOICES, selected = "", width = "150px"),
+                            choices = pairwise_bias_choices(grp_c$t1[i], grp_c$t2[i]),
+                            selected = "", width = "190px"),
                 tags$small(style = "color:#666; font-size:0.78em;",
                            "Qualitative only (no Egger's)")
               )
             ),
             tags$td(style = "padding:4px 8px;",
               selectInput(ns(paste0("ov_pw_", sid)), label = NULL,
-                          choices = OVERALL_PW_CHOICES, selected = "", width = "150px")),
-            bias_direction_cell(ns, sid, grp_c$t1[i], grp_c$t2[i],
-                                use_within = FALSE, use_across = TRUE)
+                          choices = pairwise_overall_choices(grp_c$t1[i], grp_c$t2[i]),
+                          selected = "", width = "190px"))
           )
         })
       } else list()
@@ -2473,8 +2447,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
             tags$td(style = "padding:4px 8px;",
               div(style = "display:flex; gap:4px; align-items:flex-start; flex-direction:column;",
                 selectInput(ns(paste0("within_", sid)), label = NULL,
-                            choices = WITHIN_CHOICES, selected = "",
-                            width = "160px"),
+                            choices = pairwise_bias_choices(grp_b$t1[i], grp_b$t2[i]),
+                            selected = "", width = "190px"),
                 tags$small(style = "color:#856404; font-size:0.78em;",
                   HTML("Q1=Yes (by def). Rate based on whether omission is outcome-selective."))
               )
@@ -2488,9 +2462,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
                         "Not applicable")),
             tags$td(style = "padding:4px 8px;",
               selectInput(ns(paste0("ov_pw_", sid)), label = NULL,
-                          choices = OVERALL_PW_CHOICES, selected = "", width = "150px")),
-            bias_direction_cell(ns, sid, grp_b$t1[i], grp_b$t2[i],
-                                use_within = TRUE, use_across = FALSE)
+                          choices = pairwise_overall_choices(grp_b$t1[i], grp_b$t2[i]),
+                          selected = "", width = "190px"))
           )
         })
       } else list()
@@ -2512,7 +2485,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
               grp_header("Group B — Observed for other outcomes",
                          subtitle = "(studies exist but did NOT report this outcome: within-study only)"),
               if (nrow(grp_b) > 0) grp_b_with_toggle
-              else tags$tr(tags$td(colspan = 7,
+              else tags$tr(tags$td(colspan = 6,
                 style = "padding:6px 10px; color:#6c757d; font-style:italic; font-size:0.88em;",
                 "No Group B comparisons identified.")),
 
@@ -2540,6 +2513,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
       th_style <- "padding:6px 8px; text-align:left; white-space:normal;"
       te_lab   <- te_col_label(sm_val)
+      threshold_pp <- contrib_threshold_pp()
 
       header_row <- tags$tr(style = "background:#6c3483; color:white; font-weight:bold;",
         tags$th(style = th_style, "NMA estimate"),
@@ -2570,7 +2544,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
               title = "Decision guide",
               "?")),
           tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal;",
-            HTML("\u226515 pp diff \u2192 Substantial"))),
+            HTML(paste0("\u2265", threshold_pp, " pp diff \u2192 Substantial")))),
         tags$th(style = th_style,
           div(HTML("Indirect evidence bias")),
           tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal;",
@@ -2661,11 +2635,10 @@ moduleC_server <- function(id, processed_data, cinema_module,
           pw_overall <- input[[paste0("ov_pw_", pw_sid)]]
           if (is.null(pw_overall) || !nzchar(pw_overall))
             pw_overall <- "No bias detected"
-          pw_dir <- input[[paste0("bias_dir_", pw_sid)]] %||% ""
-          indirect_bias_a <- derive_indirect_bias(pw_overall, pw_dir)
+          indirect_bias_a <- derive_indirect_bias(pw_overall, ne$t1[i], ne$t2[i])
         }
 
-        c_a <- compute_auto_contrib(ne$te[i], p1, p2)
+        c_a <- compute_auto_contrib(ne$te[i], p1, p2, threshold_pp)
         if (!nzchar(sse_a)) sse_a <- "No evidence of small-study effects"
         ov_a <- compute_overall_robmen(
           c_a, sse_a,
@@ -2675,7 +2648,6 @@ moduleC_server <- function(id, processed_data, cinema_module,
           pct_fav_t2    = p2
         )
 
-        bias_dir_val <- input[[paste0("bias_dir_", safe_id(comp))]] %||% ""
         make_robmen_row(ns, comp,
                         ne$te[i], ne$lo[i], ne$hi[i], p1, p2,
                         nmr_te = nmr_te, nmr_lo = nmr_lo, nmr_hi = nmr_hi,
@@ -2687,7 +2659,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
                         sm = sm_val,
                         t1 = ne$t1[i],
                         t2 = ne$t2[i],
-                        bias_dir = bias_dir_val,
+                        contrib_threshold_pp = threshold_pp,
                         bg = if (i %% 2 == 0) "#fafafa" else "white")
       }
 
@@ -2735,21 +2707,10 @@ moduleC_server <- function(id, processed_data, cinema_module,
             if (nrow(eg_row) == 0) return(div(class = "alert alert-warning",
                                               "No Egger's test data available."))
             r <- eg_row[1, ]
-            if (r$n_s < 2) return(div(class = "alert alert-warning",
-              paste0("Only ", r$n_s, " study. Egger's test requires \u2265 2 studies.")))
-            # Chiocchia 2021: Egger's test only shown when ≥ 10 studies
-            if (isTRUE(r$n_few)) return(
-              div(class = "alert alert-warning", style = "font-size:0.87em; padding:8px 12px;",
-                icon("exclamation-triangle"),
-                strong(paste0(" Only ", r$n_s, " studies.")),
-                HTML(" Egger's test is not shown \u2014 Chiocchia 2021 recommends"),
-                strong(" \u2265 10 studies"), ". Use the funnel plot for qualitative assessment.")
-            )
+            if (r$n_s < 10 || isTRUE(r$n_few)) return(NULL)
             if (is.na(r$egger_p)) return(div(class = "alert alert-warning",
               "Egger's test failed for this comparison."))
-            bg <- if (r$egger_p >= 0.10) "#d4edda"
-                  else if (r$egger_p >= 0.05) "#fff3cd"
-                  else "#f8d7da"
+            bg <- rating_bg(r$across_auto)
             div(style = paste0("padding:8px 12px; background:", bg,
                                "; border-radius:4px; margin-bottom:8px;"),
               strong(paste0("N = ", r$n_s, " studies.  ")),
@@ -2766,7 +2727,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
                     " Red dashed line = Egger regression line."))),
               tags$br(),
               tags$small(style = "color:#555;",
-                "p \u2265 0.10 \u2192 No bias | 0.05\u20130.10 \u2192 Some concerns | < 0.05 \u2192 High risk")
+                HTML("p &ge; 0.05 \u2192 No bias detected | p &lt; 0.05 \u2192 suspected bias in the Egger direction"))
             )
           })
 
@@ -2774,8 +2735,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
             sub <- df_pw %>%
               filter((t1 == t1_i & t2 == t2_i) | (t1 == t2_i & t2 == t1_i)) %>%
               mutate(y_can = ifelse(t1 == t1_i & t2 == t2_i, y, -y))
-            validate(need(nrow(sub) >= 2,
-                          "Fewer than 2 direct studies — funnel plot not available."))
+            validate(need(nrow(sub) >= 10,
+                          "Fewer than 10 direct studies — funnel plot not available."))
 
             w         <- 1 / sub$se^2
             summary_y <- sum(sub$y_can * w) / sum(w)
