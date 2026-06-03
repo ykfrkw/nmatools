@@ -27,12 +27,16 @@
 }
 
 .calc_xlim <- function(net_meta, reference_group, sm, wide = FALSE) {
+  # Use random matrices when present, else fall back to common-effect (MH/NCH).
+  use_random <- isTRUE(net_meta$random) && !is.null(net_meta$lower.random)
+  lo_mat <- if (use_random) net_meta$lower.random else net_meta$lower.common
+  hi_mat <- if (use_random) net_meta$upper.random else net_meta$upper.common
   if (wide) {
-    lo <- as.vector(net_meta$lower.random)
-    hi <- as.vector(net_meta$upper.random)
+    lo <- as.vector(lo_mat)
+    hi <- as.vector(hi_mat)
   } else {
-    lo <- net_meta$lower.random[, reference_group]
-    hi <- net_meta$upper.random[, reference_group]
+    lo <- lo_mat[, reference_group]
+    hi <- hi_mat[, reference_group]
   }
 
   is_ratio <- sm %in% c("OR", "RR", "HR")

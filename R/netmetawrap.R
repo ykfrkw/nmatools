@@ -30,6 +30,18 @@
 #' @param funnel_min_studies Minimum number of studies (k) per pairwise
 #'   comparison required to draw a contour-enhanced funnel plot.
 #'   Default: `10L`.
+#' @param rare_events One of `"auto"` (default), `"always"`, `"never"`.
+#'   Controls the rare-event NMA workflow for binary outcomes:
+#'   - `"auto"`: run diagnostics; if `rare_flow = TRUE` (low event rate
+#'     and/or many zero-arm studies; criteria mirror `pmatools`), switch the
+#'     primary `netmetabin` call to common-effect Mantel-Haenszel without
+#'     continuity correction (Efthimiou et al. 2019, Stat Med 38:2992-3012)
+#'     and additionally fit a 4-method sensitivity panel
+#'     (MH / NCH / IV-FE-CC / IV-RE-CC).
+#'   - `"always"`: skip the auto-detection and force the rare-event workflow.
+#'   - `"never"`: skip diagnostics and the sensitivity panel entirely;
+#'     keep the existing IV default.
+#'   For continuous outcomes the argument is ignored.
 #' @param trim Trim whitespace from output PDFs via `magick`. Default: `TRUE`.
 #' @param trim_fuzz Fuzz parameter for `magick::image_trim()`. Default: `30L`.
 #' @param .subnet_label Internal -- subnetwork label appended to file names.
@@ -83,10 +95,13 @@ netmetawrap <- function(
     netsplit_args    = list(),
     a4_rows_per_page   = 45L,
     funnel_min_studies = 10L,
+    rare_events        = c("auto", "always", "never"),
     trim               = TRUE,
     trim_fuzz          = 30L,
     .subnet_label      = NULL
 ) {
+
+  rare_events <- match.arg(rare_events)
 
   # -- 0. NSE -> string (must run before any evaluation of column args) ---------
   studlab  <- .nse_col(substitute(studlab))
@@ -206,6 +221,7 @@ netmetawrap <- function(
         netsplit_args      = netsplit_args,
         a4_rows_per_page   = a4_rows_per_page,
         funnel_min_studies = funnel_min_studies,
+        rare_events        = rare_events,
         trim               = trim,
         trim_fuzz          = trim_fuzz,
         .subnet_label      = s
@@ -220,18 +236,74 @@ netmetawrap <- function(
     message("[ netmetawrap ] Auto-selected reference group: ", reference.group)
   }
 
+  # -- 7b. Rare-event diagnostics (binary only) --------------------------------
+  rare_diag <- NULL
+  use_rare  <- FALSE
+  if (is_binary) {
+    if (rare_events == "always") {
+      use_rare <- TRUE
+      rare_diag <- tryCatch(.rare_nma_diagnostics(df_pw),
+                            error = function(e) {
+                              message("[ netmetawrap ] Rare diagnostics failed: ",
+                                      conditionMessage(e))
+                              NULL
+                            })
+    } else if (rare_events == "auto") {
+      rare_diag <- tryCatch(.rare_nma_diagnostics(df_pw),
+                            error = function(e) {
+                              message("[ netmetawrap ] Rare diagnostics failed: ",
+                                      conditionMessage(e))
+                              NULL
+                            })
+      use_rare <- isTRUE(rare_diag$rare_flow)
+    }
+
+    if (!is.null(rare_diag)) {
+      writeLines(
+        format(rare_diag),
+        file.path(output_dir,
+                  paste0("rare_diagnostics_", file_label, ".txt"))
+      )
+    }
+  } else if (rare_events == "always") {
+    warning("rare_events = 'always' is ignored for continuous outcomes; ",
+            "running standard IV NMA.")
+  }
+
   # -- 8. Run netmeta / netmetabin ---------------------------------------------
   if (is_binary) {
-    default_nm <- list(
-      sm              = sm,
-      reference.group = reference.group,
-      small.values    = small.values,
-      sort            = TRUE,
-      common          = FALSE,
-      random          = TRUE,
-      method          = "Inverse",
-      incr            = 0.001
-    )
+    if (use_rare) {
+      message(sprintf(
+        "[ netmetawrap ] Rare-event workflow active%s. Primary method = MH-NMA (common-effect, no continuity correction).",
+        if (!is.null(rare_diag))
+          sprintf(" (overall event rate = %.2f%%, zero-arm studies = %d/%d)",
+                  100 * (rare_diag$event_rate_overall %||% NA_real_),
+                  rare_diag$zero_cell_k %||% NA_integer_,
+                  rare_diag$k %||% NA_integer_)
+        else ""))
+      default_nm <- list(
+        sm              = sm,
+        reference.group = reference.group,
+        small.values    = small.values,
+        sort            = TRUE,
+        common          = TRUE,
+        random          = FALSE,
+        method          = "MH",
+        incr            = 0,
+        cc.pooled       = FALSE
+      )
+    } else {
+      default_nm <- list(
+        sm              = sm,
+        reference.group = reference.group,
+        small.values    = small.values,
+        sort            = TRUE,
+        common          = FALSE,
+        random          = TRUE,
+        method          = "Inverse",
+        incr            = 0.001
+      )
+    }
     net_meta <- do.call(
       netmeta::netmetabin,
       c(list(df_pw), utils::modifyList(default_nm, netmeta_args))
@@ -258,6 +330,45 @@ netmetawrap <- function(
     file = file.path(output_dir, paste0("netmeta_", file_label, ".txt"))
   )
 
+  # -- 9b. Rare-event sensitivity panel (binary + use_rare) --------------------
+  if (is_binary && use_rare) {
+    sens_table <- tryCatch(
+      .run_rare_nma_sensitivity(df_pw, sm = sm,
+                                reference.group = reference.group,
+                                small.values = small.values),
+      error = function(e) {
+        message("[ netmetawrap ] Sensitivity panel failed: ",
+                conditionMessage(e))
+        NULL
+      }
+    )
+    if (!is.null(sens_table)) {
+      saveRDS(sens_table,
+              file.path(output_dir,
+                        paste0("method_table_", file_label, ".rds")))
+      writexl::write_xlsx(
+        .format_rare_method_table(sens_table, reference.group),
+        path = file.path(output_dir,
+                         paste0("method_comparison_", file_label, ".xlsx"))
+      )
+      tryCatch(
+        plot_rare_nma_sensitivity(
+          sens_table,
+          sm = sm,
+          reference.group = reference.group,
+          file = file.path(output_dir,
+                           paste0("forest_rare_sensitivity_",
+                                  file_label, ".pdf")),
+          title = sprintf("%s — rare-event sensitivity", outcome)
+        ),
+        error = function(e) {
+          message("[ netmetawrap ] Sensitivity forest failed: ",
+                  conditionMessage(e))
+        }
+      )
+    }
+  }
+
   # -- 10. Consistency tests ----------------------------------------------------
   # Global (design-based decomposition)
   utils::capture.output(
@@ -276,16 +387,34 @@ netmetawrap <- function(
   )
 
   # -- 11. League table ---------------------------------------------------------
+  # Detect whether the fitted model is common-effect only (e.g. MH-NMA path).
+  is_common_model <- isTRUE(net_meta$common) && !isTRUE(net_meta$random)
+
+  # Build a treatment ordering by P-score on the active model.
+  rk <- netmeta::netrank(net_meta, small.values = small.values)
+  rk_vec <- if (is_common_model) {
+    rk$ranking.common %||% rk$ranking.fixed %||% rk$Pscore.fixed
+  } else {
+    rk$ranking.random %||% rk$Pscore.random
+  }
+  league_seq <- if (!is.null(rk_vec) && all(is.finite(rk_vec))) {
+    names(rk_vec)[rev(order(rk_vec))]
+  } else {
+    net_meta$trts
+  }
+
   league <- netmeta::netleague(
     net_meta,
     digits    = 2L,
     bracket   = "(",
     separator = " to ",
-    seq       = netmeta::netrank(net_meta, small.values = small.values),
-    common    = FALSE
+    seq       = league_seq,
+    common    = is_common_model,
+    random    = !is_common_model
   )
+  league_tbl <- if (is_common_model) league$common else league$random
   writexl::write_xlsx(
-    as.data.frame(league$random),
+    as.data.frame(league_tbl),
     col_names = FALSE,
     path = file.path(output_dir, paste0("leaguetable_", file_label, ".xlsx"))
   )
