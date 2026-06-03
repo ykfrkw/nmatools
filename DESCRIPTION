@@ -51,5 +51,6 @@ Imports:
 Suggests:
     testthat (>= 3.0.0),
     patchwork (>= 1.1.0),
-    rstudioapi
+    rstudioapi,
+    metafor
 Config/testthat/edition: 3

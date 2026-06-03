@@ -86,6 +86,25 @@ pairwise_overall_choices <- function(t1, t2) {
   stats::setNames(c("", choices), c("(auto)", choices))
 }
 
+across_conditions_block <- function() {
+  div(style = "font-size:0.85em; color:#444;",
+    tags$b("Conditions suggesting bias:"),
+    tags$ul(style = "margin-bottom:6px;",
+      tags$li("Failure to search grey literature / unpublished studies"),
+      tags$li("Analysis based on few early trials of a novel agent",
+              " (early evidence often overestimates efficacy)"),
+      tags$li("Previous evidence showed publication bias for this comparison"),
+      tags$li(HTML("Egger's p &lt; 0.05 with \u2265 10 studies (suggests funnel asymmetry)"))
+    ),
+    tags$b("Conditions suggesting no bias:"),
+    tags$ul(style = "margin-bottom:0;",
+      tags$li("Unpublished studies available and consistent with published results"),
+      tags$li("Tradition of prospective trial registration in this field"),
+      tags$li("Funnel plot symmetric with no statistically significant Egger test")
+    )
+  )
+}
+
 WITHIN_CHOICES <- pairwise_bias_choices
 ACROSS_CHOICES <- pairwise_bias_choices
 OVERALL_PW_CHOICES <- pairwise_overall_choices
@@ -404,31 +423,40 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
   }
 
   # ---- across-study bias cell ----
-  # Group A: selectInput + Funnel button (Egger's test available)
+  # Group A: selectInput + Funnel button (k>=10) or Hints button (k<10)
   # Group B: disabled "Not applicable" (no data for this outcome -> Egger's not applicable)
-  # Group C: selectInput only, qualitative assessment (no Funnel button)
+  # Group C: selectInput + Hints button, qualitative assessment
   across_cell <- if (is_group_b) {
     disabled_cell("Not applicable",
       title = "Group B: no direct studies for this outcome — statistical tests (Egger's) not applicable")
   } else if (is_group_c) {
     tags$td(style = "padding:4px 8px;",
-      div(
+      div(style = "display:flex; gap:4px; align-items:flex-start;",
         selectInput(ns(paste0("across_", sid)), label = NULL,
                     choices = bias_choices,
                     selected = if (!is.null(across_default) && !is.na(across_default))
                                  across_default else "",
-                    width = "190px")
+                    width = "190px"),
+        actionButton(ns(paste0("hints_btn_", sid)),
+                     label = tagList(icon("lightbulb"), " Hints"),
+                     class = "btn btn-xs btn-outline-secondary",
+                     style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
+                     title = "Show qualitative conditions for across-study bias")
       )
     )
   } else {
-    funnel_button <- if (!is.na(n_direct) && n_direct >= 10) {
+    across_help_button <- if (!is.na(n_direct) && n_direct >= 10) {
       actionButton(ns(paste0("funnel_btn_", sid)),
                    label = tagList(icon("chart-bar"), " Funnel"),
                    class = "btn btn-xs btn-outline-secondary",
                    style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
                    title = "Show contour-enhanced funnel plot, Egger's test, trim-and-fill")
     } else {
-      NULL
+      actionButton(ns(paste0("hints_btn_", sid)),
+                   label = tagList(icon("lightbulb"), " Hints"),
+                   class = "btn btn-xs btn-outline-secondary",
+                   style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
+                   title = "Show qualitative conditions for across-study bias")
     }
     tags$td(style = "padding:4px 8px;",
       div(style = "display:flex; gap:4px; align-items:flex-start;",
@@ -437,7 +465,7 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
                     selected = if (!is.null(across_default) && !is.na(across_default))
                                  across_default else "",
                     width = "190px"),
-        funnel_button
+        across_help_button
       )
     )
   }
@@ -500,7 +528,7 @@ make_robmen_row <- function(ns, comp, te, lo, hi, pct_t1, pct_t2,
     }
   }
 
-  # NMR treatment effect at the smallest observed variance (from netmetaregression).
+  # NMR treatment effect at the smallest observed variance.
   nmr_str <- if (!is.na(nmr_te)) {
     tags$span(
       title = paste0("NMR treatment effect at the smallest observed variance.",
@@ -627,23 +655,6 @@ moduleC_ui <- function(id) {
         color: #4a235a;
         box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6);
       }
-    "))),
-    # Custom JS: enable/disable across-study cells reactively (no shinyjs needed)
-    tags$head(tags$script(HTML("
-      Shiny.addCustomMessageHandler('robmen_toggle_across', function(msg) {
-        var sel = document.getElementById(msg.id);
-        if (!sel) return;
-        var td = sel.closest('td') || sel.parentElement;
-        if (msg.disabled) {
-          sel.disabled = true;
-          td.style.opacity = '0.38';
-          td.title = 'Not needed: within-study bias is already Suspected bias';
-        } else {
-          sel.disabled = false;
-          td.style.opacity = '1';
-          td.title = '';
-        }
-      });
     "))),
     h3("ROB-MEN Analysis"),
     p("Assesses risk of bias due to", strong("missing evidence"), "in NMA (Chiocchia et al.",
@@ -875,10 +886,6 @@ moduleC_server <- function(id, processed_data, cinema_module,
       df    <- pairwise_data()
       comps <- direct_comps_df()
 
-      # Minimum SE across the full dataset (for NMR prediction)
-      v_min  <- min(df$se^2, na.rm = TRUE)
-      se_min <- sqrt(v_min)
-
       results <- lapply(seq_len(nrow(comps)), function(i) {
         sub <- df %>%
           filter((t1 == comps$t1[i] & t2 == comps$t2[i]) |
@@ -893,9 +900,6 @@ moduleC_server <- function(id, processed_data, cinema_module,
             egger_p     = NA_real_,
             egger_bias  = NA_real_,
             egger_eff   = NA_real_,
-            nmr_te      = NA_real_,
-            nmr_lo      = NA_real_,
-            nmr_hi      = NA_real_,
             across_auto = "",
             stringsAsFactors = FALSE
           ))
@@ -909,22 +913,11 @@ moduleC_server <- function(id, processed_data, cinema_module,
           # Egger's weighted regression (linreg):
           #   y_i/se_i = bias + eff * (1/se_i)
           # where bias = intercept (asymmetry), eff = effect at SE=0.
-          # NMR_TE at se_min = eff + bias * se_min  (linear combination of coefs).
-          # 95% CI via vcov of lm fit:
-          #   Var(NMR_TE) = Var(eff) + se_min^2*Var(bias) + 2*se_min*Cov(eff,bias)
           y_std <- sub$y / sub$se
           x_std <- 1    / sub$se
           fit   <- lm(y_std ~ x_std)
-          vcv   <- vcov(fit)
           b_int <- coef(fit)[1]   # bias (intercept)
           b_eff <- coef(fit)[2]   # eff  (slope = TE at SE=0)
-
-          nmr    <- b_eff + b_int * se_min
-          var_nm <- vcv[2,2] + se_min^2 * vcv[1,1] + 2 * se_min * vcv[1,2]
-          se_nm  <- if (!is.na(var_nm) && var_nm > 0) sqrt(var_nm) else NA_real_
-          t_crit <- qt(0.975, df = n_s - 2)
-          nmr_lo <- if (!is.na(se_nm)) nmr - t_crit * se_nm else NA_real_
-          nmr_hi <- if (!is.na(se_nm)) nmr + t_crit * se_nm else NA_real_
 
           # Egger p-value via metabias (for across_auto rating)
           m  <- metagen(TE = sub$y, seTE = sub$se, studlab = sub$studlab,
@@ -935,11 +928,9 @@ moduleC_server <- function(id, processed_data, cinema_module,
             if (is.null(pv) || length(pv) == 0) NA_real_ else as.numeric(pv)[1]
           }
 
-          list(p = p_v, bias = b_int, eff = b_eff,
-               nmr_te = nmr, nmr_lo = nmr_lo, nmr_hi = nmr_hi)
+          list(p = p_v, bias = b_int, eff = b_eff)
         }, error = function(e) {
-          list(p = NA_real_, bias = NA_real_, eff = NA_real_,
-               nmr_te = NA_real_, nmr_lo = NA_real_, nmr_hi = NA_real_)
+          list(p = NA_real_, bias = NA_real_, eff = NA_real_)
         })
 
         across_auto <- if (length(eg$p) == 0 || is.na(eg$p) || eg$p >= 0.05) {
@@ -957,9 +948,6 @@ moduleC_server <- function(id, processed_data, cinema_module,
           egger_p     = eg$p,
           egger_bias  = eg$bias,
           egger_eff   = eg$eff,
-          nmr_te      = eg$nmr_te,
-          nmr_lo      = eg$nmr_lo,
-          nmr_hi      = eg$nmr_hi,
           across_auto = across_auto,
           stringsAsFactors = FALSE
         )
@@ -1248,22 +1236,39 @@ moduleC_server <- function(id, processed_data, cinema_module,
               plotlyOutput(ns(paste0("modal_funnel_", sid_i)), height = "420px"),
               uiOutput(ns(paste0("modal_trimfill_note_", sid_i))),
               hr(),
-              div(style = "font-size:0.85em; color:#444;",
-                tags$b("Conditions suggesting bias:"),
-                tags$ul(style = "margin-bottom:6px;",
-                  tags$li("Failure to search grey literature / unpublished studies"),
-                  tags$li("Analysis based on few early trials of a novel agent",
-                          " (early evidence often overestimates efficacy)"),
-                  tags$li("Previous evidence showed publication bias for this comparison"),
-                  tags$li(HTML("Egger's p &lt; 0.05 with \u2265 10 studies (suggests funnel asymmetry)"))
-                ),
-                tags$b("Conditions suggesting no bias:"),
-                tags$ul(style = "margin-bottom:0;",
-                  tags$li("Unpublished studies available and consistent with published results"),
-                  tags$li("Tradition of prospective trial registration in this field"),
-                  tags$li("Funnel plot symmetric with no statistically significant Egger test")
-                )
-              ),
+              across_conditions_block(),
+              footer   = modalButton("Close")
+            ))
+          }, ignoreNULL = TRUE, ignoreInit = TRUE)
+        })
+      }
+    })
+
+    hints_observers_created <- reactiveVal(FALSE)
+    observe({
+      comps <- tryCatch(
+        bind_rows(direct_comps_df(), indirect_comps_df()),
+        error = function(e) NULL)
+      if (is.null(comps) || hints_observers_created()) return()
+      hints_observers_created(TRUE)
+
+      for (i in seq_len(nrow(comps))) {
+        local({
+          ck_i  <- comps$comp_key[i]
+          sid_i <- safe_id(ck_i)
+          n_i   <- comps$n_direct[i]
+
+          observeEvent(input[[paste0("hints_btn_", sid_i)]], {
+            showModal(modalDialog(
+              title    = tagList(icon("lightbulb"),
+                                 paste(" Across-study bias hints:", ck_i)),
+              easyClose = TRUE,
+              across_conditions_block(),
+              hr(),
+              tags$small(HTML(paste0(
+                "Egger's test is not applicable because k &lt; 10 for this row",
+                if (!is.na(n_i)) paste0(" (k=", n_i, ").") else "."
+              ))),
               footer   = modalButton("Close")
             ))
           }, ignoreNULL = TRUE, ignoreInit = TRUE)
@@ -1316,6 +1321,32 @@ moduleC_server <- function(id, processed_data, cinema_module,
     })
 
     # ------------------------------------------------------------------
+    # Effective pairwise overall judgement for a comparison, derived directly
+    # from the source-of-truth within_/across_ inputs (NEVER the lagging
+    # ov_pw_ display input, which an observer updates via a client round-trip
+    # and therefore lags ① / ②). Across falls back to the Egger auto-rating
+    # when the user has not set it. Shared by pct_biased(), the ③ auto-update
+    # observer, and the indirect-bias derivation so any ① / ② edit always
+    # flows forward deterministically (forward cascade ①②→③→④→⑤a→⑤b→⑤).
+    # `sid` / `ck` identify the PAIRWISE row (comp_key-based safe_id, e.g.
+    # "A_B"), distinct from the ROB-MEN table sid ("A_vs_B").
+    # ------------------------------------------------------------------
+    pw_overall_from_inputs <- function(sid, ck, t1, t2, eg = NULL) {
+      w <- input[[paste0("within_", sid)]]
+      a <- input[[paste0("across_", sid)]]
+      if (is.null(w) || !nzchar(w)) w <- NO_BIAS
+      if (is.null(a) || !nzchar(a)) {
+        if (is.null(eg)) eg <- tryCatch(egger_df(), error = function(e) NULL)
+        arow <- if (!is.null(eg) && "comp_key" %in% names(eg))
+                  eg[eg$comp_key == ck, , drop = FALSE] else NULL
+        a <- if (!is.null(arow) && nrow(arow) > 0 &&
+                 !is.na(arow$across_auto[1]) && nzchar(arow$across_auto[1]))
+               arow$across_auto[1] else NO_BIAS
+      }
+      compute_overall_pw(w, a, t1, t2)
+    }
+
+    # ------------------------------------------------------------------
     # % contribution from biased comparisons (reactive — updates on input change)
     # Algorithm: sum contributions from comparisons rated "Suspected substantial bias"
     #   Direction (Chiocchia 2021):
@@ -1352,23 +1383,12 @@ moduleC_server <- function(id, processed_data, cinema_module,
                            pmax(parts[1], parts[2]), sep = ":")
               sid <- safe_id(ck)
 
-              # Get pairwise overall judgement
-              ov_val <- input[[paste0("ov_pw_", sid)]]
-              if (is.null(ov_val) || !nzchar(ov_val)) {
-                # Auto-compute from within/across inputs
-                w_val <- input[[paste0("within_", sid)]]
-                a_val <- input[[paste0("across_", sid)]]
-                if (is.null(w_val) || !nzchar(w_val)) w_val <- NO_BIAS
-                if (is.null(a_val) || !nzchar(a_val)) {
-                  eg_row <- eg %>% filter(comp_key == ck)
-                  a_val  <- if (nrow(eg_row) > 0 && !is.na(eg_row$across_auto[1]))
-                              eg_row$across_auto[1] else NO_BIAS
-                  if (is.null(a_val) || !nzchar(a_val)) a_val <- NO_BIAS
-                }
-                ck_t1 <- pmin(parts[1], parts[2])
-                ck_t2 <- pmax(parts[1], parts[2])
-                ov_val <- compute_overall_pw(w_val, a_val, ck_t1, ck_t2)
-              }
+              # Pairwise overall judgement — always derived from the
+              # source-of-truth within/across inputs (never the lagging
+              # ov_pw_ display input) so ① / ② edits flow into ④ at once.
+              ck_t1 <- pmin(parts[1], parts[2])
+              ck_t2 <- pmax(parts[1], parts[2])
+              ov_val <- pw_overall_from_inputs(sid, ck, ck_t1, ck_t2, eg)
 
               if (!is.null(ov_val) && is_suspected(ov_val)) {
                 pct  <- contribs[col_nm] * 100
@@ -1392,27 +1412,31 @@ moduleC_server <- function(id, processed_data, cinema_module,
     })
 
     # ------------------------------------------------------------------
-    # Network-level SSE assessment via NMR (Chiocchia 2023, §2.4)
-    # Uses netmetaregression(net, var.covar = "seTE") to estimate adjusted TE.
-    # If adjusted 95% CI overlaps unadjusted CI → no evidence of SSE.
-    # Direction: NMA favours t2 (te > 0) AND adjusted < unadjusted → SSE in direction.
+    # Network-level SSE assessment via NMR (Chiocchia 2023, §2.4).
+    # The adjusted effect is estimated by compute_network_nmr() at the
+    # smallest observed variance. If adjusted and unadjusted 95% CIs overlap
+    # → no evidence of SSE.
     # Returns data.frame: comparison, nmr_te, nmr_lo, nmr_hi, nma_te, sse_auto
     # ------------------------------------------------------------------
     network_sse_df <- reactive({
       net <- tryCatch(nma_net(),      error = function(e) NULL)
       cr  <- tryCatch(cinema_res(),   error = function(e) NULL)
       ne  <- tryCatch(nma_estimates(), error = function(e) NULL)
+      pw  <- tryCatch(pairwise_data(), error = function(e) NULL)
       if (is.null(net) || is.null(cr) || is.null(ne) || nrow(ne) == 0) return(NULL)
       tryCatch({
-        nmr_result <- tryCatch(
-          netmetaregression(net, var.covar = "seTE"),
-          error = function(e)
-            tryCatch(netmetaregression(net, var.covar = "se"),
-                     error = function(e2) NULL)
-        )
-        if (is.null(nmr_result)) return(NULL)
-
-        mt <- cr$model_type
+        mt <- if (identical(cr$model_type, "random")) "random" else "fixed"
+        nmr_all <- tryCatch(
+          compute_network_nmr(
+            pairwise_df    = pw,
+            treatments     = sort(net$trts),
+            reference      = tryCatch(net$reference.group, error = function(e) NULL),
+            model_type     = mt,
+            covar          = "variance",
+            coef_type      = "common",
+            extrapolate_to = "min"
+          ),
+          error = function(e) NULL)
 
         # SSE labels matching SSE_CHOICES exactly
         SSE_IN  <- "Evidence of small-study effects \u2013 reinforcing biased contribution"
@@ -1423,24 +1447,28 @@ moduleC_server <- function(id, processed_data, cinema_module,
           t1 <- ne$t1[i]; t2 <- ne$t2[i]
           comp   <- ne$comparison[i]
           nmr_te <- nmr_lo <- nmr_hi <- NA_real_
-          nma_te <- nma_lo <- nma_hi <- NA_real_
-          tryCatch({
-            if (mt == "random") {
-              nmr_te <- nmr_result$TE.random[t1, t2]
-              nmr_lo <- nmr_result$lower.random[t1, t2]
-              nmr_hi <- nmr_result$upper.random[t1, t2]
-              nma_te <- net$TE.random[t1, t2]
-              nma_lo <- net$lower.random[t1, t2]
-              nma_hi <- net$upper.random[t1, t2]
-            } else {
-              nmr_te <- nmr_result$TE.fixed[t1, t2]
-              nmr_lo <- nmr_result$lower.fixed[t1, t2]
-              nmr_hi <- nmr_result$upper.fixed[t1, t2]
-              nma_te <- net$TE.fixed[t1, t2]
-              nma_lo <- net$lower.fixed[t1, t2]
-              nma_hi <- net$upper.fixed[t1, t2]
+          nma_te <- ne$te[i]
+          nma_lo <- ne$lo[i]
+          nma_hi <- ne$hi[i]
+          if (!is.null(nmr_all) && nrow(nmr_all) > 0) {
+            nmr_row <- nmr_all[nmr_all$t1 == t1 & nmr_all$t2 == t2, , drop = FALSE]
+            reversed <- FALSE
+            if (nrow(nmr_row) == 0) {
+              nmr_row <- nmr_all[nmr_all$t1 == t2 & nmr_all$t2 == t1, , drop = FALSE]
+              reversed <- nrow(nmr_row) > 0
             }
-          }, error = function(e) {})
+            if (nrow(nmr_row) > 0) {
+              if (isTRUE(reversed)) {
+                nmr_te <- -nmr_row$nmr_te[1]
+                nmr_lo <- -nmr_row$nmr_hi[1]
+                nmr_hi <- -nmr_row$nmr_lo[1]
+              } else {
+                nmr_te <- nmr_row$nmr_te[1]
+                nmr_lo <- nmr_row$nmr_lo[1]
+                nmr_hi <- nmr_row$nmr_hi[1]
+              }
+            }
+          }
 
           # CI overlap test requires all four bounds; if NMR CI is unavailable
           # (e.g. tau²=0 boundary, insufficient df), fall back to "No evidence".
@@ -1536,20 +1564,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
       showModal(modalDialog(
         title = tagList(icon("info-circle"), " Across-study bias — Assessment guide"),
         easyClose = TRUE, footer = modalButton("Close"),
-        tags$b("Conditions suggesting bias:"),
-        tags$ul(
-          tags$li("Failure to search grey literature / unpublished studies"),
-          tags$li("Analysis based on few early trials of a novel agent",
-                  " (early evidence often overestimates efficacy)"),
-          tags$li("Previous evidence showed publication bias for this comparison"),
-          tags$li(HTML("Egger's p &lt; 0.05 with \u2265 10 studies (suggests funnel asymmetry)"))
-        ),
-        tags$b("Conditions suggesting no bias:"),
-        tags$ul(
-          tags$li("Unpublished studies available and consistent with published results"),
-          tags$li("Tradition of prospective trial registration in this field"),
-          tags$li("Funnel plot symmetric with no statistically significant Egger test")
-        ),
+        across_conditions_block(),
         tags$hr(),
         tags$small(HTML("Note: Egger's test recommended only for \u2265 10 studies (Chiocchia 2021)."),
           " Direction of suspected bias should reflect larger benefits seen in smaller studies.")
@@ -1814,8 +1829,9 @@ moduleC_server <- function(id, processed_data, cinema_module,
 
           tags$h5("How the auto judgement works"),
           tags$ul(
-            tags$li("Run ", code("netmetaregression(net, var.covar = \"seTE\")"),
-                    " to obtain an SE-adjusted treatment effect with a",
+            tags$li("Run network meta-regression with study variance as",
+                    " covariate and extrapolate to the smallest observed",
+                    " variance to obtain an adjusted treatment effect with a",
                     " 95% CI."),
             tags$li("Compare the NMR CI with the unadjusted NMA CI;",
                     " if they overlap, default to ",
@@ -1823,9 +1839,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
             tags$li("If they don't overlap, compare the direction of",
                     " shift to ⒤a's biased-contribution direction."),
             tags$li(strong("Edge cases:"),
-                    " when NMR cannot be fitted (τ² = 0",
-                    " boundary, insufficient df, or fewer than 10",
-                    " studies in the network), ⒤b falls back to ",
+                    " when NMR cannot be fitted (metafor unavailable,",
+                    " disconnected comparisons, or insufficient df), ⒤b falls back to ",
                     em("No evidence "),
                     "so the cell still carries an interpretable",
                     " judgement.")
@@ -2015,9 +2030,10 @@ moduleC_server <- function(id, processed_data, cinema_module,
     })
 
     # ------------------------------------------------------------------
-    # Reactive auto-update: within → grey across + auto pairwise overall
+    # Reactive auto-update: within/across → auto pairwise overall
     # Fires whenever any within_* or across_* input changes.
-    # Short-circuit: if within = "Suspected bias", across is not needed.
+    # Short-circuit in compute_overall_pw(): within suspected takes precedence,
+    # but across-study inputs remain editable.
     # ------------------------------------------------------------------
     observe({
       comps <- tryCatch(
@@ -2028,38 +2044,26 @@ moduleC_server <- function(id, processed_data, cinema_module,
         ),
         error = function(e) NULL)
       if (is.null(comps) || nrow(comps) == 0) return()
+      eg <- tryCatch(egger_df(), error = function(e) NULL)
 
       for (i in seq_len(nrow(comps))) {
         ck  <- comps$comp_key[i]
         sid <- safe_id(ck)
-        grp <- comps$grp[i]
 
-        w_val <- input[[paste0("within_", sid)]]
-        a_val <- input[[paste0("across_", sid)]]
+        w_raw <- input[[paste0("within_", sid)]]
+        a_raw <- input[[paste0("across_", sid)]]
+        has_w <- !is.null(w_raw) && nzchar(w_raw)
+        has_a <- !is.null(a_raw) && nzchar(a_raw)
 
-        # Normalize legacy labels
-        if (!is.null(w_val) && w_val %in% c("High risk", "No bias"))
-          w_val <- if (w_val == "High risk") "Suspected bias" else "No bias detected"
-        if (!is.null(a_val) && a_val %in% c("High risk", "No bias"))
-          a_val <- if (a_val == "High risk") "Suspected bias" else "No bias detected"
-
-        # Short-circuit: within suspected → grey out across and carry its direction.
-        across_full_id <- session$ns(paste0("across_", sid))
-        if (grp == "A" && !is.null(w_val) && is_suspected(w_val)) {
-          session$sendCustomMessage("robmen_toggle_across",
-                                    list(id = across_full_id, disabled = TRUE))
+        # Recompute ③ overall from ① / ② whenever either has been assessed —
+        # including when ① is reverted from "Suspected bias" back to
+        # "No bias detected" (previously the overall was left stale because
+        # the update only fired for the suspected / both-filled cases). Skip
+        # only when nothing is assessed yet, to preserve the initial blank.
+        if (has_w || has_a) {
           updateSelectInput(session, paste0("ov_pw_", sid),
-                            selected = compute_overall_pw(w_val, a_val,
-                                                          comps$t1[i], comps$t2[i]))
-        } else if (grp == "A") {
-          session$sendCustomMessage("robmen_toggle_across",
-                                    list(id = across_full_id, disabled = FALSE))
-          # Auto-update pairwise overall when both fields are filled
-          if (!is.null(w_val) && nzchar(w_val) && !is.null(a_val) && nzchar(a_val)) {
-            updateSelectInput(session, paste0("ov_pw_", sid),
-                              selected = compute_overall_pw(w_val, a_val,
-                                                            comps$t1[i], comps$t2[i]))
-          }
+                            selected = pw_overall_from_inputs(
+                              sid, ck, comps$t1[i], comps$t2[i], eg))
         }
       }
     })
@@ -2107,12 +2111,16 @@ moduleC_server <- function(id, processed_data, cinema_module,
         updateSelectInput(session, paste0("contrib_eval_", sid), selected = c_auto)
 
         # Indirect-evidence bias is only part of ROB-MEN for only-indirect
-        # estimates; copy it from the pairwise judgement plus direction.
+        # estimates; derive it from the pairwise judgement (computed from the
+        # source-of-truth within/across inputs of the PAIRWISE row, whose
+        # safe_id is comp_key-based "A_B", not the ROB-MEN table's "A_vs_B").
         i_auto <- ""
         if (identical(ne$evidence_type[i], "indirect")) {
-          pw_overall <- input[[paste0("ov_pw_", sid)]]
-          if (is.null(pw_overall) || !nzchar(pw_overall))
-            pw_overall <- "No bias detected"
+          pw_ck  <- paste(pmin(ne$t1[i], ne$t2[i]),
+                          pmax(ne$t1[i], ne$t2[i]), sep = ":")
+          pw_overall <- pw_overall_from_inputs(
+            safe_id(pw_ck), pw_ck,
+            pmin(ne$t1[i], ne$t2[i]), pmax(ne$t1[i], ne$t2[i]))
           i_auto <- derive_indirect_bias(pw_overall, ne$t1[i], ne$t2[i])
           updateSelectInput(session, paste0("indirect_bias_", sid),
                             selected = i_auto)
@@ -2399,12 +2407,15 @@ moduleC_server <- function(id, processed_data, cinema_module,
                         "Not applicable")),
             # across: qualitative dropdown
             tags$td(style = "padding:4px 8px;",
-              div(
+              div(style = "display:flex; gap:4px; align-items:flex-start;",
                 selectInput(ns(paste0("across_", sid)), label = NULL,
                             choices = pairwise_bias_choices(grp_c$t1[i], grp_c$t2[i]),
                             selected = "", width = "190px"),
-                tags$small(style = "color:#666; font-size:0.78em;",
-                           "Qualitative only (no Egger's)")
+                actionButton(ns(paste0("hints_btn_", sid)),
+                             label = tagList(icon("lightbulb"), " Hints"),
+                             class = "btn btn-xs btn-outline-secondary",
+                             style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
+                             title = "Show qualitative conditions for across-study bias")
               )
             ),
             tags$td(style = "padding:4px 8px;",
@@ -2601,7 +2612,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
         if (is.na(p1)) p1 <- 0
         if (is.na(p2)) p2 <- 0
 
-        # Primary: use network-level NMR (netmetaregression, has CIs)
+        # Network-level NMR is the single source for NMR effect estimates.
         nmr_te <- nmr_lo <- nmr_hi <- NA_real_
         sse_a  <- ""
         if (!is.null(nmr_df) && nrow(nmr_df) > 0) {
@@ -2613,16 +2624,6 @@ moduleC_server <- function(id, processed_data, cinema_module,
             sse_a  <- if (nzchar(nmr_row$sse_auto[1])) nmr_row$sse_auto[1] else ""
           }
         }
-        # Fallback: pairwise Egger's nmr_te with CI
-        if (is.na(nmr_te) && !is.null(eg)) {
-          ck1 <- paste(pmin(ne$t1[i], ne$t2[i]), pmax(ne$t1[i], ne$t2[i]), sep = ":")
-          eg_row <- eg %>% filter(comp_key == ck1)
-          if (nrow(eg_row) > 0 && !is.na(eg_row$nmr_te[1])) {
-            nmr_te <- eg_row$nmr_te[1]
-            if ("nmr_lo" %in% names(eg_row)) nmr_lo <- eg_row$nmr_lo[1]
-            if ("nmr_hi" %in% names(eg_row)) nmr_hi <- eg_row$nmr_hi[1]
-          }
-        }
 
         # Algorithmic judgments — pre-fill so they appear together with the
         # NMA / NMR effect cells in the same render pass. When NMR cannot
@@ -2631,10 +2632,11 @@ moduleC_server <- function(id, processed_data, cinema_module,
         # carries an interpretable judgment instead of "(auto)".
         indirect_bias_a <- ""
         if (identical(ne$evidence_type[i], "indirect")) {
-          pw_sid <- safe_id(comp)
-          pw_overall <- input[[paste0("ov_pw_", pw_sid)]]
-          if (is.null(pw_overall) || !nzchar(pw_overall))
-            pw_overall <- "No bias detected"
+          pw_ck  <- paste(pmin(ne$t1[i], ne$t2[i]),
+                          pmax(ne$t1[i], ne$t2[i]), sep = ":")
+          pw_overall <- pw_overall_from_inputs(
+            safe_id(pw_ck), pw_ck,
+            pmin(ne$t1[i], ne$t2[i]), pmax(ne$t1[i], ne$t2[i]), eg)
           indirect_bias_a <- derive_indirect_bias(pw_overall, ne$t1[i], ne$t2[i])
         }
 

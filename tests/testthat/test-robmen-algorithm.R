@@ -61,6 +61,25 @@ test_that("pairwise overall carries direction and resolves conflicts", {
   )
 })
 
+test_that("pairwise overall reverts when within is set back to No bias", {
+  # Forward cascade depends on the overall being recomputed from the source
+  # within/across inputs every time. When ① is reverted from suspected back
+  # to "No bias detected" (with across unset/no-bias), the overall must
+  # revert to "No bias detected" rather than remain stale.
+  expect_equal(
+    compute_overall_pw("Suspected bias favouring A", "", "A", "B"),
+    "Suspected bias favouring A"
+  )
+  expect_equal(
+    compute_overall_pw("No bias detected", "", "A", "B"),
+    "No bias detected"
+  )
+  expect_equal(
+    compute_overall_pw("No bias detected", "No bias detected", "A", "B"),
+    "No bias detected"
+  )
+})
+
 test_that("derive_indirect_bias copies pairwise judgement direction", {
   expect_equal(derive_indirect_bias("No bias detected", "A", "B"),
                "No suspected bias")
