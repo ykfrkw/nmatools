@@ -47,10 +47,10 @@ Imports:
     stringr,
     tidyr,
     rlang,
-    bslib
+    bslib,
+    metafor
 Suggests:
     testthat (>= 3.0.0),
     patchwork (>= 1.1.0),
-    rstudioapi,
-    metafor
+    rstudioapi
 Config/testthat/edition: 3
