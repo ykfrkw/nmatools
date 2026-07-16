@@ -119,7 +119,7 @@ documents `.docx` output for the same table content.
 `vitruvian()` renders one polar (spider) chart per treatment. Each spoke is one
 outcome; the bar height is the **absolute** effect (an event rate for binary
 outcomes), and the bar color is the signed-p-value gradient. The reference
-treatment is drawn in grey-blue, and a semi-transparent overlay of the
+treatment is drawn in gray-blue, and a semi-transparent overlay of the
 reference rate is drawn on every other treatment's chart for comparison.
 
 The `outcomes` structure mirrors `kilim()`, with a few extra fields:

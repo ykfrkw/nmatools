@@ -38,7 +38,7 @@ risk-of-bias studies; the ratings table below allows overrides.*
 
 **Contribution chart.** "Contribution Chart (ROB by direct comparison)" is a
 stacked horizontal bar per network comparison. Each study is one segment,
-coloured by its own risk of bias. Risk-of-bias scores are encoded **low = 1,
+colored by its own risk of bias. Risk-of-bias scores are encoded **low = 1,
 some concerns = 2, high = 3**.
 
 **Algorithm (Nikolakopoulou 2020).** Three aggregation rules are selectable:

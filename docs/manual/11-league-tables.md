@@ -50,14 +50,14 @@ color_league(
 
 ![Pastel league table colored by CINeMA confidence](images/league_pastel.png)
 
-*The default pastel league table. Diagonal cells (grey) carry the treatment
+*The default pastel league table. Diagonal cells (gray) carry the treatment
 names; each off-diagonal cell holds the odds ratio and its 95% CI, tinted by
 the CINeMA confidence rating of the comparison against the row/column
 treatment.*
 
 How to read the table:
 
-- **Diagonal cells** show the treatment names on a grey background
+- **Diagonal cells** show the treatment names on a gray background
   (`header_bg = "#BFBFBF"`).
 - **Off-diagonal cells** give the pooled effect estimate and 95% CI. By
   default the CI is wrapped onto a second line (`wrap_ci = TRUE`), the opening

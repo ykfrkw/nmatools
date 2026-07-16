@@ -188,7 +188,7 @@ conclusions are to the choice of method.
 
 ![Rare-event sensitivity forest](images/rare_sensitivity.png)
 *Four-method rare-event sensitivity forest (MH / NCH / IV-FE-CC / IV-RE-CC),
-one panel per non-reference treatment, with MH labelled as the primary method.*
+one panel per non-reference treatment, with MH labeled as the primary method.*
 
 ---
 Prev: [The NMA pipeline](03-nma-pipeline.md) · Next: [Transitivity](05-transitivity.md)

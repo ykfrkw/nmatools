@@ -14,7 +14,7 @@ Two selectors at the top of the tab govern how the report is rendered and how
 confidence is computed:
 
 1. **Color palette** (radio): **Pastel** (default) or **Classic**. This controls
-   the colour scheme of the traffic-light table, the network graph edges, and the
+   the color scheme of the traffic-light table, the network graph edges, and the
    league table.
 2. **Downgrade algorithm** (dropdown):
    - **① Standard** — Some = −1, Major = −2; Domains 4/5/6 are anti-double-counted
@@ -32,10 +32,10 @@ the summary table; you can always override it per comparison (Section 10.2).
 ![The Report summary table: a CINeMA traffic-light grid across the six domains.](images/gui_13_report_summary.png)
 
 *Figure 10.1 — The CINeMA summary table. Each row is a comparison; the six domain
-columns are colour-coded, and the Confidence column is editable.*
+columns are color-coded, and the Confidence column is editable.*
 
 The **Summary Table** is the CINeMA traffic-light grid: one row per comparison,
-with colour-coded cells for Domains 1–6 (D1 Within-study bias, D2 Reporting bias,
+with color-coded cells for Domains 1–6 (D1 Within-study bias, D2 Reporting bias,
 D3 Indirectness, D4 Imprecision, D5 Heterogeneity, D6 Incoherence).
 
 - **Setting confidence.** Click a cell in the **Confidence** column to set the
@@ -52,14 +52,14 @@ D3 Indirectness, D4 Imprecision, D5 Heterogeneity, D6 Incoherence).
 ![The Report network graph with its display options.](images/gui_14_report_netgraph.png)
 
 *Figure 10.2 — The network graph. The "Display options" disclosure exposes node
-sizing, edge thickness, edge colour, rotation, and labelling controls.*
+sizing, edge thickness, edge color, rotation, and labeling controls.*
 
 Open **Display options** to customise the graph:
 
 - **Node sizing** — By total sample size (default) / By number of studies / Equal.
 - **Edge thickness** — By number of trials (default) / Inverse variance / Equal.
 - **Treatment order (around circle)** — Optimal (minimise crossings) / Alphabetic.
-- **Edge colour** — CINeMA confidence (default) / Within-study bias (Domain 1) /
+- **Edge color** — CINeMA confidence (default) / Within-study bias (Domain 1) /
   Monochrome.
 - **Rotation (°)** — a slider from −180 to 180.
 - **Edge-label position** — where the *n*-studies label sits along each edge.
@@ -85,14 +85,14 @@ Open **Display options** to customise the forest plot:
 - **Show k (number of studies) column**, **Show total N column**, **Show
   heterogeneity row (tau², I²)** — checkboxes.
 - **Font size (pt)** — a slider from 5 to 18.
-- **Favours left / Favours right** — free-text axis labels.
+- **Favors left / Favors right** — free-text axis labels.
 
 ---
 
 ## 10.5 League Table
 
 The **League Table** shows the NMA estimate [95% CI] for each column-vs-row
-treatment in the lower-left triangle, with each cell coloured by CINeMA
+treatment in the lower-left triangle, with each cell colored by CINeMA
 confidence. A **Sort treatments by** control offers **Alphabetic**, **P-score**,
 or **▲ P-score** ordering.
 
@@ -144,11 +144,11 @@ studies`, the six domain ratings, `Confidence rating`, and `Reason(s) for
 downgrading`) is exactly the input the scripted colouring functions expect. You
 can feed it to:
 
-- `color_league()` — colour a league table by CINeMA confidence
+- `color_league()` — color a league table by CINeMA confidence
   (see [Chapter 11](11-league-tables.md));
-- `color_forest()` — colour forest-plot CI squares by CINeMA confidence
+- `color_forest()` — color forest-plot CI squares by CINeMA confidence
   (see [Chapter 12](12-colored-forest-netgraph.md));
-- `color_netgraph()` — colour network-graph edges by CINeMA confidence
+- `color_netgraph()` — color network-graph edges by CINeMA confidence
   (see [Chapter 12](12-colored-forest-netgraph.md)).
 
 This lets you build the GUI's assessment interactively, then reproduce

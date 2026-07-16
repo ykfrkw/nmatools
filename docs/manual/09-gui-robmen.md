@@ -72,7 +72,7 @@ flowchart LR
    via the **ROB-ME** helper button. Output: *No bias detected* or *Suspected
    bias favouring X*.
 2. **Component 2 — across-study small-study effects.** Qualitative conditions
-   (grey-literature search, novel-agent bias, prior publication-bias evidence)
+   (gray-literature search, novel-agent bias, prior publication-bias evidence)
    plus, where k ≥ 10 studies, a quantitative Bayesian Egger test. Output: *No
    bias detected* or *Suspected bias favouring X*.
 3. **Pairwise overall judgement** (per comparison). If **either** component is
@@ -82,7 +82,7 @@ flowchart LR
    precedence. For Group C the overall equals the across-study assessment only.
 4. **% biased contribution.** From the contribution matrix, the percentage of
    each estimate's evidence that comes from comparisons judged biased, split by
-   the treatment it favours. If the difference between the two sides reaches the
+   the treatment it favors. If the difference between the two sides reaches the
    contribution threshold (default 15 pp), the biased contribution is
    "Substantial – favouring one treatment"; if the larger side alone reaches the
    threshold, "Substantial – balanced"; otherwise "No substantial contribution".

@@ -3,7 +3,7 @@
 # 7. The Configuration tab, step by step
 
 The Configuration tab is the single point of entry for every analysis. It is
-organised as five numbered sections that reveal themselves progressively as the
+organized as five numbered sections that reveal themselves progressively as the
 data become valid:
 
 1. **Upload NMA Data**
@@ -22,7 +22,7 @@ the bundled SLEEPI demo data as the worked example.
 ![The Configuration tab before any data is loaded.](images/gui_01_config_empty.png)
 
 *Figure 7.1 — On first launch, section 1 (Upload) is active; sections 2, 3, and 5
-show grey "hourglass" placeholders explaining that they will populate once data
+show gray "hourglass" placeholders explaining that they will populate once data
 are loaded and validated.*
 
 Before any data are present, sections 2, 3, and 5 display placeholder panels so
@@ -154,7 +154,7 @@ The MCMC controls are:
 **Section 4 — Pairwise Data Preview** shows the pairwise-format data frame that
 the analysis will actually use (columns `studlab`, `t1`, `t2`, `y`, `se`, `n`,
 `n1`, `n2`, `rob`, `indirectness`). The `rob` and `indirectness` cells are
-colour-coded green / amber / red for low / some concerns / high. A text summary
+color-coded green / amber / red for low / some concerns / high. A text summary
 beneath lists the number of comparisons, studies, treatments, and the range of
 the effect size.
 
