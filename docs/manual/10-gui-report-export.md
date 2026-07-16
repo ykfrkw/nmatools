@@ -147,9 +147,9 @@ can feed it to:
 - `color_league()` — colour a league table by CINeMA confidence
   (see [Chapter 11](11-league-tables.md));
 - `color_forest()` — colour forest-plot CI squares by CINeMA confidence
-  (see [Chapter 12](12-colored-plots.md));
+  (see [Chapter 12](12-colored-forest-netgraph.md));
 - `color_netgraph()` — colour network-graph edges by CINeMA confidence
-  (see [Chapter 12](12-colored-plots.md)).
+  (see [Chapter 12](12-colored-forest-netgraph.md)).
 
 This lets you build the GUI's assessment interactively, then reproduce
 publication figures from a script:
