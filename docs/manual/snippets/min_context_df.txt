@@ -1,0 +1,4 @@
+        treatment group   cinema n_total n_quality
+1           CBT-I     1 Moderate     335  Moderate
+2     Combination     0 Moderate     186  Moderate
+3 Pharmacotherapy     0     <NA>     239  Moderate

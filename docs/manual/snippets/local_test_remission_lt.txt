@@ -1,0 +1,19 @@
+Separate indirect from direct evidence (SIDE) using back-calculation method
+
+Random effects model: 
+
+                  comparison k prop    nma direct indir.     RoR    z p-value
+           CBT-I:Combination 5 0.96 1.0658 1.1577 0.1385  8.3595 1.54  0.1230
+       CBT-I:Pharmacotherapy 7 0.98 1.8176 1.9032 0.1642 11.5874 1.42  0.1550
+ Combination:Pharmacotherapy 3 0.32 1.7054 2.2528 1.4940  1.5079 0.57  0.5688
+
+Legend:
+ comparison - Treatment comparison
+ k          - Number of studies providing direct evidence
+ prop       - Direct evidence proportion
+ nma        - Estimated treatment effect (OR) in network meta-analysis
+ direct     - Estimated treatment effect (OR) derived from direct evidence
+ indir.     - Estimated treatment effect (OR) derived from indirect evidence
+ RoR        - Ratio of Ratios (direct versus indirect)
+ z          - z-value of test for disagreement (direct versus indirect)
+ p-value    - p-value of test for disagreement (direct versus indirect)

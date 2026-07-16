@@ -1,0 +1,4 @@
+        treatment abs_effect group   cinema n_total n_quality
+1 Pharmacotherapy  0.0000000     0     <NA>     239  Moderate
+2           CBT-I  0.1341207     1 Moderate     335  Moderate
+3     Combination  0.1187546     0 Moderate     186  Moderate
