@@ -37,7 +37,10 @@ secrets/
 .Rproj.user/
 
 # ── pkgdown site (generated, not source) ─────────────────────────────────────
-docs/
+# Ignore the generated pkgdown site under docs/, but keep the hand-written
+# user manual (docs/manual/) under source control so it renders on GitHub.
+docs/*
+!docs/manual/
 
 # ── testthat snapshot artifacts ───────────────────────────────────────────────
 tests/testthat/_snaps/
