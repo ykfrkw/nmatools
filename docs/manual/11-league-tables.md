@@ -113,7 +113,10 @@ color_league(
 ![League table sorted by P-score](images/league_pscore.png)
 
 *The same table sorted by P-score, so the best-ranked treatment appears in the
-top-left corner.*
+top-left corner. In the demo network the P-score ranking (CBT-I, Combination,
+Pharmacotherapy) happens to coincide with the alphabetical default, so this
+render looks identical to the previous one; with more treatments the two
+orderings usually differ.*
 
 ## 11.3 Palettes
 
@@ -287,7 +290,9 @@ color_league_multi(
 ![Multi-sheet league workbook, first sheet](images/league_multi.png)
 
 *First sheet of the multi-sheet workbook produced by `color_league_multi()`.
-Each outcome occupies its own tab.*
+Each outcome occupies its own tab. Because sheet 1 holds the same outcome,
+CINeMA file, and sort order as the single-outcome examples above, this render
+looks identical to them — the difference lives in the workbook's other tabs.*
 
 All shared arguments (`sort_by`, `sort_order`, `palette_type`,
 `trivial_range`, `digits`, and so on) are forwarded to every sheet, so a single

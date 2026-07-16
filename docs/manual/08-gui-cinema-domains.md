@@ -74,7 +74,7 @@ rating rather than its risk of bias.*
    severe contributor)**.
 
 **Contribution chart.** "Contribution Chart (indirectness by direct comparison)"
-is the same stacked-bar visualisation as Domain ①, split by each study's
+is the same stacked-bar visualization as Domain ①, split by each study's
 indirectness (Low / Some concerns / High).
 
 **Algorithm.** Identical to Domain ① but using study-level **indirectness**

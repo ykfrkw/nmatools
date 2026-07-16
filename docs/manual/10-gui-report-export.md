@@ -137,11 +137,11 @@ cinema_results   # the CINeMA ratings data frame, saved from the GUI
 
 ---
 
-## 10.7 Bridge to the scripted visualisation functions
+## 10.7 Bridge to the scripted visualization functions
 
 The exported **{netmetaviz}-format CSV** (columns: `Comparison`, `Number of
 studies`, the six domain ratings, `Confidence rating`, and `Reason(s) for
-downgrading`) is exactly the input the scripted colouring functions expect. You
+downgrading`) is exactly the input the scripted coloring functions expect. You
 can feed it to:
 
 - `color_league()` — color a league table by CINeMA confidence

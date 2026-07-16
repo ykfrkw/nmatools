@@ -150,13 +150,18 @@ section is where the ROB-MEN result becomes the CINeMA Domain 2 rating.
 
 ![The Domain 2 Final Ratings section, with bulk-set buttons and per-comparison overrides.](images/gui_08_d2_robmen_final.png)
 
-*Figure 9.3 — The Domain 2 Final Ratings section. ROB-MEN ratings populate this
-domain automatically; bulk buttons and per-comparison dropdowns allow manual
-adjustment.*
+*Figure 9.3 — The Domain 2 Final Ratings section. Bulk buttons and
+per-comparison dropdowns allow manual adjustment.*
 
-The guidance reads: "ROB-MEN ratings above populate this domain automatically.
-Use the bulk buttons or per-comparison overrides for manual adjustment." Three
-bulk buttons act on all comparisons at once:
+The on-screen guidance reads: "ROB-MEN ratings above populate this domain
+automatically. Use the bulk buttons or per-comparison overrides for manual
+adjustment." In practice one explicit step is required: after completing the
+pairwise judgement dropdowns, click **Update CINeMA Domain 2** (bottom right
+of the ROB-MEN tables). Until you do, the Report tab's Domain 2 column stays
+**Not assessed** — filling in the dropdowns alone does not sync. The button
+also navigates to the Domain 2 section and confirms with a notification
+showing how many comparisons were rated. Three bulk buttons act on all
+comparisons at once:
 
 - **Set all: No concerns**
 - **Set all: Some concerns**
