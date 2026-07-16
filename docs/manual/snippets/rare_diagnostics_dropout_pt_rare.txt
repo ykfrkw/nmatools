@@ -1,0 +1,28 @@
+Rare-event NMA diagnostics
+==========================
+  rare_flow            : FALSE
+  Studies (k)          : 9
+  Treatments           : 3
+  Total events / N     : 65 / 627 (overall rate = 10.37%)
+  Zero-arm studies     : 1 / 9 (11.1%)
+    single-zero        : 1
+    double-zero        : 0
+  Studies with events in all arms : 8
+  Treatment with 0 total events?  : FALSE
+
+  Per-treatment event rates:
+    CBT-I                              30 /      292 (10.27%)
+    Combination                        13 /      142 (9.15%)
+    Pharmacotherapy                    22 /      193 (11.40%)
+
+  Triggered flags:
+    rare_rate_flag       : FALSE
+    one_arm_total_zero   : FALSE
+    sparse_zero_pattern  : FALSE
+    high_zero_fraction   : FALSE
+    few_informative      : FALSE
+
+  Threshold: event rate < 1.00%; zero-arm fraction >= 50.00%
+
+  Recommendation:
+    Rare-event workflow not triggered; standard NMA workflow applies.

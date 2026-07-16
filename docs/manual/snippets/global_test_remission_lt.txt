@@ -1,0 +1,27 @@
+Q statistics to assess homogeneity / consistency
+
+                    Q df p-value
+Total           10.44 10  0.4032
+Within designs   4.68  8  0.7916
+Between designs  5.76  2  0.0561
+
+Design-specific decomposition of within-designs Q statistic
+
+                            Design    Q df p-value
+ Pharmacotherapy:CBT-I:Combination 2.80  4  0.5920
+             Pharmacotherapy:CBT-I 1.87  3  0.6000
+                 CBT-I:Combination 0.01  1  0.9306
+
+Between-designs Q statistic after detaching of single designs
+(influential designs have p-value markedly different from 0.0561)
+
+                   Detached design    Q df p-value
+             Pharmacotherapy:CBT-I 3.56  1  0.0591
+                 CBT-I:Combination 3.80  1  0.0513
+ Pharmacotherapy:CBT-I:Combination 0.00  0      --
+
+Q statistic to assess consistency under the assumption of
+a full design-by-treatment interaction random effects model
+
+                   Q df p-value tau.within tau2.within
+Between designs 5.76  2  0.0561          0           0
