@@ -521,9 +521,10 @@ netmetawrap <- function(
   )
 
   # -- 17. Contour-enhanced funnel plots (pairs with >= funnel_min_studies) ------
-  # Extract pairwise comparison objects from np_obj; guard against non-meta elements.
-  np_valid <- Filter(function(m) is.list(m) && !is.null(m[["k"]]), np_obj)
-  funnel_pairs <- Filter(function(m) m[["k"]] >= funnel_min_studies, np_valid)
+  # Build per-comparison meta objects from df_pw (works on all netmeta versions;
+  # netmeta >= 3.x no longer returns per-comparison objects from netpairwise).
+  funnel_pairs <- .build_funnel_pairs(df_pw, sm = sm,
+                                      min_studies = funnel_min_studies)
 
   if (length(funnel_pairs) > 0L) {
     message("[ netmetawrap ] Saving contour-enhanced funnel plots for ",
@@ -565,22 +566,22 @@ netmetawrap <- function(
   }
 
   # -- 18. Direct evidence contributions (netcontrib) ---------------------------
+  # netmeta >= 3.x dropped the plot() method for netcontrib objects; render the
+  # contribution matrix as a labelled ggplot2 heatmap instead.
   tryCatch({
-    nc_obj <- netmeta::netcontrib(net_meta, method = "random")
-    nc_w   <- max(8, n_trts * 1.5)
-    nc_h   <- max(6, n_trts * 1.0)
-    .save_plot(
-      file      = file.path(output_dir,
-                            paste0("contributions_", file_label, ".pdf")),
-      width     = nc_w,
-      height    = nc_h,
-      trim      = trim,
-      trim_fuzz = trim_fuzz,
-      expr      = {
-        graphics::par(mar = c(10, 12, 4, 2))
-        plot(nc_obj,
-             main = paste0("Direct Evidence Contributions: ", outcome))
-      }
+    nc_method <- if (is_common_model) "common" else "random"
+    nc_obj    <- netmeta::netcontrib(net_meta, method = nc_method)
+    cm        <- if (is_common_model) nc_obj$common else nc_obj$random
+    cm        <- cm %||% nc_obj$random %||% nc_obj$common
+    nc_w      <- max(8, n_trts * 1.5)
+    nc_h      <- max(6, n_trts * 1.0)
+    .save_netcontrib_heatmap(
+      cm     = cm,
+      outcome = outcome,
+      file   = file.path(output_dir,
+                         paste0("contributions_", file_label, ".pdf")),
+      width  = nc_w,
+      height = nc_h
     )
   }, error = function(e) {
     message("[ netmetawrap ] netcontrib skipped: ", conditionMessage(e))

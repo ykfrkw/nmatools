@@ -238,6 +238,24 @@
                                   width, row_height_in = 0.22,
                                   base_height_in = 3, a4_rows = 45L,
                                   trim = TRUE, trim_fuzz = 30L) {
+  # netmeta >= 3.x: netpairwise() returns a SINGLE meta object (class
+  # "netpairwise") with all comparisons stacked, instead of a per-comparison
+  # list. meta::forest() has a forest.netpairwise method, so draw a single PDF.
+  if (inherits(obj, "netpairwise") && !is.null(obj[["k"]])) {
+    n_comp     <- length(obj$bylevs %||% obj$k.w)
+    total_rows <- sum(obj$k.w %||% obj$k, na.rm = TRUE) + n_comp * 6L + 4L
+    height     <- max(base_height_in, total_rows * row_height_in + base_height_in)
+    .save_plot(
+      file      = paste0(file_base, ".pdf"),
+      width     = width,
+      height    = height,
+      trim      = trim,
+      trim_fuzz = trim_fuzz,
+      expr      = do.call(meta::forest, c(list(obj), forest_args))
+    )
+    return(invisible(NULL))
+  }
+
   # Guard: some netmeta versions include non-meta elements in netpairwise result.
   is_valid <- vapply(obj, function(m) is.list(m) && !is.null(m[["k"]]), logical(1L))
   if (!any(is_valid)) {
@@ -302,4 +320,68 @@
     trim_fuzz   = trim_fuzz
   )
   invisible(NULL)
+}
+
+# ── Pairwise funnel construction ───────────────────────────────────────────────
+
+# Build per-comparison meta objects from a pairwise data frame (df_pw), for use
+# with meta::funnel. Works on all netmeta versions (independent of netpairwise).
+# df_pw is the output of meta::pairwise: columns treat1, treat2, TE, seTE,
+# studlab. Comparisons are grouped by paste(treat1, treat2) (ordering is
+# consistent within a comparison). Returns a named list of "meta" objects whose
+# names are human labels "<treat1> vs <treat2>". Groups below min_studies are
+# dropped; metagen failures are skipped.
+.build_funnel_pairs <- function(df_pw, sm, min_studies) {
+  df_pw    <- as.data.frame(df_pw)
+  grp_key  <- paste(df_pw$treat1, df_pw$treat2)
+  out      <- list()
+  for (key in unique(grp_key)) {
+    group <- df_pw[grp_key == key, , drop = FALSE]
+    if (nrow(group) < min_studies) next
+    lbl <- paste0(group$treat1[1L], " vs ", group$treat2[1L])
+    m_pw <- tryCatch(
+      meta::metagen(
+        TE, seTE, studlab = studlab, data = group,
+        sm = sm, common = FALSE, random = TRUE
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(m_pw)) next
+    out[[lbl]] <- m_pw
+  }
+  out
+}
+
+# ── Contribution heatmap ───────────────────────────────────────────────────────
+
+# Render a direct-evidence contribution matrix (comparison x comparison) as a
+# labelled ggplot2 heatmap and save it to a self-contained PDF via ggsave.
+# ggplot already crops the output, so no magick trim is applied.
+.save_netcontrib_heatmap <- function(cm, outcome, file, width, height) {
+  cm_df <- as.data.frame(as.table(as.matrix(cm)))
+  names(cm_df) <- c("network_comparison", "direct_comparison", "contribution")
+  p <- ggplot2::ggplot(
+    cm_df,
+    ggplot2::aes(x = direct_comparison, y = network_comparison,
+                 fill = contribution)
+  ) +
+    ggplot2::geom_tile(color = "grey70") +
+    ggplot2::geom_text(
+      ggplot2::aes(label = sprintf("%.2f", contribution)),
+      size = 3.4
+    ) +
+    ggplot2::scale_fill_gradient(low = "white", high = "steelblue",
+                                 limits = c(0, 1)) +
+    ggplot2::labs(
+      title = paste0("Direct Evidence Contributions: ", outcome),
+      x = "Direct comparison", y = "Network comparison",
+      fill = "Contribution"
+    ) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 30, hjust = 1)
+    )
+  ggplot2::ggsave(file = file, plot = p, width = width, height = height,
+                  bg = "white")
+  invisible(file)
 }
