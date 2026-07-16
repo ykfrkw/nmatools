@@ -539,28 +539,33 @@ netmetawrap <- function(
       lbl   <- if (nzchar(pair_labels[i])) pair_labels[i] else paste0("pair_", i)
       fname <- gsub("[^A-Za-z0-9_-]", "_", lbl)
 
-      .save_plot(
-        file      = file.path(output_dir,
-                              paste0("funnel_pairwise_", file_label, "_", fname, ".pdf")),
-        width     = 7,
-        height    = 6,
-        trim      = trim,
-        trim_fuzz = trim_fuzz,
-        expr      = {
-          meta::funnel(
-            m_pw,
-            contour.levels = c(0.90, 0.95, 0.99),
-            col.contour    = c("darkgray", "gray", "lightgray"),
-            main           = lbl,
-            studlab        = TRUE
-          )
-          graphics::legend(
-            "topright",
-            fill   = c("darkgray", "gray", "lightgray"),
-            legend = c("p < 0.10", "p < 0.05", "p < 0.01"),
-            bg     = "white"
-          )
-        }
+      tryCatch(
+        .save_plot(
+          file      = file.path(output_dir,
+                                paste0("funnel_pairwise_", file_label, "_", fname, ".pdf")),
+          width     = 7,
+          height    = 6,
+          trim      = trim,
+          trim_fuzz = trim_fuzz,
+          expr      = {
+            meta::funnel(
+              m_pw,
+              contour.levels = c(0.90, 0.95, 0.99),
+              col.contour    = c("darkgray", "gray", "lightgray"),
+              main           = lbl,
+              studlab        = TRUE
+            )
+            graphics::legend(
+              "topright",
+              fill   = c("darkgray", "gray", "lightgray"),
+              legend = c("p < 0.10", "p < 0.05", "p < 0.01"),
+              bg     = "white"
+            )
+          }
+        ),
+        error = function(e)
+          message("[ netmetawrap ] funnel plot failed for ", lbl, ": ",
+                  conditionMessage(e))
       )
     }
   }
@@ -569,8 +574,9 @@ netmetawrap <- function(
   # netmeta >= 3.x dropped the plot() method for netcontrib objects; render the
   # contribution matrix as a labelled ggplot2 heatmap instead.
   tryCatch({
-    nc_method <- if (is_common_model) "common" else "random"
-    nc_obj    <- netmeta::netcontrib(net_meta, method = nc_method)
+    # `method` selects the netcontrib ALGORITHM (default "shortestpath"), not the
+    # effect model; call with the default and pick the matrix by model type.
+    nc_obj    <- netmeta::netcontrib(net_meta)
     cm        <- if (is_common_model) nc_obj$common else nc_obj$random
     cm        <- cm %||% nc_obj$random %||% nc_obj$common
     nc_w      <- max(8, n_trts * 1.5)

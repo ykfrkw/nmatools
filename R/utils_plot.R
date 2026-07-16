@@ -327,21 +327,39 @@
 # Build per-comparison meta objects from a pairwise data frame (df_pw), for use
 # with meta::funnel. Works on all netmeta versions (independent of netpairwise).
 # df_pw is the output of meta::pairwise: columns treat1, treat2, TE, seTE,
-# studlab. Comparisons are grouped by paste(treat1, treat2) (ordering is
-# consistent within a comparison). Returns a named list of "meta" objects whose
-# names are human labels "<treat1> vs <treat2>". Groups below min_studies are
-# dropped; metagen failures are skipped.
+# studlab. meta::pairwise preserves within-study arm order and does NOT
+# canonicalize direction, so the same comparison can appear as both "A vs B" and
+# "B vs A". We canonicalize by sorting each treatment pair and flipping the TE
+# sign for rows whose treat1 is the higher-sorted element, so every row in a
+# group points the same way (lo vs hi). Rows with NA TE/seTE are dropped BEFORE
+# the min_studies count so the k >= min_studies gate matches the usable studies.
+# Returns a named list of "meta" objects whose names are "<lo> vs <hi>".
+# Groups below min_studies are dropped; metagen failures are skipped.
 .build_funnel_pairs <- function(df_pw, sm, min_studies) {
-  df_pw    <- as.data.frame(df_pw)
-  grp_key  <- paste(df_pw$treat1, df_pw$treat2)
-  out      <- list()
-  for (key in unique(grp_key)) {
-    group <- df_pw[grp_key == key, , drop = FALSE]
+  df_pw <- as.data.frame(df_pw)
+  df_pw <- df_pw[!(is.na(df_pw$TE) | is.na(df_pw$seTE)), , drop = FALSE]
+  if (nrow(df_pw) == 0L) return(list())
+
+  # Canonical (sorted) ordered pair for each row.
+  canon <- t(apply(
+    cbind(as.character(df_pw$treat1), as.character(df_pw$treat2)), 1L, sort
+  ))
+  lo <- canon[, 1L]
+  hi <- canon[, 2L]
+  key <- paste(lo, hi)
+
+  # Harmonize direction: every row expressed as the lo vs hi contrast.
+  df_pw$.TE_h <- ifelse(df_pw$treat1 == lo, df_pw$TE, -df_pw$TE)
+
+  out <- list()
+  for (k in unique(key)) {
+    sel   <- key == k
+    group <- df_pw[sel, , drop = FALSE]
     if (nrow(group) < min_studies) next
-    lbl <- paste0(group$treat1[1L], " vs ", group$treat2[1L])
+    lbl <- paste0(lo[sel][1L], " vs ", hi[sel][1L])
     m_pw <- tryCatch(
       meta::metagen(
-        TE, seTE, studlab = studlab, data = group,
+        .TE_h, seTE, studlab = studlab, data = group,
         sm = sm, common = FALSE, random = TRUE
       ),
       error = function(e) NULL
