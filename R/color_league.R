@@ -488,8 +488,9 @@ color_league_multi <- function(outcomes,
 
     # Note rows
     note_row <- n + 2L
-    .write_notes(wb, sheet_name, note_row,
-                 label1, label2, NULL, NULL, is_quad = FALSE)
+    .write_notes(wb, sheet_name, note_row, n_cols = n,
+                 label1 = label1, label2 = label2,
+                 label3 = NULL, label4 = NULL, is_quad = FALSE)
 
   } else {
     # ------------------------------------------------------------------
@@ -546,8 +547,9 @@ color_league_multi <- function(outcomes,
     }
 
     note_row <- n_rows + 2L
-    .write_notes(wb, sheet_name, note_row,
-                 label1, label2, label3, label4, is_quad = TRUE)
+    .write_notes(wb, sheet_name, note_row, n_cols = n,
+                 label1 = label1, label2 = label2,
+                 label3 = label3, label4 = label4, is_quad = TRUE)
   }
 
   invisible(wb)
@@ -644,8 +646,12 @@ color_league_multi <- function(outcomes,
 
 # ---------------------------------------------------------------------------
 # Internal: write outcome-label notes below the table
+#
+#   Each note is written as a single cell merged across the full table width
+#   (columns 1..n_cols) so that long note text never stretches column 1 when
+#   columns are auto-fitted.
 # ---------------------------------------------------------------------------
-.write_notes <- function(wb, sheet_name, note_row,
+.write_notes <- function(wb, sheet_name, note_row, n_cols,
                          label1, label2, label3, label4,
                          is_quad) {
   if (is_quad) {
@@ -661,13 +667,19 @@ color_league_multi <- function(outcomes,
       list(label = label2, sym = "\u2197 Upper-right: ")
     )
   }
+  note_sty <- openxlsx::createStyle(halign = "left", valign = "center",
+                                    wrapText = TRUE)
   for (nt in notes) {
     if (!is.null(nt$label)) {
+      openxlsx::mergeCells(wb, sheet = sheet_name,
+                           cols = seq_len(n_cols), rows = note_row)
       openxlsx::writeData(
         wb, sheet = sheet_name,
-        x         = data.frame(v = paste0(nt$sym, nt$label), stringsAsFactors = FALSE),
+        x         = paste0(nt$sym, nt$label),
         startRow  = note_row, startCol = 1, colNames = FALSE
       )
+      openxlsx::addStyle(wb, sheet = sheet_name, style = note_sty,
+                         rows = note_row, cols = 1)
       note_row <- note_row + 1L
     }
   }

@@ -204,8 +204,9 @@ The four cell colors follow this scheme:
 
 **Dual outcome (`x2`).** The lower-left triangle shows outcome 1 (`x`); the
 upper-right triangle shows outcome 2 (`x2`). Attach a separate CINeMA file per
-outcome with `cinema` / `cinema2`. Footnote rows record which outcome fills
-which triangle.
+outcome with `cinema` / `cinema2`. The outcome labels are written below the
+table as note rows merged across the full table width, recording which outcome
+fills which triangle without distorting the column widths.
 
 ```r
 color_league(
@@ -254,7 +255,8 @@ color_league(
 ![Quad-outcome league table with sub-rows](images/league_quad.png)
 
 *Quad-outcome mode: four outcomes in one table, each off-diagonal cell split
-into two sub-rows, with four footnote rows below.*
+into two sub-rows, with the four outcome labels as caption lines below the
+table.*
 
 Per-outcome CINeMA files are available for all layouts via `cinema2`,
 `cinema3`, and `cinema4`. In solid mode, `fill_color` through `fill_color4`
@@ -305,8 +307,9 @@ Both functions write an `.xlsx` file to the path given in `file` and invisibly
 return the underlying `openxlsx` workbook object. Open the file in Excel,
 LibreOffice Calc, or Google Sheets. For `color_league()` there is a single
 worksheet; for `color_league_multi()` there is one worksheet per outcome, each
-named after the corresponding list entry. Footnote rows beneath each table
-record the outcome labels supplied via `label1`–`label4`.
+named after the corresponding list entry. Note rows beneath each table record
+the outcome labels supplied via `label1`–`label4`; each note is merged across
+the full table width, so auto-fitting columns leaves the grid balanced.
 
 ---
 

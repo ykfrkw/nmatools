@@ -160,7 +160,10 @@ xlsx2png <- function(xlsx, out_png, sheet = 1, scale = 2, font_px = 15) {
   refs   <- regmatches(merges, regexpr("[A-Z]+[0-9]+:[A-Z]+[0-9]+", merges))
   for (ref in refs) {
     corners <- strsplit(ref, ":")[[1]]
-    cc <- .col2num(gsub("[0-9]", "", corners))
+    # .col2num() takes ONE column ref, so map over both corners (passing the
+    # length-2 vector would silently use only the first corner and collapse
+    # every column span to 1).
+    cc <- vapply(gsub("[0-9]", "", corners), .col2num, integer(1), USE.NAMES = FALSE)
     rr <- as.integer(gsub("[A-Z]", "", corners))
     r1 <- min(rr); r2 <- min(max(rr), nr); c1 <- min(cc); c2 <- min(max(cc), nc)
     if (r1 > nr || c1 > nc) next
@@ -170,9 +173,33 @@ xlsx2png <- function(xlsx, out_png, sheet = 1, scale = 2, font_px = 15) {
       if (!(r == r1 && c == c1)) skip[r, c] <- TRUE
   }
 
+  # Trailing caption rows (e.g. color_league() outcome-label notes): a row
+  # whose first cell carries a single-row merge across the FULL sheet width
+  # and no fill. Only the trailing block of the sheet is considered — scan
+  # from the bottom; empty rows and caption rows form the trailing block and
+  # the scan stops at the first normal row. Caption rows are rendered as
+  # plain text lines below the table (not as table rows), so their long text
+  # cannot stretch column 1; empty spacer rows in the trailing block are
+  # dropped. Sheets without such rows (kilim, context tables, single-outcome
+  # league) render exactly as before.
+  is_empty_row <- vapply(seq_len(nr), function(r)
+    all(vals[r, ] == ""), logical(1))
+  is_caption_row <- vapply(seq_len(nr), function(r)
+    nc > 1L && span_c[r, 1] == nc && span_r[r, 1] == 1L && is.na(bg[r, 1]),
+    logical(1))
+  caption_rows <- integer(0)
+  last_tbl_row <- nr
+  while (last_tbl_row >= 1L &&
+         (is_caption_row[last_tbl_row] || is_empty_row[last_tbl_row])) {
+    if (is_caption_row[last_tbl_row] && !is_empty_row[last_tbl_row])
+      caption_rows <- c(last_tbl_row, caption_rows)
+    last_tbl_row <- last_tbl_row - 1L
+  }
+  if (length(caption_rows) == 0) last_tbl_row <- nr   # no captions: keep all rows
+
   # Emit the HTML table.
   cells <- character(0)
-  for (r in seq_len(nr)) {
+  for (r in seq_len(last_tbl_row)) {
     row_html <- "<tr>"
     for (c in seq_len(nc)) {
       if (skip[r, c]) next
@@ -192,12 +219,26 @@ xlsx2png <- function(xlsx, out_png, sheet = 1, scale = 2, font_px = 15) {
     }
     cells <- c(cells, paste0(row_html, "</tr>"))
   }
+
+  # Caption rows: borderless left-aligned text lines below the table.
+  captions <- vapply(caption_rows, function(r) {
+    paste0(
+      "<div style=\"margin-top:6px;text-align:left;",
+      "font-family:Helvetica,Arial,sans-serif;font-size:", font_px, "px\">",
+      gsub("\n", "<br>", .html_escape(vals[r, 1]), fixed = TRUE),
+      "</div>"
+    )
+  }, character(1))
+
   html <- paste0(
     "<html><head><meta charset=\"utf-8\"></head>",
     "<body style=\"margin:0;padding:8px;background:#ffffff;display:inline-block\">",
+    "<div id=\"wrap\" style=\"display:inline-block\">",
     "<table id=\"tbl\" style=\"border-collapse:collapse;",
     "font-family:Helvetica,Arial,sans-serif;font-size:", font_px, "px\">",
-    paste(cells, collapse = ""), "</table></body></html>"
+    paste(cells, collapse = ""), "</table>",
+    paste(captions, collapse = ""),
+    "</div></body></html>"
   )
   tf <- tempfile(fileext = ".html")
   writeLines(html, tf, useBytes = TRUE)
@@ -206,7 +247,8 @@ xlsx2png <- function(xlsx, out_png, sheet = 1, scale = 2, font_px = 15) {
   p <- b$Page$loadEventFired(wait_ = FALSE)
   b$Page$navigate(paste0("file://", tf), wait_ = FALSE)
   b$wait_for(p)
-  b$screenshot(out_png, selector = "#tbl", scale = scale, expand = 8)
+  sel <- if (length(caption_rows) > 0) "#wrap" else "#tbl"
+  b$screenshot(out_png, selector = sel, scale = scale, expand = 8)
   unlink(tf)
   message("  [xlsx2png] ", out_png)
   invisible(out_png)
