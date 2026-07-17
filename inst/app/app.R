@@ -114,18 +114,23 @@ make_server <- function(initial_data = NULL) {
   if (is.null(initial_data)) {
     raw <- tryCatch(nmatools:::.cinema_env$initial_data, error = function(e) NULL)
     if (!is.null(raw) && !is.null(raw$data)) {
-      names(raw$data) <- tolower(trimws(names(raw$data)))
+      # Same alias detection + ROB/indirectness auto-mapping as the upload path
+      dat <- normalize_injected_data(raw$data, raw$format)
       result <- tryCatch(
         switch(raw$format,
-          continuous = convert_continuous(raw$data, raw$effect_measure),
-          binary     = convert_binary(raw$data, raw$effect_measure),
-          pairwise   = convert_pairwise(raw$data)
+          continuous = convert_continuous(dat, raw$effect_measure),
+          binary     = convert_binary(dat, raw$effect_measure),
+          pairwise   = convert_pairwise(dat)
         ),
         error = function(e) list(data = NULL, error = conditionMessage(e), warning = NULL)
       )
       if (is.null(result$error)) {
         initial_data <- list(result = result, format = raw$format,
                              effect_measure = raw$effect_measure)
+      } else {
+        # Surface the failure instead of silently launching an empty app
+        warning("cinema(): pre-loaded data was ignored: ", result$error,
+                call. = FALSE)
       }
     }
   }
@@ -187,8 +192,9 @@ launch_nma_evaluator <- function(
 
   if (!is.data.frame(data)) stop("`data` must be a data.frame.")
 
-  # Normalise column names to lower-case (same as Module A)
-  names(data) <- tolower(trimws(names(data)))
+  # Normalize names + alias detection + ROB/indirectness auto-mapping
+  # (same as Module A's upload path)
+  data <- normalize_injected_data(data, format)
 
   # Convert to pairwise format using Module A helpers
   result <- switch(format,

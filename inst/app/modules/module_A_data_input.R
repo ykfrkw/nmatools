@@ -90,7 +90,7 @@ find_col <- function(all_cols, candidates) {
 suggest_long_cols <- function(cols, outcome_type) {
   base <- list(
     studlab = find_col(cols, c("studlab", "study", "studyid", "study_id", "author", "id")),
-    treat   = find_col(cols, c("treat", "treatment", "arm", "intervention", "trt")),
+    treat   = find_col(cols, c("treat", "treatment", "arm", "intervention", "trt", "t")),
     n       = find_col(cols, c("n", "total", "n_total", "sample_size"))
   )
   out <- if (outcome_type == "continuous") {
@@ -168,6 +168,46 @@ auto_map_rob_value <- function(v) {
     v_clean %in% c("high", "h", "3", "high risk", "serious", "critical", "hi")   ~ "high",
     TRUE                                                                            ~ "some concerns"
   )
+}
+
+#' Normalize R-side injected data (cinema(data = ...) / launch_nma_evaluator()).
+#'
+#' Applies the same column-alias auto-detection and ROB/indirectness value
+#' auto-mapping that the upload path performs interactively, so pre-loaded
+#' data frames accept the same aliases (e.g. id -> studlab, t -> treat,
+#' r -> event) and value codings (L/M/H, 1/2/3) as GUI uploads.
+#' @param df Data frame supplied by the user.
+#' @param format "continuous" | "binary" | "pairwise"
+#' @return Data frame with canonical column names and standard ROB levels.
+normalize_injected_data <- function(df, format) {
+  names(df) <- tolower(trimws(names(df)))
+
+  # Column-alias detection (same candidate lists as the upload path)
+  suggested <- if (format == "pairwise") {
+    suggest_comparison_cols(names(df))
+  } else {
+    suggest_long_cols(names(df), outcome_type = format)
+  }
+  for (canonical in names(suggested)) {
+    found <- suggested[[canonical]]
+    if (found == "(none)") next          # leave missing; convert_*() reports it
+    if (canonical %in% names(df)) next   # already canonical, no rename needed
+    names(df)[names(df) == found] <- canonical
+  }
+
+  # ROB / indirectness value auto-mapping; values already standard are kept
+  for (col in c("rob", "indirectness")) {
+    if (col %in% names(df)) {
+      vals        <- tolower(trimws(as.character(df[[col]])))
+      nonstandard <- !(vals %in% ROB_LEVELS)
+      vals[nonstandard] <- auto_map_rob_value(df[[col]][nonstandard])
+      df[[col]] <- vals
+    } else {
+      df[[col]] <- "low"                 # GUI default when column is omitted
+    }
+  }
+
+  df
 }
 
 #' Apply a value map to a character vector.

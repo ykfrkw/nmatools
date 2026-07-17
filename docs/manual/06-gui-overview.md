@@ -57,8 +57,13 @@ Pass a `data.frame` together with a `format` and an `effect_measure`:
 
 When `data` is supplied, the upload step is bypassed and the Configuration tab
 shows a "Data injected from R session" banner. Column names are lower-cased and
-trimmed automatically. The `format` and `effect_measure` arguments are ignored
-when `data = NULL`.
+trimmed automatically, common aliases are auto-detected and renamed (e.g.
+`id`/`study` → `studlab`, `t`/`treatment` → `treat`, `r`/`events` → `event`),
+and `rob` / `indirectness` values such as `L`/`M`/`H` or `1`/`2`/`3` are
+auto-mapped to `low` / `some concerns` / `high` — the same behavior as an
+in-GUI upload. If the data still cannot be converted, the app launches empty
+and a warning explaining why is printed to the R console. The `format` and
+`effect_measure` arguments are ignored when `data = NULL`.
 
 ### Mode 3 — Return the app object instead of launching (`launch = FALSE`)
 
