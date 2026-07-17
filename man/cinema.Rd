@@ -14,7 +14,14 @@ cinema(
 \arguments{
 \item{data}{Optional data.frame. If provided, it is pre-loaded into the
 app, bypassing the file-upload step in Module A.
-Supported formats depend on the \code{format} argument.}
+Supported formats depend on the \code{format} argument.
+Common column aliases are auto-detected and renamed, matching the
+in-GUI upload behavior (e.g. \code{id}/\code{study} to \code{studlab},
+\code{t}/\code{treatment} to \code{treat}, \code{r}/\code{events} to
+\code{event}). Likewise, \code{rob} and \code{indirectness} values such
+as \code{"L"}/\code{"M"}/\code{"H"} or \code{1}/\code{2}/\code{3} are
+auto-mapped to \code{"low"}/\code{"some concerns"}/\code{"high"}; when
+either column is absent, all rows default to \code{"low"}.}
 
 \item{format}{Character. Input data structure:
 \describe{
