@@ -122,8 +122,8 @@ plot_transitivity <- function(data, studlab, treat,
 
     # Capture for use inside .save_plot expr
     comp_fac   <- expanded$comparison
-    comp_cols  <- grDevices::rainbow(n_comps, alpha = 0.5)
-    comp_bords <- grDevices::rainbow(n_comps)
+    comp_cols  <- rep("grey85", n_comps)
+    comp_bords <- rep("grey25", n_comps)
     max_label_chars <- max(nchar(levels(comp_fac)))
     bottom_mar <- max(4L, ceiling(max_label_chars / 4L))
 
