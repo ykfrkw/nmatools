@@ -21,14 +21,14 @@ colnames(d)
 table(d$t)   # treatments and the number of arm rows per treatment
 
 # ── Step 3: single outcome (one-shot run) ───────────────────────────────────
-# studlab = id works without quoting (same syntax as meta::pairwise()).
+# Column names are quoted strings everywhere in nmatools.
 netmetawrap(
   data            = d,
-  studlab         = id,              # unquoted column name is fine
-  treat           = t,
+  studlab         = "id",
+  treat           = "t",
   outcome         = "remission_lt",  # also used as the output folder name
-  n               = n,
-  event           = r,
+  n               = "n",
+  event           = "r",
   sm              = "OR",
   reference.group = "Pharmacotherapy",
   small.values    = "undesirable",   # "desirable" = smaller is better (e.g. dropout)
@@ -38,7 +38,7 @@ netmetawrap(
 
 # ── Step 4: batch run across multiple outcomes (binary only) ────────────────
 # Put per-outcome arguments in params_list.
-# Put shared arguments (column names, sm, etc.) once in .default_args.
+# Put shared arguments (column names, sm, etc.) once, directly in the call.
 params_list <- list(
   # binary outcomes: n + event + sm
   list(outcome = "remission_lt",  n = "n", event = "r",            sm = "OR", small.values = "undesirable"),
@@ -48,16 +48,27 @@ params_list <- list(
 )
 
 run_nma_batch(
-  params_list   = params_list,
-  .default_args = list(
-    data            = d,
-    studlab         = "id",          # strings also work (calls go through do.call)
-    treat           = "t",
-    reference.group = "Pharmacotherapy",
-    path            = "./outputs"
-  )
+  params_list,
+  data            = d,
+  studlab         = "id",
+  treat           = "t",
+  reference.group = "Pharmacotherapy",
+  path            = "./outputs"
 )
 # → outputs/ ends up with four sub-directories, one per outcome
+# Returned invisibly as a list named by outcome, e.g. res[["remission_lt"]].
+
+# The older .default_args style does exactly the same thing:
+# run_nma_batch(
+#   params_list   = params_list,
+#   .default_args = list(
+#     data            = d,
+#     studlab         = "id",
+#     treat           = "t",
+#     reference.group = "Pharmacotherapy",
+#     path            = "./outputs"
+#   )
+# )
 
 # ── Step 4b: mixed binary + continuous outcomes ─────────────────────────────
 # Continuous outcomes need n + mean_col + sd_col + sm.
@@ -81,23 +92,21 @@ params_mixed <- list(
 )
 
 # run_nma_batch(
-#   params_list   = params_mixed,
-#   .default_args = list(
-#     data    = my_data,              # replace with your real data frame
-#     studlab = "study",
-#     treat   = "treatment",
-#     path    = "./outputs"
-#   )
+#   params_mixed,
+#   data    = my_data,                # replace with your real data frame
+#   studlab = "study",
+#   treat   = "treatment",
+#   path    = "./outputs"
 # )
 
 # ── Step 5: overriding default arguments ────────────────────────────────────
 netmetawrap(
   data            = d,
-  studlab         = id,
-  treat           = t,
+  studlab         = "id",
+  treat           = "t",
   outcome         = "remission_lt_custom",
-  n               = n,
-  event           = r,
+  n               = "n",
+  event           = "r",
   sm              = "OR",
   reference.group = "Pharmacotherapy",
   small.values    = "undesirable",

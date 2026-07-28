@@ -9,34 +9,45 @@ analysis when the data are sparse. This chapter covers both.
 
 ## Batch runs with `run_nma_batch()`
 
-`run_nma_batch(params_list, .default_args)` iterates over a list of per-outcome
-parameter sets and calls `netmetawrap()` for each one. The idea is to write down
-the shared arguments once, in `.default_args`, and only the differences
-per outcome in `params_list`:
+`run_nma_batch(params_list, ..., .default_args = list())` iterates over a list
+of per-outcome parameter sets and calls `netmetawrap()` for each one. The idea
+is to write down the shared arguments once, and only the differences per
+outcome in `params_list`:
 
-- **`.default_args`** — a named list of argument values shared across every
-  outcome (for example `data`, `studlab`, `treat`, `reference.group`, `path`).
 - **`params_list`** — a list of per-outcome parameter lists. Each element must
-  contain at least `outcome`; any key it sets **overrides** the same key in
-  `.default_args` for that outcome. Every key must be a valid `netmetawrap()`
-  argument name.
+  contain at least `outcome`; any key it sets **overrides** the shared value for
+  that outcome. Every key must be a valid `netmetawrap()` argument name. If you
+  pass a single parameter set rather than a list of them, it is wrapped into a
+  one-element batch automatically.
+- **`...`** — the shared arguments, written exactly as you would write them in
+  a `netmetawrap()` call (for example `data`, `studlab`, `treat`,
+  `reference.group`, `path`).
+- **`.default_args`** — a named list carrying the same shared arguments. This
+  is the older style; it remains fully supported, and the two can be combined.
 
-Each outcome is run inside a `tryCatch()`, so a failure in one outcome logs an
-error message and continues to the next rather than aborting the whole batch.
-The fitted objects are returned invisibly as a list.
+When the same argument is supplied in more than one place, the most specific
+value wins. From lowest to highest precedence: `.default_args`, then `...`,
+then the per-element `params_list` entry.
 
-> **PITFALL — column names must be STRINGS in a batch.** In a direct
-> `netmetawrap()` call you may pass column names unquoted (`studlab = id`). In
-> `run_nma_batch()` you must quote them (`studlab = "id"`, `event = "r"`). This
-> is because the parameters are forwarded through `do.call()`, which evaluates
-> the list elements as ordinary values — an unquoted `id` would be looked up as
-> a variable and fail. This applies to every column-role key: `studlab`,
-> `treat`, `n`, `event`, `mean_col`, and `sd_col`.
+Before any analysis starts, the specification is validated: an unrecognized
+argument name, a `params_list` element without an `outcome`, or a column-role
+value that is not a string all raise an explicit error up front, rather than
+failing part-way through a long batch.
+
+Each outcome is then run inside a `tryCatch()`, so a failure in one outcome logs
+an error message and continues to the next rather than aborting the whole batch.
+The fitted objects are returned invisibly as a list named by outcome, so
+`res[["remission_lt"]]` retrieves a single result.
+
+> **Column names.** Quote every column-role value in a batch — `studlab = "id"`,
+> `event = "r"`, and so on — exactly as elsewhere in this manual. See the
+> "Quote every column name" note in [Chapter 2](02-data-formats.md).
 
 ### Four-outcome W2I batch
 
-The following runs all four W2I binary outcomes at once. Note the string column
-names and the per-outcome `event` / `small.values`:
+The following runs all four W2I binary outcomes at once. The shared arguments go
+in `...`, and each element of `params_list` carries only its own `event` /
+`small.values`:
 
 ```r
 library(nmatools)
@@ -50,6 +61,19 @@ params_list <- list(
   list(outcome = "dropout_pt",   n = "n", event = "n_dropout_pt", sm = "OR", small.values = "desirable")
 )
 
+run_nma_batch(
+  params_list,
+  data            = d,
+  studlab         = "id",
+  treat           = "t",
+  reference.group = "Pharmacotherapy",
+  path            = "./outputs"
+)
+```
+
+The same batch written in the older `.default_args` style is equivalent:
+
+```r
 run_nma_batch(
   params_list   = params_list,
   .default_args = list(
@@ -94,9 +118,11 @@ params_mixed <- list(
 )
 
 run_nma_batch(
-  params_list   = params_mixed,
-  .default_args = list(data = my_data, studlab = "study", treat = "treatment",
-                       path = "./outputs")
+  params_mixed,
+  data    = my_data,
+  studlab = "study",
+  treat   = "treatment",
+  path    = "./outputs"
 )
 ```
 

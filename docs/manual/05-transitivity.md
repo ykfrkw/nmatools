@@ -26,7 +26,7 @@ plot_transitivity(data, studlab, treat, covariate_cols,
 ```
 
 `data`, `studlab`, and `treat` are the same arm-level inputs used by
-`netmetawrap()` (`studlab` and `treat` accept unquoted or quoted names).
+`netmetawrap()`, with `studlab` and `treat` given as quoted column names.
 `covariate_cols` is a character vector of the columns to visualize.
 `n_min_pair` (default `2`) is the minimum number of studies a comparison needs
 to be included in a plot. One PDF is written per covariate to
@@ -53,8 +53,8 @@ d$rob_num <- c("L" = 0, "M" = 1, "H" = 2)[d$rob]
 
 plot_transitivity(
   data           = d,
-  studlab        = id,
-  treat          = t,
+  studlab        = "id",
+  treat          = "t",
   covariate_cols = c("rob_num", "indirectness"),
   outcome        = "remission_lt",
   path           = "./outputs"

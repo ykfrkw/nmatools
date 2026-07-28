@@ -35,14 +35,24 @@ For **continuous** outcomes, the required columns are:
 These "roles" are not fixed column names. In `netmetawrap()` you map each role
 to an actual column in your data by passing the column name to the matching
 argument (`studlab =`, `treat =`, `n =`, `event =`, or `mean_col =` / `sd_col =`
-for continuous outcomes). The names can be supplied unquoted (non-standard
-evaluation, as in `meta::pairwise()`) or as strings.
+for continuous outcomes) as a **quoted string**, for example `studlab = "id"`.
 
 > **Column-name rule.** In the scripting interface (`netmetawrap()`,
 > `run_nma_batch()`) the exact column names you pass must match the data
 > frame's columns exactly, including case. The interactive GUI (`cinema()`)
 > is more forgiving: it matches the required column names case-insensitively
 > and trims surrounding whitespace.
+
+> **Quote every column name.** Quoted strings are the documented style
+> throughout this manual, and they work in every scripting interface:
+> `studlab = "id"`, `treat = "t"`, `n = "n"`, `event = "r"`,
+> `mean_col = "..."`, `sd_col = "..."`. A direct `netmetawrap()` or
+> `plot_transitivity()` call additionally tolerates unquoted names
+> (`studlab = id`), for familiarity with `meta::pairwise()`. `run_nma_batch()`
+> cannot: it forwards its arguments through `do.call()`, which evaluates them
+> as ordinary values, so an unquoted `id` is looked up as a variable and is not
+> found. Quoting everywhere therefore keeps a script portable between the
+> single-outcome and batch interfaces.
 
 ## Pairwise contrast format
 

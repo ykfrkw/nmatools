@@ -15,25 +15,24 @@ detection).
 The arguments fall into a few groups. The defaults below are taken directly from
 the function signature.
 
-### Data mapping (non-standard evaluation)
+### Data mapping
 
 `data` is the arm-level data frame. The column-role arguments — `studlab`,
 `treat`, `n`, and either `event` (binary) or `mean_col` + `sd_col`
-(continuous) — accept **either unquoted column names or strings**. Both of the
-following are equivalent:
+(continuous) — take the column name as a **quoted string**:
 
 ```r
 library(nmatools)
 d <- load_w2i()
 
-# unquoted (non-standard evaluation)
-netmetawrap(data = d, studlab = id, treat = t, outcome = "remission_lt",
-            n = n, event = r, sm = "OR")
-
-# quoted strings
 netmetawrap(data = d, studlab = "id", treat = "t", outcome = "remission_lt",
             n = "n", event = "r", sm = "OR")
 ```
+
+Quoted names are the documented style for every nmatools interface; see the
+"Quote every column name" note in [Chapter 2](02-data-formats.md) for the one
+place where an unquoted name is also tolerated, and why quoting everywhere is
+the safer habit.
 
 The outcome type is inferred from which columns you map: supplying `event`
 selects the **binary** path (`netmeta::netmetabin()`); supplying both
@@ -207,11 +206,11 @@ d <- load_w2i()
 
 netmetawrap(
   data            = d,
-  studlab         = id,
-  treat           = t,
+  studlab         = "id",
+  treat           = "t",
   outcome         = "remission_lt_custom",
-  n               = n,
-  event           = r,
+  n               = "n",
+  event           = "r",
   sm              = "OR",
   reference.group = "Pharmacotherapy",
   small.values    = "undesirable",

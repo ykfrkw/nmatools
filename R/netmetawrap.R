@@ -1,17 +1,23 @@
 #' One-stop Network Meta-Analysis Wrapper
 #'
-#' Runs a complete NMA pipeline and saves all outputs. Column names can be
-#' supplied either unquoted (like `meta::pairwise()`) or as strings. Non-column
-#' arguments (`sm`, `reference.group`, etc.) are always strings.
+#' Runs a complete NMA pipeline and saves all outputs. Column names are given
+#' as quoted strings, e.g. `studlab = "id"`. Non-column arguments (`sm`,
+#' `reference.group`, etc.) are always strings.
+#'
+#' Note: in a direct `netmetawrap()` call the column arguments also accept
+#' unquoted names (like `meta::pairwise()`), but [run_nma_batch()] requires
+#' quoted strings, so quoting everywhere keeps both call styles working.
 #'
 #' @param data Data frame in arm-level format (one row per study arm).
-#' @param studlab Unquoted or quoted column name for study labels.
-#' @param treat Unquoted or quoted column name for treatment.
+#' @param studlab Quoted column name for study labels, e.g. `"id"`
+#'   (an unquoted name also works in a direct call, but not via
+#'   [run_nma_batch()]).
+#' @param treat Quoted column name for treatment.
 #' @param outcome Outcome name used for the output sub-directory and file names.
-#' @param n Unquoted or quoted column name for sample size.
-#' @param event Unquoted or quoted column name for event count (binary only).
-#' @param mean_col Unquoted or quoted column name for arm mean (continuous only).
-#' @param sd_col Unquoted or quoted column name for arm SD (continuous only).
+#' @param n Quoted column name for sample size.
+#' @param event Quoted column name for event count (binary only).
+#' @param mean_col Quoted column name for arm mean (continuous only).
+#' @param sd_col Quoted column name for arm SD (continuous only).
 #' @param sm Effect measure: `"OR"`, `"RR"`, `"SMD"`, or `"MD"`.
 #' @param reference.group Reference treatment (string). `NULL` = auto (largest n).
 #' @param small.values `"undesirable"` (default) or `"desirable"`.
@@ -49,30 +55,45 @@
 #' @return Invisibly, the fitted `netmeta`/`netmetabin` object, or `NULL` when
 #'   subnetworks are detected.
 #'
+#' @seealso [run_nma_batch()] to run the same pipeline over several outcomes;
+#'   [plot_transitivity()] for the transitivity companion plot.
+#'
 #' @examples
 #' \dontrun{
-#' # Unquoted column names (recommended)
+#' # Quoted column names (recommended: the same style works in run_nma_batch())
 #' netmetawrap(
 #'   data            = w2i_trials,
-#'   studlab         = id,
-#'   treat           = t,
+#'   studlab         = "id",
+#'   treat           = "t",
 #'   outcome         = "remission_lt",
-#'   n               = n,
-#'   event           = r,
+#'   n               = "n",
+#'   event           = "r",
 #'   sm              = "OR",
 #'   reference.group = "Pharmacotherapy",
 #'   small.values    = "undesirable"
 #' )
 #'
-#' # Quoted strings also work
+#' # Continuous outcome
 #' netmetawrap(
-#'   data     = w2i_trials,
-#'   studlab  = "id",
-#'   treat    = "t",
-#'   outcome  = "remission_lt",
+#'   data     = my_data,
+#'   studlab  = "study",
+#'   treat    = "treatment",
+#'   outcome  = "sleep_efficiency",
 #'   n        = "n",
-#'   event    = "r",
-#'   sm       = "OR"
+#'   mean_col = "se_mean",
+#'   sd_col   = "se_sd",
+#'   sm       = "SMD"
+#' )
+#'
+#' # Unquoted names are also accepted in a direct call (not via run_nma_batch())
+#' netmetawrap(
+#'   data    = w2i_trials,
+#'   studlab = id,
+#'   treat   = t,
+#'   outcome = "remission_lt",
+#'   n       = n,
+#'   event   = r,
+#'   sm      = "OR"
 #' )
 #' }
 #' @export

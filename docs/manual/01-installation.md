@@ -68,11 +68,11 @@ d <- load_w2i()
 
 netmetawrap(
   data            = d,
-  studlab         = id,              # unquoted column names are accepted
-  treat           = t,
+  studlab         = "id",
+  treat           = "t",
   outcome         = "remission_lt",  # also names the output sub-directory
-  n               = n,
-  event           = r,
+  n               = "n",
+  event           = "r",
   sm              = "OR",
   reference.group = "Pharmacotherapy",
   small.values    = "undesirable"    # fewer remissions is the worse direction
