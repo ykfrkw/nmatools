@@ -77,7 +77,7 @@ your session, run `help(package = "nmatools")`.
 
 ## meta (pairwise meta-analysis and forest plots)
 
-> Schwarzer G, Carpenter JR, Rücker G (2015). *Meta-Analysis with R*. Springer. https://doi.org/10.1007/978-3-319-21416-0
+> Balduzzi S, Rücker G, Schwarzer G (2019). How to perform a meta-analysis with R: a practical tutorial. Evidence-Based Mental Health, 22, 153–160. DOI: 10.1136/ebmental-2019-300117
 
 ## CINeMA (confidence in NMA)
 
