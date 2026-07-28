@@ -73,11 +73,7 @@ your session, run `help(package = "nmatools")`.
 
 ## netmeta (core NMA engine)
 
-> Schwarzer G, Rücker G, Krahn U, König J (2024). *netmeta: Network Meta-Analysis using Frequentist Methods*. R package. https://cran.r-project.org/package=netmeta
-
-> Rücker G, Schwarzer G (2015). Ranking treatments in frequentist network meta-analysis works without resampling methods. *BMC Medical Research Methodology*, 15, 58. https://doi.org/10.1186/s12874-015-0060-8
-
-> Rücker G (2012). Network meta-analysis, electrical networks and graph theory. *Research Synthesis Methods*, 3(4), 312–324. https://doi.org/10.1002/jrsm.1058
+> Balduzzi S, Rücker G, Nikolakopoulou A, Papakonstantinou T, Salanti G, Efthimiou O, Schwarzer G (2023). netmeta: An R Package for Network Meta-Analysis Using Frequentist Methods. Journal of Statistical Software, 106(2), 1–40. doi:10.18637/jss.v106.i02.
 
 ## meta (pairwise meta-analysis and forest plots)
 
