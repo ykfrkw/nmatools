@@ -19,9 +19,10 @@ plot_transitivity(
 \arguments{
 \item{data}{Arm-level data frame (same as passed to \code{\link[=netmetawrap]{netmetawrap()}}).}
 
-\item{studlab}{Unquoted or quoted column name for study labels.}
+\item{studlab}{Quoted column name for study labels, e.g. \code{"id"}
+(an unquoted name also works).}
 
-\item{treat}{Unquoted or quoted column name for treatment.}
+\item{treat}{Quoted column name for treatment.}
 
 \item{covariate_cols}{Character vector of column names to visualize.
 Only numeric columns are plotted; others are skipped with a message.}
@@ -52,6 +53,9 @@ the comparisons in the network (transitivity assumption).
 Each study is assigned to all pairwise comparisons it directly contributes
 to (i.e., all pairs among the treatments in that study). For a 3-arm study
 with arms A, B, C, the study is included in A vs B, A vs C, and B vs C.
+
+Column names are given as quoted strings, e.g. \code{studlab = "id"} (unquoted
+names also work here, as in a direct \code{\link[=netmetawrap]{netmetawrap()}} call).
 }
 \examples{
 \dontrun{
@@ -59,11 +63,14 @@ d <- load_w2i()
 
 plot_transitivity(
   data           = d,
-  studlab        = id,
-  treat          = t,
+  studlab        = "id",
+  treat          = "t",
   covariate_cols = c("rob", "indirectness"),
   outcome        = "remission_lt",
   path           = "./outputs"
 )
 }
+}
+\seealso{
+\code{\link[=netmetawrap]{netmetawrap()}}, \code{\link[=run_nma_batch]{run_nma_batch()}}.
 }

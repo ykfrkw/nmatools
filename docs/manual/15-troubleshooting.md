@@ -42,10 +42,20 @@ here, see [Getting help](#158-getting-help) at the end.
 > list entries as ordinary values — an unquoted `id` is looked up as a variable
 > and is not found.
 >
-> **Fix.** In `run_nma_batch()` (and therefore inside `.default_args` and every
-> `params_list` element) quote every column-role name: `studlab = "id"`,
-> `treat = "t"`, `n = "n"`, `event = "r"`, `mean_col = "..."`, `sd_col = "..."`.
-> See [Chapter 3](03-nma-pipeline.md) for the NSE rules and
+> **Fix.** Quote every column-role name: `studlab = "id"`, `treat = "t"`,
+> `n = "n"`, `event = "r"`, `mean_col = "..."`, `sd_col = "..."`. Quoted names
+> are the documented style in every nmatools interface, so writing them this way
+> from the start keeps a script portable between a direct `netmetawrap()` call
+> and a batch. In `run_nma_batch()` this applies wherever the arguments are
+> given — directly in `...`, in `.default_args`, and in every `params_list`
+> element.
+>
+> Note that other specification mistakes are now caught before any analysis
+> starts: an argument name that is not a `netmetawrap()` argument, a
+> `params_list` element with no `outcome`, or a column-role value that is not a
+> string each raise an explicit error up front rather than failing part-way
+> through the batch. See the "Quote every column name" note in
+> [Chapter 2](02-data-formats.md) and
 > [Chapter 4](04-batch-and-rare-events.md) for the batch interface.
 
 ### `trivial_range` colors look wrong

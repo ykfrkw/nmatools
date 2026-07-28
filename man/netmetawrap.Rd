@@ -32,19 +32,21 @@ netmetawrap(
 \arguments{
 \item{data}{Data frame in arm-level format (one row per study arm).}
 
-\item{studlab}{Unquoted or quoted column name for study labels.}
+\item{studlab}{Quoted column name for study labels, e.g. \code{"id"}
+(an unquoted name also works in a direct call, but not via
+\code{\link[=run_nma_batch]{run_nma_batch()}}).}
 
-\item{treat}{Unquoted or quoted column name for treatment.}
+\item{treat}{Quoted column name for treatment.}
 
 \item{outcome}{Outcome name used for the output sub-directory and file names.}
 
-\item{n}{Unquoted or quoted column name for sample size.}
+\item{n}{Quoted column name for sample size.}
 
-\item{event}{Unquoted or quoted column name for event count (binary only).}
+\item{event}{Quoted column name for event count (binary only).}
 
-\item{mean_col}{Unquoted or quoted column name for arm mean (continuous only).}
+\item{mean_col}{Quoted column name for arm mean (continuous only).}
 
-\item{sd_col}{Unquoted or quoted column name for arm SD (continuous only).}
+\item{sd_col}{Quoted column name for arm SD (continuous only).}
 
 \item{sm}{Effect measure: \code{"OR"}, \code{"RR"}, \code{"SMD"}, or \code{"MD"}.}
 
@@ -100,34 +102,55 @@ Invisibly, the fitted \code{netmeta}/\code{netmetabin} object, or \code{NULL} wh
 subnetworks are detected.
 }
 \description{
-Runs a complete NMA pipeline and saves all outputs. Column names can be
-supplied either unquoted (like \code{meta::pairwise()}) or as strings. Non-column
-arguments (\code{sm}, \code{reference.group}, etc.) are always strings.
+Runs a complete NMA pipeline and saves all outputs. Column names are given
+as quoted strings, e.g. \code{studlab = "id"}. Non-column arguments (\code{sm},
+\code{reference.group}, etc.) are always strings.
+}
+\details{
+Note: in a direct \code{netmetawrap()} call the column arguments also accept
+unquoted names (like \code{meta::pairwise()}), but \code{\link[=run_nma_batch]{run_nma_batch()}} requires
+quoted strings, so quoting everywhere keeps both call styles working.
 }
 \examples{
 \dontrun{
-# Unquoted column names (recommended)
+# Quoted column names (recommended: the same style works in run_nma_batch())
 netmetawrap(
   data            = w2i_trials,
-  studlab         = id,
-  treat           = t,
+  studlab         = "id",
+  treat           = "t",
   outcome         = "remission_lt",
-  n               = n,
-  event           = r,
+  n               = "n",
+  event           = "r",
   sm              = "OR",
   reference.group = "Pharmacotherapy",
   small.values    = "undesirable"
 )
 
-# Quoted strings also work
+# Continuous outcome
 netmetawrap(
-  data     = w2i_trials,
-  studlab  = "id",
-  treat    = "t",
-  outcome  = "remission_lt",
+  data     = my_data,
+  studlab  = "study",
+  treat    = "treatment",
+  outcome  = "sleep_efficiency",
   n        = "n",
-  event    = "r",
-  sm       = "OR"
+  mean_col = "se_mean",
+  sd_col   = "se_sd",
+  sm       = "SMD"
+)
+
+# Unquoted names are also accepted in a direct call (not via run_nma_batch())
+netmetawrap(
+  data    = w2i_trials,
+  studlab = id,
+  treat   = t,
+  outcome = "remission_lt",
+  n       = n,
+  event   = r,
+  sm      = "OR"
 )
 }
+}
+\seealso{
+\code{\link[=run_nma_batch]{run_nma_batch()}} to run the same pipeline over several outcomes;
+\code{\link[=plot_transitivity]{plot_transitivity()}} for the transitivity companion plot.
 }

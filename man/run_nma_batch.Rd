@@ -4,70 +4,98 @@
 \alias{run_nma_batch}
 \title{Run Network Meta-Analyses for Multiple Outcomes in Batch}
 \usage{
-run_nma_batch(params_list, .default_args = list())
+run_nma_batch(params_list, ..., .default_args = list())
 }
 \arguments{
-\item{params_list}{A named or unnamed list of per-outcome parameter lists.
-Every key must be a valid argument name of \code{\link[=netmetawrap]{netmetawrap()}}.
-At minimum each element needs \code{outcome}. All other keys are optional if
-covered by \code{.default_args}.
+\item{params_list}{A list of per-outcome parameter lists, each a named list
+whose keys are argument names of \code{\link[=netmetawrap]{netmetawrap()}}. At minimum each element
+needs \code{outcome}; everything else may come from \code{...} or \code{.default_args}.
+A single parameter set (i.e. a named list containing \code{outcome}) is also
+accepted and wrapped automatically.
 
-\strong{Column name keys} (strings):
-\code{studlab}, \code{treat}, \code{n}, \code{event} (binary), \code{mean_col}, \code{sd_col}
-(continuous).
+Valid keys (all arguments of \code{\link[=netmetawrap]{netmetawrap()}}):
+\itemize{
+\item \strong{Data / columns} (quoted strings): \code{data}, \code{studlab}, \code{treat}, \code{n},
+\code{event} (binary), \code{mean_col}, \code{sd_col} (continuous).
+\item \strong{Outcome / measure}: \code{outcome}, \code{sm} (\code{"OR"}, \code{"RR"}, \code{"SMD"},
+\code{"MD"}), \code{reference.group}, \code{small.values}.
+\item \strong{Output}: \code{path}, \code{a4_rows_per_page}, \code{trim}, \code{trim_fuzz}.
+\item \strong{Forwarded argument lists}: \code{netmeta_args}, \code{forest_args},
+\code{netpairwise_args}, \code{netsplit_args}.
+\item \strong{Analysis options}: \code{rare_events}, \code{funnel_min_studies}.
+}}
 
-\strong{Effect measure key}: \code{sm} — \code{"OR"}, \code{"RR"}, \code{"SMD"}, or \code{"MD"}.
+\item{...}{Shared \code{\link[=netmetawrap]{netmetawrap()}} arguments applied to every outcome, using
+the exact same argument names as \code{\link[=netmetawrap]{netmetawrap()}} (e.g. \code{data = d},
+\code{studlab = "id"}, \code{treat = "t"}, \code{n = "n"}, \code{sm = "OR"}). Values given in
+an element of \code{params_list} override these.}
 
-\strong{Other keys}: \code{reference.group}, \code{small.values}, \code{path},
-\code{netmeta_args}, \code{forest_args}, \code{netpairwise_args}, \code{netsplit_args},
-\code{a4_rows_per_page}, \code{trim}, \code{trim_fuzz}.}
-
-\item{.default_args}{A named list of default argument values shared across
-all outcomes. Values in \code{params_list} take precedence. Useful for
-\code{data}, \code{path}, \code{studlab}, \code{treat}, \code{n}, \code{sm}, \code{reference.group}, etc.}
+\item{.default_args}{A named list of shared argument values, kept for
+backward compatibility. It has the lowest precedence: \code{...} and
+\code{params_list} both override it.}
 }
 \value{
-Invisibly, a list of fitted objects returned by \code{\link[=netmetawrap]{netmetawrap()}},
-one per element of \code{params_list} (\code{NULL} when subnetworks are detected).
+Invisibly, a list of the objects returned by \code{\link[=netmetawrap]{netmetawrap()}}, one
+per element of \code{params_list}, named by the resolved \code{outcome}
+(so \code{res$remission_lt} works). An element is \code{NULL} when the analysis
+errored (the message is printed and the batch continues) or when
+subnetworks were detected.
 }
 \description{
 Iterates over a list of parameter sets and calls \code{\link[=netmetawrap]{netmetawrap()}} for each
-outcome. Arguments in \code{params_list} override \code{.default_args}, so you only
-need to specify what differs per outcome.
+outcome. Shared arguments can be passed directly through \code{...} using the
+very same argument names as \code{\link[=netmetawrap]{netmetawrap()}}, so a batch call reads like a
+single \code{\link[=netmetawrap]{netmetawrap()}} call plus a list of what differs per outcome.
 }
 \details{
-Column name arguments (\code{studlab}, \code{treat}, \code{n}, \code{event}, \code{mean_col},
-\code{sd_col}) must be \strong{strings} when used inside \code{params_list} or
-\code{.default_args}, because they are passed via \code{\link[=do.call]{do.call()}}.
-Unquoted names work only with the direct \code{netmetawrap()} call.
+Arguments are merged with \code{\link[utils:modifyList]{utils::modifyList()}} in this order (lowest to
+highest precedence):
+\code{.default_args} < \code{...} < the per-outcome entry in \code{params_list}.
+
+All column name arguments (\code{studlab}, \code{treat}, \code{n}, \code{event}, \code{mean_col},
+\code{sd_col}) must be \strong{quoted strings} here, e.g. \code{studlab = "id"}, because
+\code{params_list} / \code{.default_args} values are forwarded via \code{\link[=do.call]{do.call()}}.
+Unquoted names work only in a direct \code{\link[=netmetawrap]{netmetawrap()}} call.
+
+All validation happens before the first analysis starts, so a typo cannot
+surface after an hour of computation.
 }
 \examples{
 \dontrun{
 d <- load_w2i()
 
-# Example 1: multiple binary outcomes
+# Example 1: shared arguments via `...` (recommended)
+# Column names are quoted strings.
 params_list <- list(
-  list(outcome = "remission_lt",  event = "r",            small.values = "undesirable"),
-  list(outcome = "dropout_lt",    event = "n_dropout",    small.values = "desirable"),
-  list(outcome = "remission_pt",  event = "r_pt",         small.values = "undesirable"),
-  list(outcome = "dropout_pt",    event = "n_dropout_pt", small.values = "desirable")
+  list(outcome = "remission_lt", event = "r",            small.values = "undesirable"),
+  list(outcome = "dropout_lt",   event = "n_dropout",    small.values = "desirable"),
+  list(outcome = "remission_pt", event = "r_pt",         small.values = "undesirable"),
+  list(outcome = "dropout_pt",   event = "n_dropout_pt", small.values = "desirable")
 )
 
+res <- run_nma_batch(
+  params_list,
+  data            = d,
+  studlab         = "id",
+  treat           = "t",
+  n               = "n",
+  sm              = "OR",
+  reference.group = "Pharmacotherapy",
+  path            = "./outputs"
+)
+res$remission_lt   # results are named by outcome
+
+# Example 2: a single parameter set (no nesting needed)
 run_nma_batch(
-  params_list   = params_list,
-  .default_args = list(
-    data            = d,
-    studlab         = "id",
-    treat           = "t",
-    n               = "n",
-    sm              = "OR",
-    reference.group = "Pharmacotherapy",
-    path            = "./outputs"
-  )
+  list(outcome = "remission_lt", event = "r"),
+  data    = d,
+  studlab = "id",
+  treat   = "t",
+  n       = "n",
+  sm      = "OR"
 )
 
-# Example 2: binary + continuous mixed
-# Specify different column names and sm per outcome in params_list.
+# Example 3: binary + continuous mixed; per-outcome keys override `...`
 params_mixed <- list(
   list(
     outcome      = "remission",
@@ -87,13 +115,30 @@ params_mixed <- list(
 )
 
 run_nma_batch(
-  params_list   = params_mixed,
+  params_mixed,
+  data    = my_data,
+  studlab = "study",
+  treat   = "treatment",
+  path    = "./outputs"
+)
+
+# Example 4: the equivalent older style using `.default_args`
+# (still supported; lowest precedence)
+run_nma_batch(
+  params_list   = params_list,
   .default_args = list(
-    data    = my_data,
-    studlab = "study",
-    treat   = "treatment",
-    path    = "./outputs"
+    data            = d,
+    studlab         = "id",
+    treat           = "t",
+    n               = "n",
+    sm              = "OR",
+    reference.group = "Pharmacotherapy",
+    path            = "./outputs"
   )
 )
 }
+}
+\seealso{
+\code{\link[=netmetawrap]{netmetawrap()}} for the single-outcome pipeline and the meaning of
+each argument; \code{\link[=plot_transitivity]{plot_transitivity()}} for the transitivity companion plot.
 }

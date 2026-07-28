@@ -15,7 +15,7 @@ The scripted analysis entry points that fit networks and write results to disk.
 | Function | Purpose | Chapter | Help |
 |---|---|---|---|
 | `netmetawrap()` | Single-outcome NMA pipeline: fit, test, tabulate, and plot one outcome to disk. | [Ch. 3](03-nma-pipeline.md) | `?netmetawrap` |
-| `run_nma_batch()` | Run the `netmetawrap()` pipeline across many outcomes from one specification. | [Ch. 4](04-batch-and-rare-events.md) | `?run_nma_batch` |
+| `run_nma_batch()` | Run the `netmetawrap()` pipeline across many outcomes, with the shared arguments written once. | [Ch. 4](04-batch-and-rare-events.md) | `?run_nma_batch` |
 | `plot_transitivity()` | Strip-and-box plots of study-level covariates by comparison, for transitivity assessment. | [Ch. 5](05-transitivity.md) | `?plot_transitivity` |
 
 ## Data and setup

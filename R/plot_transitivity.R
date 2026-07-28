@@ -9,9 +9,13 @@
 #' to (i.e., all pairs among the treatments in that study). For a 3-arm study
 #' with arms A, B, C, the study is included in A vs B, A vs C, and B vs C.
 #'
+#' Column names are given as quoted strings, e.g. `studlab = "id"` (unquoted
+#' names also work here, as in a direct [netmetawrap()] call).
+#'
 #' @param data Arm-level data frame (same as passed to [netmetawrap()]).
-#' @param studlab Unquoted or quoted column name for study labels.
-#' @param treat Unquoted or quoted column name for treatment.
+#' @param studlab Quoted column name for study labels, e.g. `"id"`
+#'   (an unquoted name also works).
+#' @param treat Quoted column name for treatment.
 #' @param covariate_cols Character vector of column names to visualize.
 #'   Only numeric columns are plotted; others are skipped with a message.
 #' @param outcome Name used for the output sub-directory and file names.
@@ -25,14 +29,16 @@
 #' @return Invisibly, a data frame with one row per study × comparison,
 #'   containing the covariate values used for plotting.
 #'
+#' @seealso [netmetawrap()], [run_nma_batch()].
+#'
 #' @examples
 #' \dontrun{
 #' d <- load_w2i()
 #'
 #' plot_transitivity(
 #'   data           = d,
-#'   studlab        = id,
-#'   treat          = t,
+#'   studlab        = "id",
+#'   treat          = "t",
 #'   covariate_cols = c("rob", "indirectness"),
 #'   outcome        = "remission_lt",
 #'   path           = "./outputs"

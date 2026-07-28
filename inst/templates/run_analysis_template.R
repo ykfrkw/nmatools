@@ -21,7 +21,8 @@ d <- nmatools::load_w2i()   # built-in sample data
 
 # ── 2. Define outcomes ────────────────────────────────────────────────────────
 # Each list element = one outcome.
-# Keys in params_list override .default_args.
+# Keys in params_list override the shared arguments passed to run_nma_batch().
+# Column names are always quoted strings.
 
 params_list <- list(
   list(
@@ -47,27 +48,27 @@ params_list <- list(
 )
 
 # ── 3. Run batch ──────────────────────────────────────────────────────────────
+# Shared arguments go straight into run_nma_batch(), with the same names as
+# netmetawrap(). Anything set in params_list wins for that outcome.
 run_nma_batch(
-  params_list   = params_list,
-  .default_args = list(
-    data            = d,
-    studlab         = id,                # unquoted column name
-    treat           = t,
-    n               = n,
-    sm              = "OR",
-    reference.group = "Pharmacotherapy",
-    path            = "./outputs"        # created automatically
-  )
+  params_list,
+  data            = d,
+  studlab         = "id",
+  treat           = "t",
+  n               = "n",
+  sm              = "OR",
+  reference.group = "Pharmacotherapy",
+  path            = "./outputs"          # created automatically
 )
 
 # ── 4. Single outcome (alternative) ──────────────────────────────────────────
 # netmetawrap(
 #   data            = d,
-#   studlab         = id,
-#   treat           = t,
+#   studlab         = "id",
+#   treat           = "t",
 #   outcome         = "remission_lt",
-#   n               = n,
-#   event           = r,
+#   n               = "n",
+#   event           = "r",
 #   sm              = "OR",
 #   reference.group = "Pharmacotherapy",
 #   small.values    = "undesirable",

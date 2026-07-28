@@ -270,11 +270,11 @@ d <- load_w2i()
 pipe_path <- file.path(work_dir, "pipeline")
 net1 <- netmetawrap(
   data            = d,
-  studlab         = id,
-  treat           = t,
+  studlab         = "id",
+  treat           = "t",
   outcome         = "remission_lt",
-  n               = n,
-  event           = r,
+  n               = "n",
+  event           = "r",
   sm              = "OR",
   reference.group = "Pharmacotherapy",
   small.values    = "undesirable",
@@ -369,11 +369,11 @@ writeLines(list.files(out1, recursive = TRUE),
 message("== Custom forest run ==")
 netmetawrap(
   data            = d,
-  studlab         = id,
-  treat           = t,
+  studlab         = "id",
+  treat           = "t",
   outcome         = "remission_lt_custom",
-  n               = n,
-  event           = r,
+  n               = "n",
+  event           = "r",
   sm              = "OR",
   reference.group = "Pharmacotherapy",
   small.values    = "undesirable",
@@ -395,11 +395,11 @@ pdf2png(file.path(work_dir, "pipeline_custom", "remission_lt_custom",
 message("== Rare-event run: dropout_pt ==")
 netmetawrap(
   data            = d,
-  studlab         = id,
-  treat           = t,
+  studlab         = "id",
+  treat           = "t",
   outcome         = "dropout_pt_rare",
-  n               = n,
-  event           = n_dropout_pt,
+  n               = "n",
+  event           = "n_dropout_pt",
   sm              = "OR",
   reference.group = "Pharmacotherapy",
   small.values    = "desirable",
@@ -421,8 +421,8 @@ message("== Transitivity ==")
 d$rob_num <- c(L = 0, M = 1, H = 2)[d$rob]
 plot_transitivity(
   data           = d,
-  studlab        = id,
-  treat          = t,
+  studlab        = "id",
+  treat          = "t",
   covariate_cols = c("rob_num", "indirectness"),
   outcome        = "transitivity",
   path           = work_dir
