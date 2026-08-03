@@ -400,6 +400,16 @@ write_pairwise_appendix_docx <- function(net,
                        paste0("pairwise_appendix_", as.integer(Sys.time())))
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
+  # builder_fn is injectable, so its return value may legitimately lack
+  # `error` / `funnel_path` / `k`. `res$missing` is NULL, and both
+  # `is.na(NULL)` and `NULL < 10` are logical(0), which makes `if ()` throw
+  # "argument is of length zero". Going through names() also avoids the
+  # "Unknown or uninitialised column" warning a tibble emits for `$` on a
+  # column it doesn't have. .nz() then collapses "absent", "zero-length"
+  # and "NA" into a single FALSE so every probe below is safe.
+  .fld <- function(x, nm) if (nm %in% names(x)) x[[nm]] else NULL
+  .nz  <- function(x) length(x) == 1L && !is.na(x)
+
   any_section <- FALSE
   for (i in seq_len(nrow(comps))) {
     t1 <- comps$t1c[i]; t2 <- comps$t2c[i]
@@ -421,31 +431,40 @@ write_pairwise_appendix_docx <- function(net,
         list(forest_path = NA_character_, funnel_path = NA_character_,
              k = nrow(sub_df), error = conditionMessage(e)))
 
+    res_k      <- .fld(res, "k")
+    res_forest <- .fld(res, "forest_path")
+    res_funnel <- .fld(res, "funnel_path")
+    res_err    <- .fld(res, "error")
+
+    # Fall back to the row count we already know when the builder didn't
+    # report k, so the heading is never "(k = )".
+    k_val <- if (.nz(res_k)) res_k else nrow(sub_df)
+
     doc <- officer::body_add_par(doc,
                                   paste0(comp_label,
-                                         "  (k = ", res$k, ")"),
+                                         "  (k = ", k_val, ")"),
                                   style = "heading 2")
-    if (!is.na(res$forest_path) && file.exists(res$forest_path)) {
-      doc <- officer::body_add_img(doc, src = res$forest_path,
+    if (.nz(res_forest) && file.exists(res_forest)) {
+      doc <- officer::body_add_img(doc, src = res_forest,
                                    width = 6.0, height = 3.6)
       any_section <- TRUE
     } else {
       doc <- officer::body_add_par(doc,
         paste0("[Forest plot unavailable",
-               if (!is.na(res$error)) paste0(": ", res$error) else "",
+               if (.nz(res_err)) paste0(": ", res_err) else "",
                "]"),
         style = "Normal")
     }
 
-    if (!is.na(res$funnel_path) && file.exists(res$funnel_path)) {
+    if (.nz(res_funnel) && file.exists(res_funnel)) {
       doc <- officer::body_add_par(doc,
                                     "Contour-enhanced funnel plot",
                                     style = "Normal")
-      doc <- officer::body_add_img(doc, src = res$funnel_path,
+      doc <- officer::body_add_img(doc, src = res_funnel,
                                    width = 6.0, height = 3.6)
     } else {
-      reason <- if (res$k < 10)
-                  paste0("Funnel plot omitted (k = ", res$k,
+      reason <- if (k_val < 10)
+                  paste0("Funnel plot omitted (k = ", k_val,
                          " < 10; Egger's threshold).")
                 else
                   "Funnel plot not produced."
@@ -454,9 +473,12 @@ write_pairwise_appendix_docx <- function(net,
   }
 
   if (!any_section) {
+    # One `value` string only: body_add_par(x, value, style, pos) would
+    # otherwise take the second string as the positional `style` argument
+    # and collide with the named style = "Normal".
     doc <- officer::body_add_par(doc,
-      "[No pairwise meta-analyses could be rendered. ",
-      " Check that pairwise_df has columns t1, t2, studlab, y, se.]",
+      paste0("[No pairwise meta-analyses could be rendered.",
+             " Check that pairwise_df has columns t1, t2, studlab, y, se.]"),
       style = "Normal")
   }
 

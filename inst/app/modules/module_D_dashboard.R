@@ -1306,7 +1306,20 @@ moduleD_server <- function(id, cinema_module, robmen_module,
         }
 
         cr <- tryCatch(cinema_data(), error = function(e) NULL)
-        req(!is.null(cr), !is.null(cr$net))
+        if (is.null(cr) || is.null(cr$net)) {
+          # req() would abort the handler with a *silent* exception: the
+          # browser reports a failed download and nothing is printed to the
+          # R console. Ship a readable ZIP instead so the user knows why.
+          tmp <- tempfile()
+          dir.create(tmp); on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+          writeLines(c("No completed network meta-analysis is available yet.",
+                       "Run the analysis on the Data / NMA tabs first, then",
+                       "come back to this tab and download the bundle."),
+                     file.path(tmp, "README.txt"))
+          old_wd <- setwd(tmp); on.exit(setwd(old_wd), add = TRUE)
+          utils::zip(zipfile = file, files = "README.txt")
+          return()
+        }
 
         # Stage every artefact in a temp directory; final step is a single
         # zip() call relative to that directory so the archive's top-level
@@ -1326,75 +1339,111 @@ moduleD_server <- function(id, cinema_module, robmen_module,
 
         files_in_zip <- character(0)
 
+        # Every item below is wrapped in tryCatch so a single failing
+        # artefact degrades the bundle instead of aborting the download —
+        # the user still gets whatever else they asked for.
+
         # 1. R script
         if ("r_script" %in% items) {
           fn <- "reproducibility.R"
-          writeLines(build_r_script(cr$net, ref_trt, sm_val),
-                     file.path(stage, fn))
-          files_in_zip <- c(files_in_zip, fn)
+          tryCatch({
+            writeLines(build_r_script(cr$net, ref_trt, sm_val),
+                       file.path(stage, fn))
+            files_in_zip <- c(files_in_zip, fn)
+          }, error = function(e) {
+            message("r_script failed: ", conditionMessage(e))
+          })
         }
 
         # 2. netmeta object (RDS)
         if ("netmeta_rds" %in% items) {
           fn <- "netmeta_object.rds"
-          saveRDS(cr$net, file = file.path(stage, fn))
-          files_in_zip <- c(files_in_zip, fn)
+          tryCatch({
+            saveRDS(cr$net, file = file.path(stage, fn))
+            files_in_zip <- c(files_in_zip, fn)
+          }, error = function(e) {
+            message("netmeta_rds failed: ", conditionMessage(e))
+          })
         }
 
         # 3. {netmetaviz} CSV
         if ("cinema_csv" %in% items) {
-          df <- tryCatch(nmv_cinema_df(), error = function(e) NULL)
-          if (!is.null(df)) {
-            fn <- paste0("cinema_netmetaviz_", date_tag, ".csv")
-            write.csv(df, file = file.path(stage, fn),
-                      row.names = FALSE, na = "")
-            files_in_zip <- c(files_in_zip, fn)
-          }
+          tryCatch({
+            df <- tryCatch(nmv_cinema_df(), error = function(e) NULL)
+            if (is.null(df)) {
+              message("cinema_csv skipped: no CINeMA data frame")
+            } else {
+              fn <- paste0("cinema_netmetaviz_", date_tag, ".csv")
+              write.csv(df, file = file.path(stage, fn),
+                        row.names = FALSE, na = "")
+              files_in_zip <- c(files_in_zip, fn)
+            }
+          }, error = function(e) {
+            message("cinema_csv failed: ", conditionMessage(e))
+          })
         }
 
         # 4. Network graph PNG
         if ("netgraph_png" %in% items) {
-          built <- tryCatch(netgraph_args_r(), error = function(e) NULL)
-          if (!is.null(built)) {
-            fn <- paste0("netgraph_", date_tag, ".png")
-            .cairo_png(file.path(stage, fn),
-                       width = 1200, height = 900, res = 150)
-            tryCatch(
-              do.call(netgraph,
-                      c(built$args, list(main = built$title))),
-              error = function(e) {
-                netgraph(built$net, plastic = FALSE,
-                         main = paste("Evidence network (", e$message, ")"))
-              },
-              finally = grDevices::dev.off())
-            files_in_zip <- c(files_in_zip, fn)
-          }
+          tryCatch({
+            built <- tryCatch(netgraph_args_r(), error = function(e) NULL)
+            if (is.null(built)) {
+              message("netgraph_png skipped: no network graph settings")
+            } else {
+              fn <- paste0("netgraph_", date_tag, ".png")
+              .cairo_png(file.path(stage, fn),
+                         width = 1200, height = 900, res = 150)
+              tryCatch(
+                do.call(netgraph,
+                        c(built$args, list(main = built$title))),
+                error = function(e) {
+                  # The plain-netgraph fallback can throw as well; if it
+                  # does, fall all the way back to a text-only page so the
+                  # PNG is still a valid image rather than an empty file.
+                  tryCatch(
+                    netgraph(built$net, plastic = FALSE,
+                             main = paste("Evidence network (", e$message, ")")),
+                    error = function(e2) {
+                      plot.new()
+                      title(main = paste("Network graph unavailable:",
+                                         conditionMessage(e2)))
+                    })
+                },
+                finally = grDevices::dev.off())
+              files_in_zip <- c(files_in_zip, fn)
+            }
+          }, error = function(e) {
+            message("netgraph_png failed: ", conditionMessage(e))
+          })
         }
 
         # 5. Forest plot PNG (matches the inline view; trimmed)
         if ("forest_png" %in% items) {
-          opts <- tryCatch(forest_opts_r(), error = function(e) NULL)
-          if (!is.null(opts)) {
-            fn   <- paste0("forest_plot_", date_tag, ".png")
-            png_path <- file.path(stage, fn)
-            .cairo_png(png_path, width = 3000L, height = 3600L,
-                       res = 300)
-            tryCatch(build_netmeta_forest(cr$net, opts),
-                     error = function(e) {
-                       plot.new()
-                       title(main = paste("Forest plot unavailable:",
-                                          conditionMessage(e)))
-                     },
-                     finally = grDevices::dev.off())
-            trim_png_in_place(png_path, border_px = 50)
-            files_in_zip <- c(files_in_zip, fn)
-          }
+          tryCatch({
+            opts <- tryCatch(forest_opts_r(), error = function(e) NULL)
+            if (is.null(opts)) {
+              message("forest_png skipped: no forest plot settings")
+            } else {
+              fn   <- paste0("forest_plot_", date_tag, ".png")
+              png_path <- file.path(stage, fn)
+              .cairo_png(png_path, width = 3000L, height = 3600L,
+                         res = 300)
+              tryCatch(build_netmeta_forest(cr$net, opts),
+                       error = function(e) {
+                         plot.new()
+                         title(main = paste("Forest plot unavailable:",
+                                            conditionMessage(e)))
+                       },
+                       finally = grDevices::dev.off())
+              trim_png_in_place(png_path, border_px = 50)
+              files_in_zip <- c(files_in_zip, fn)
+            }
+          }, error = function(e) {
+            message("forest_png failed: ", conditionMessage(e))
+          })
         }
 
         # ---- Phase B: tables to Word + Excel -------------------------
-        # Each item is wrapped in tryCatch so a single missing table
-        # doesn't abort the whole ZIP — the user gets whatever else
-        # they asked for.
 
         # 6. Summary Table — Word (landscape)
         if ("summary_docx" %in% items) {
@@ -1408,7 +1457,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                                                     "%Y-%m-%d %H:%M")),
               cell_colors      = pack$cell_colors,
               cell_text_colors = pack$cell_text_colors)
-            files_in_zip <<- c(files_in_zip, fn)
+            files_in_zip <- c(files_in_zip, fn)
           }, error = function(e) {
             message("summary_docx failed: ", conditionMessage(e))
           })
@@ -1423,7 +1472,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
               pack$df, file.path(stage, fn), sheet = "Summary",
               cell_colors      = pack$cell_colors,
               cell_text_colors = pack$cell_text_colors)
-            files_in_zip <<- c(files_in_zip, fn)
+            files_in_zip <- c(files_in_zip, fn)
           }, error = function(e) {
             message("summary_xlsx failed: ", conditionMessage(e))
           })
@@ -1442,7 +1491,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                                 " (High / Moderate / Low / Very low)."),
               cell_colors      = pack$cell_colors,
               cell_text_colors = pack$cell_text_colors)
-            files_in_zip <<- c(files_in_zip, fn)
+            files_in_zip <- c(files_in_zip, fn)
           }, error = function(e) {
             message("league_docx failed: ", conditionMessage(e))
           })
@@ -1457,7 +1506,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
               pack$df, file.path(stage, fn), sheet = "League",
               cell_colors      = pack$cell_colors,
               cell_text_colors = pack$cell_text_colors)
-            files_in_zip <<- c(files_in_zip, fn)
+            files_in_zip <- c(files_in_zip, fn)
           }, error = function(e) {
             message("league_xlsx failed: ", conditionMessage(e))
           })
@@ -1475,7 +1524,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                 pack$df, file.path(stage, fn),
                 title    = "ROB-MEN Evaluation",
                 subtitle = "Risk of bias due to missing evidence (Chiocchia 2021).")
-              files_in_zip <<- c(files_in_zip, fn)
+              files_in_zip <- c(files_in_zip, fn)
             }
           }, error = function(e) {
             message("robmen_docx failed: ", conditionMessage(e))
@@ -1492,7 +1541,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
             } else {
               write_table_xlsx(pack$df, file.path(stage, fn),
                                sheet = "ROB-MEN")
-              files_in_zip <<- c(files_in_zip, fn)
+              files_in_zip <- c(files_in_zip, fn)
             }
           }, error = function(e) {
             message("robmen_xlsx failed: ", conditionMessage(e))
@@ -1508,7 +1557,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
               title    = "Local & Global Tests of Inconsistency",
               subtitle = paste("Generated:", format(Sys.time(),
                                                     "%Y-%m-%d %H:%M")))
-            files_in_zip <<- c(files_in_zip, fn)
+            files_in_zip <- c(files_in_zip, fn)
           }, error = function(e) {
             message("tests_docx failed: ", conditionMessage(e))
           })
@@ -1530,7 +1579,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                 title        = "Pairwise Meta-Analyses (Appendix)",
                 subtitle     = paste("Generated:", format(Sys.time(),
                                                             "%Y-%m-%d %H:%M")))
-              files_in_zip <<- c(files_in_zip, fn)
+              files_in_zip <- c(files_in_zip, fn)
             }
           }, error = function(e) {
             message("pairwise_docx failed: ", conditionMessage(e))
