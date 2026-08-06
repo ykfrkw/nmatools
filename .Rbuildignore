@@ -1,0 +1,9 @@
+^\.git$
+^\.gitignore$
+^\.claude$
+^docs$
+^sample\.R$
+^sample_viz\.R$
+^\.Rbuildignore$
+^.*\.Rcheck$
+^.*\.tar\.gz$

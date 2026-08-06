@@ -31,5 +31,7 @@ utils::globalVariables(c(
   "eer_x", "eer_y", "val_label", "cer_x", "cer_y",
   "ref_val_label",
   # pval_legend_ggplot() aes()
-  "color"
+  "color",
+  # contribution / context table NSE columns (dplyr + ggplot2 pipelines)
+  ".TE_h", "contribution", "direct_comparison", "network_comparison"
 ))

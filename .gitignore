@@ -25,7 +25,7 @@ secrets/
 # ── R package build artifacts ─────────────────────────────────────────────────
 *.tar.gz
 *.Rcheck/
-.Rbuildignore
+# .Rbuildignore is package source, not a build artifact — keep it tracked
 
 # ── roxygen2 / documentation ──────────────────────────────────────────────────
 # Do NOT ignore man/ or NAMESPACE — these are source-controlled in this package

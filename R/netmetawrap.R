@@ -380,7 +380,7 @@ netmetawrap <- function(
           file = file.path(output_dir,
                            paste0("forest_rare_sensitivity_",
                                   file_label, ".pdf")),
-          title = sprintf("%s — rare-event sensitivity", outcome)
+          title = sprintf("%s \u2014 rare-event sensitivity", outcome)
         ),
         error = function(e) {
           message("[ netmetawrap ] Sensitivity forest failed: ",

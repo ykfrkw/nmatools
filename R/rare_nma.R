@@ -1,15 +1,15 @@
-# rare_nma.R — Rare-event diagnostics and 4-method sensitivity panel for NMA
+# rare_nma.R -- Rare-event diagnostics and 4-method sensitivity panel for NMA
 #
 # Mirrors pmatools/R/rare_events.R for network meta-analysis.
 # References:
-#   Efthimiou O, Rücker G, Schwarzer G, Higgins JPT, Egger M, Salanti G (2019).
+#   Efthimiou O, Ruecker G, Schwarzer G, Higgins JPT, Egger M, Salanti G (2019).
 #   Network meta-analysis of rare events using the Mantel-Haenszel method.
-#   Statistics in Medicine 38(16):2992–3012.
+#   Statistics in Medicine 38(16):2992-3012.
 #
 #   Tsujimoto Y et al. (2024). Methodological recommendations for rare-event
 #   meta-analysis. Research Synthesis Methods. PMC9805041.
 
-# ── Internal: convert df_pw back to per-arm long table ────────────────────────
+# -- Internal: convert df_pw back to per-arm long table ------------------------
 
 # meta::pairwise() output contains, for each unique (studlab, treat) arm, the
 # same (n, event) duplicated across every contrast that arm participates in.
@@ -36,7 +36,7 @@
   arms
 }
 
-# ── Diagnostics ───────────────────────────────────────────────────────────────
+# -- Diagnostics ---------------------------------------------------------------
 
 # Compute rare-event diagnostics from a pairwise data frame.
 # Returns an object of class "nma_rare_diagnostics".
@@ -76,7 +76,7 @@
   one_arm_total_zero <- any(events_by_treat == 0)
   zero_study_fraction <- mean(zero_arm_in_study)
 
-  # rare_flow logic — mirrors pmatools .rare_diagnostics_from_wide()
+  # rare_flow logic -- mirrors pmatools .rare_diagnostics_from_wide()
   rare_rate_flag <- isTRUE(event_rate_overall < event_rate_threshold) ||
     any(rate_by_treat < event_rate_threshold, na.rm = TRUE)
   sparse_zero_pattern <- any(zero_arm_in_study) &&
@@ -181,7 +181,7 @@ print.nma_rare_diagnostics <- function(x, ...) {
   invisible(x)
 }
 
-# ── Sensitivity panel ─────────────────────────────────────────────────────────
+# -- Sensitivity panel ---------------------------------------------------------
 
 # Method specifications for the 4-method sensitivity panel.
 .rare_nma_method_specs <- function() {
@@ -237,7 +237,7 @@ print.nma_rare_diagnostics <- function(x, ...) {
 }
 
 # Run the 4-method sensitivity panel and return a tidy tibble:
-#   one row per (method × non-reference treatment) with TE, seTE, lower, upper
+#   one row per (method x non-reference treatment) with TE, seTE, lower, upper
 #   on the back-transformed scale (OR / RR).
 .run_rare_nma_sensitivity <- function(df_pw, sm, reference.group,
                                       small.values) {
@@ -308,7 +308,7 @@ print.nma_rare_diagnostics <- function(x, ...) {
   tibble::as_tibble(out)
 }
 
-# ── Sensitivity forest plot ───────────────────────────────────────────────────
+# -- Sensitivity forest plot ---------------------------------------------------
 
 #' Plot the 4-method rare-event NMA sensitivity panel
 #'
@@ -374,7 +374,7 @@ plot_rare_nma_sensitivity <- function(method_table,
       m <- build_one(trt)
       if (is.null(m)) {
         graphics::plot.new()
-        graphics::title(main = sprintf("%s vs %s — no valid estimates",
+        graphics::title(main = sprintf("%s vs %s \u2014 no valid estimates",
                                        trt, reference.group %||% "reference"))
         next
       }
@@ -394,7 +394,7 @@ plot_rare_nma_sensitivity <- function(method_table,
         ),
         error = function(e) {
           graphics::plot.new()
-          graphics::title(main = paste0(smlab, " — forest failed: ",
+          graphics::title(main = paste0(smlab, " \u2014 forest failed: ",
                                         conditionMessage(e)))
         }
       )
@@ -415,7 +415,7 @@ plot_rare_nma_sensitivity <- function(method_table,
   invisible(file)
 }
 
-# ── Convenience: tidy method_table for xlsx export ────────────────────────────
+# -- Convenience: tidy method_table for xlsx export ----------------------------
 
 # Reorder/format columns for human-readable Excel output.
 .format_rare_method_table <- function(method_table, reference.group) {
