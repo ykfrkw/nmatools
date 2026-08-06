@@ -11,7 +11,11 @@ if (!nzchar(helper_path) || !file.exists(helper_path)) {
   helper_path <- testthat::test_path("..", "..", "inst", "app",
                                      "modules", "_export_helpers.R")
 }
-source(helper_path, local = TRUE, encoding = "UTF-8")
+# No `encoding = "UTF-8"`: the helper holds em-dashes and a non-breaking
+# space, and transcoding UTF-8 -> native aborts the connection (and segfaults
+# R) under a non-UTF-8 locale such as C. Reading the bytes as-is is what the
+# other inst/ helper tests do.
+source(helper_path, local = TRUE)
 
 # _export_helpers.R uses %||% but doesn't define it (app.R sources the
 # operator helpers first); provide it locally for standalone sourcing.
