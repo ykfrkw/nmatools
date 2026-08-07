@@ -19,6 +19,14 @@
 #'   }
 #'   Diagonal cells are merged vertically and show the treatment label.
 #'
+#'   \strong{Triangle layout.} \code{netmeta::netleague()} puts the network
+#'   (NMA) estimate in the lower-left triangle and the direct (pairwise)
+#'   estimate in the upper-right one. In single-outcome mode both triangles are
+#'   kept as they are, so the upper-right triangle shows direct estimates. When
+#'   a second (or fourth) outcome fills the upper-right triangle, its cells are
+#'   read mirrored across the diagonal, so the value shown is that outcome's
+#'   \emph{NMA} estimate and therefore matches the cell colour.
+#'
 #' @param x A \code{netmeta} object (outcome 1, lower-left triangle top row).
 #' @param cinema Path to a CINeMA report CSV, or a data frame with columns
 #'   \code{"Comparison"} and \code{"Confidence rating"}.
@@ -448,9 +456,21 @@ color_league_multi <- function(outcomes,
           df_display[i, j] <- .reformat_cell(league_mat[i, j],
                                              bracket, separator, wrap_ci)
         } else {
-          mat <- if (!is.null(league_mat2)) league_mat2 else league_mat
-          df_display[i, j] <- .reformat_cell(mat[i, j],
-                                             bracket, separator, wrap_ci)
+          if (!is.null(league_mat2)) {
+            # Outcome 2 (upper-right).  netleague() puts the NMA estimate in
+            # the LOWER-left triangle and the direct (pairwise) estimate in
+            # the upper-right one, with both triangles pointing the same way.
+            # Reading league_mat2[i, j] here would therefore print outcome 2's
+            # *direct* estimate while .cell_entry() colours the cell from the
+            # NMA matrix.  Read the transposed cell instead.
+            df_display[i, j] <- .reformat_cell(league_mat2[j, i],
+                                               bracket, separator, wrap_ci)
+          } else {
+            # Single-outcome mode: keep netleague()'s own upper-right triangle
+            # (direct estimates), which is the intended Barth 2013 layout.
+            df_display[i, j] <- .reformat_cell(league_mat[i, j],
+                                               bracket, separator, wrap_ci)
+          }
         }
       }
     }
@@ -500,6 +520,13 @@ color_league_multi <- function(outcomes,
     # ------------------------------------------------------------------
     n_rows <- 2L * n
 
+    # Upper-right outcomes (2 and 4) are read transposed: netleague() stores
+    # the NMA estimate in the lower-left triangle, so league_mat2[j, i] -- not
+    # [i, j], which is the direct estimate -- is the value that matches the
+    # colour .cell_entry() derives from the NMA matrix.
+    league_mat2_t <- if (!is.null(league_mat2)) t(as.matrix(league_mat2)) else NULL
+    league_mat4_t <- if (!is.null(league_mat4)) t(as.matrix(league_mat4)) else NULL
+
     base_sty <- openxlsx::createStyle(halign = "center", valign = "center",
                                       wrapText = TRUE)
     openxlsx::addStyle(wb, sheet = sheet_name, style = base_sty,
@@ -536,10 +563,10 @@ color_league_multi <- function(outcomes,
 
         } else {
           # Upper-right: top = outcome 2,  bottom = outcome 4
-          mat_top <- if (!is.null(league_mat2)) league_mat2 else league_mat
+          mat_top <- if (!is.null(league_mat2_t)) league_mat2_t else league_mat
           .write_quad_cell(wb, sheet_name, top_row, bot_row, j,
-                           mat_top,     cinema_df2, mats2, fill_color2,
-                           league_mat4, cinema_df4, mats4, fill_color4,
+                           mat_top,       cinema_df2, mats2, fill_color2,
+                           league_mat4_t, cinema_df4, mats4, fill_color4,
                            treatments, bracket, separator, wrap_ci,
                            palette, palette_type, trivial_range)
         }
