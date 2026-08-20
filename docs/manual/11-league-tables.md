@@ -66,16 +66,55 @@ How to read the table:
 - **Cell color** encodes the CINeMA confidence rating for that comparison
   (very low / low / moderate / high). Comparisons without a rating are left
   uncolored.
-- The **reference convention** follows `netmeta`: the comparison direction is
-  read row versus column, so the estimate in a cell is the effect of the column
-  treatment relative to the row treatment (or vice versa, depending on
-  orientation). Because CINeMA ratings are attached by matching both `"A:B"`
-  and `"B:A"` comparison labels, the direction of the label in the CINeMA file
-  does not matter.
+- The **reference convention** follows `netmeta` (see the next subsection).
+  Because CINeMA ratings are attached by matching both `"A:B"` and `"B:A"`
+  comparison labels, the direction of the label in the CINeMA file does not
+  matter.
 
 CINeMA input may be either the path to a CSV exported from the
 [CINeMA web tool](https://cinema.ispm.unibe.ch/), or a data frame with columns
 `"Comparison"` and `"Confidence rating"`.
+
+### How `netleague()` lays out the two triangles
+
+Every league table in `nmatools` is built on `netmeta::netleague()`, and its
+default layout is the one from Barth et al. (2013), Table 3:
+
+| Triangle | Content |
+|---|---|
+| **lower-left** (`[i, j]` with `i > j`) | the **network meta-analysis (NMA)** estimate |
+| **upper-right** (`[i, j]` with `i < j`) | the **direct (pairwise)** estimate |
+| diagonal | the treatment name |
+
+Comparisons with no direct evidence print as `text.NA` (`"."` by default) in the
+upper-right triangle; the lower-left triangle is always filled, because the NMA
+estimates every contrast.
+
+**Both triangles point the same way.** Each cell compares the treatment that
+appears *first* in the row/column order with the one that appears *second*, so a
+cell in the upper-right triangle and its mirror image in the lower-left triangle
+describe the same comparison with the same sign. That is what makes the two
+halves directly comparable — the direct estimate can be read against the network
+estimate simply by reflecting across the diagonal.
+
+> **Pitfall — never pass a second network to `netleague()`.** This layout holds
+> only for the default single-argument call `netleague(net)`. Passing a second
+> argument (`netleague(x, y)`, or `netleague(x, x, direct = TRUE)`) switches the
+> upper-right triangle to a "row versus column" convention, which **flips its
+> sign** relative to the default. Mixing the two conventions in one table
+> silently reverses half of the comparisons. With `netmeta::Senn2013`, for
+> example, `netleague(n1, n1, direct = TRUE)$random["acar", "metf"]` is
+> `-0.20 [-1.15; 0.75]` while `["metf", "acar"]` is `0.20 [-0.75; 1.15]`,
+> whereas the default call reports `0.20` in the *upper* triangle cell
+> `["acar", "metf"]`.
+
+Consequently, when `color_league()` fills the upper-right triangle with a
+**second outcome** (`x2`, and `x4` in quad mode), it reads that outcome's
+*mirrored* cell so that the number shown is the second outcome's **NMA**
+estimate — not its direct estimate — and therefore agrees with the cell color,
+which is derived from the NMA matrix. In single-outcome mode nothing is
+mirrored, so the upper-right triangle keeps `netleague()`'s own direct
+estimates.
 
 ## 11.2 Sorting the treatments
 

@@ -147,4 +147,12 @@ off-diagonal cell is split into a top and bottom sub-row.
 \item Upper-right bottom sub-row: outcome 4 (\code{x4})
 }
 Diagonal cells are merged vertically and show the treatment label.
+
+\strong{Triangle layout.} \code{netmeta::netleague()} puts the network
+(NMA) estimate in the lower-left triangle and the direct (pairwise)
+estimate in the upper-right one. In single-outcome mode both triangles are
+kept as they are, so the upper-right triangle shows direct estimates. When
+a second (or fourth) outcome fills the upper-right triangle, its cells are
+read mirrored across the diagonal, so the value shown is that outcome's
+\emph{NMA} estimate and therefore matches the cell colour.
 }
