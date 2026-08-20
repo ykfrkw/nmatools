@@ -30,7 +30,7 @@ nmatools is distributed from GitHub. Install it with the `remotes` package:
 
 ```r
 # install.packages("remotes")   # if not already installed
-remotes::install_github("ykfrkw/nmatools")
+remotes::install_github("ykfrkw/nmatools", force = TRUE)
 ```
 
 All required dependencies (`netmeta`, `meta`, `dplyr`, `writexl`, `magick`, and

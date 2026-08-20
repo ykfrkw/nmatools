@@ -63,7 +63,7 @@ below.
 ```r
 # Install from GitHub (recommended)
 # install.packages("remotes")   # if not yet installed
-remotes::install_github("ykfrkw/nmatools")
+remotes::install_github("ykfrkw/nmatools", force = TRUE)
 ```
 
 Dependencies (`netmeta`, `meta`, `dplyr`, `writexl`, `magick`, and others) are
