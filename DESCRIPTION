@@ -1,6 +1,6 @@
 Package: nmatools
 Title: Network Meta-Analysis Tools
-Version: 0.2.1
+Version: 0.2.2
 Authors@R:
     person("Yuki", "Furukawa", email = "furukawa.y.psy@gmail.com",
            role = c("aut", "cre"))
@@ -48,7 +48,8 @@ Imports:
     tidyr,
     rlang,
     bslib,
-    metafor
+    metafor,
+    zip
 Suggests:
     testthat (>= 3.0.0),
     patchwork (>= 1.1.0),

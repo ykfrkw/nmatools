@@ -25,5 +25,7 @@
   rlang::sym
   # inst/app/ meta-analytic back-end
   metafor::rma
+  # inst/app/ bundle export (works without an external zip binary on Windows)
+  zip::zip
   invisible(NULL)
 }

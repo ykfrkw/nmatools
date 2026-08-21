@@ -1300,8 +1300,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
           writeLines(c("No items were selected.",
                        "Tick at least one box in the Bundle export panel."),
                      file.path(tmp, "README.txt"))
-          old_wd <- setwd(tmp); on.exit(setwd(old_wd), add = TRUE)
-          utils::zip(zipfile = file, files = "README.txt")
+          zip::zip(zipfile = file, files = "README.txt", root = tmp)
           return()
         }
 
@@ -1316,8 +1315,7 @@ moduleD_server <- function(id, cinema_module, robmen_module,
                        "Run the analysis on the Data / NMA tabs first, then",
                        "come back to this tab and download the bundle."),
                      file.path(tmp, "README.txt"))
-          old_wd <- setwd(tmp); on.exit(setwd(old_wd), add = TRUE)
-          utils::zip(zipfile = file, files = "README.txt")
+          zip::zip(zipfile = file, files = "README.txt", root = tmp)
           return()
         }
 
@@ -1592,12 +1590,11 @@ moduleD_server <- function(id, cinema_module, robmen_module,
           files_in_zip <- "README.txt"
         }
 
-        # zip() needs to be called from inside the staging directory so the
-        # archive entries are stored as top-level filenames instead of
-        # absolute paths.
-        old_wd <- setwd(stage); on.exit(setwd(old_wd), add = TRUE)
-        utils::zip(zipfile = file, files = files_in_zip,
-                   flags   = "-q9X")
+        # zip::zip() resolves `files` against `root`, so the archive entries
+        # are stored as top-level filenames instead of absolute paths.  The
+        # {zip} package bundles its own compressor, so this also works on
+        # Windows machines without Rtools/an external zip binary.
+        zip::zip(zipfile = file, files = files_in_zip, root = stage)
       }
     )
 
