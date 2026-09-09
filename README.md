@@ -109,7 +109,11 @@ run many outcomes at once with `run_nma_batch()`.
 implementing CINeMA (Nikolakopoulou et al. 2020) and ROB-MEN (Chiocchia et al.
 2021). Launch it empty or pre-load a data frame, then work left to right through
 the domain tabs to the Report and export bundle — see
-[Chapters 6–10](docs/manual/06-gui-overview.md).
+[Chapters 6–10](docs/manual/06-gui-overview.md). All six CINeMA domains are
+computed automatically; the ROB-MEN assessment behind Domain 2 is pre-filled
+from the data (Egger's test, SR study counts, review-level conditions) and
+synced into CINeMA without further clicks, with only provisional rows flagged
+for confirmation ([Chapter 9](docs/manual/09-gui-robmen.md)).
 
 ```r
 library(nmatools)

@@ -16,7 +16,7 @@ automatically after CINeMA completes, once the contribution matrix is available.
 
 ---
 
-## 9.1 Where it lives and when it runs
+## 9.1 Where it lives, when it runs, and what is automatic
 
 The tab opens with the heading **ROB-MEN Analysis** and the note that it
 "Assesses risk of bias due to **missing evidence** in NMA (Chiocchia et al. BMC
@@ -24,11 +24,20 @@ Med 2021)." ROB-MEN runs automatically after CINeMA finishes; results appear onc
 the contribution matrix is ready. An expandable panel, **Group classification &
 algorithm overview**, documents the method.
 
-At the top of the tab, one control governs the whole assessment:
+**Every judgement in both ROB-MEN tables is pre-filled by an algorithm**, and
+the final ratings are synced into CINeMA Domain 2 without any further click.
+With the default settings, a complete CINeMA table (all six domains) is
+available on the Report tab as soon as the analysis finishes. Rows whose
+auto-judgement is *provisional* — because it rests on an assumption the data
+cannot verify — are flagged with ⚠ so that you know exactly where a human
+decision is still needed (Section 9.7).
+
+Two blocks of controls sit above the tables:
 
 - **Contribution threshold (pp)** (numeric, default **15**) — a
   percentage-point threshold applied consistently across all NMA estimates when
   deciding whether biased contribution is "substantial".
+- **⚙ Automation settings & review-level conditions** — see Section 9.4.1.
 
 ---
 
@@ -43,8 +52,16 @@ assessed:
 | **Group B (Other outcomes)** | Studies exist for the comparison but did **not** report this outcome. | **Component 1 only** (within-study selective non-reporting). |
 | **Group C (Unobserved)** | No studies at all for this comparison. | **Component 2 qualitative only** (across-study). |
 
-In Tab 1, indirect comparisons default to Group C; mark one as **Group B** if you
-know studies exist for it but did not report the current outcome.
+The classification is derived automatically from two counts per comparison:
+
+- **k reporting this outcome** — auto-derived from the NMA data (read-only);
+- **k identified in the SR** — the editable *Total identified in the SR* cell,
+  auto-filled with the reporting count.
+
+Comparisons with direct evidence are Group A. An indirect comparison is Group C
+unless you enter **k ≥ 1** under *Total identified in the SR* (or click **→
+Group B**, which sets k = 1), in which case it becomes Group B. Clicking **←
+Group C** sets k back to 0.
 
 ---
 
@@ -66,15 +83,29 @@ flowchart LR
 *Figure 9.2 — The five-step ROB-MEN flow. Steps ①–③ are completed on Tab 1
 (Pairwise Assessment); steps ④–⑤ on Tab 2 (ROB-MEN Final Rating).*
 
-1. **Component 1 — within-study selective non-reporting.** A qualitative
-   judgement using the ROB-ME Step 2 signalling questions (Page & Sterne, BMJ
-   2023). It is **not** auto-populated from RoB 2 scores; the user completes it
-   via the **ROB-ME** helper button. Output: *No bias detected* or *Suspected
-   bias favouring X*.
-2. **Component 2 — across-study small-study effects.** Qualitative conditions
-   (gray-literature search, novel-agent bias, prior publication-bias evidence)
-   plus, where k ≥ 10 studies, a quantitative Bayesian Egger test. Output: *No
-   bias detected* or *Suspected bias favouring X*.
+1. **Component 1 — within-study selective non-reporting.** The ROB-ME Step 2
+   signalling questions (Page & Sterne, BMJ 2023), answered from the SR counts:
+   - *k in SR = k reporting* → Q1 = No → **No bias detected** (auto).
+   - *k in SR > k reporting* → Q1 = Yes → **Suspected bias favouring X**
+     (provisional, ⚠), where X is the treatment favoured by the observed effect
+     (the pooled direct estimate for Group A; the NMA estimate for Group B),
+     because selective non-reporting suppresses results unfavourable to the
+     treatment the published evidence favours. Confirm or change it with the
+     **ROB-ME** helper. When the observed effect gives no direction, the row is
+     left at *No bias detected* and flagged.
+   It is never proxied from RoB 2 scores.
+2. **Component 2 — across-study small-study effects.**
+   - *k ≥ 10 studies* → Egger's test: p ≥ 0.05 → **No bias detected**;
+     p < 0.05 → **Suspected bias favouring** the treatment the funnel asymmetry
+     favours (flagged ⚠ so you check the funnel plot).
+   - *k < 10 studies, and Group C* → the **review-level conditions** from the
+     ROB-MEN paper, answered once for the whole review (Section 9.4.1):
+     score = (conditions suggesting bias) − (conditions suggesting no bias);
+     score ≤ 0 → **No bias detected**; score > 0 → **Suspected bias favouring**
+     the flagged novel agent, or else the treatment the observed effect favours
+     (provisional, ⚠).
+   All "favouring X" directions honour the **Small outcome value is** setting
+   from the Configuration tab (desirable vs undesirable), for OR/RR/SMD/MD alike.
 3. **Pairwise overall judgement** (per comparison). If **either** component is
    "Suspected bias favouring X", the overall judgement carries X; if **both** are
    "No bias detected", the overall is "No bias detected". Where both components
@@ -97,30 +128,74 @@ flowchart LR
 
 ## 9.4 Tab 1 — Pairwise Assessment
 
-The Pairwise Comparisons Table has one row per comparison. Reading across, each
-row shows:
+### 9.4.1 Automation settings & review-level conditions
 
-- the comparison label and the *k (N)* of studies reporting this outcome
-  (auto-derived, read-only);
+This panel (open by default, above the tables) holds everything ROB-MEN can
+decide without a per-comparison click.
+
+- **Auto-fill ① within-study and ② across-study judgements** (default on).
+  Fills the dropdowns with the rules of Section 9.3 and keeps them in step with
+  the SR counts and the review-level conditions. **Manual edits are never
+  overwritten**: once you change a dropdown, the auto rule leaves that cell
+  alone. Use **↺ auto** in the column header to discard manual edits in that
+  column and return to the auto values. With auto-fill off, the dropdowns start
+  blank and only Egger's test is used as a silent fallback (the previous
+  behaviour).
+- **Sync ROB-MEN ratings to CINeMA Domain 2 automatically** (default on) — see
+  Section 9.6.
+- **Review-level conditions for across-study bias** — four checkboxes taken
+  from the ROB-MEN paper, plus a **Novel agents** selector:
+  - *Grey literature / unpublished studies were NOT searched* (suggests bias);
+  - *Previous evidence of publication bias in this field* (suggests bias);
+  - *Tradition of prospective trial registration in this field* (suggests no
+    bias);
+  - *Unpublished studies available and consistent with published results*
+    (suggests no bias);
+  - *Novel agents* — treatments supported only by a few early trials; a
+    comparison involving one of them counts as a bias condition and the
+    suspected bias favours that agent.
+
+### 9.4.2 The status line
+
+Above the Pairwise Comparisons Table a live status line summarises the state of
+the assessment: the group counts, how many ① judgements were auto-filled, how
+many ② judgements came from Egger's test versus the qualitative rule, the list
+of rows that carry a **provisional** judgement and need confirmation, and the
+list of rows you have edited manually. When no row is provisional the line turns
+green: the whole table is fully auto-rated.
+
+### 9.4.3 The Pairwise Comparisons Table
+
+One row per comparison, grouped A / B / C. Reading across, each row shows:
+
+- the comparison label (⚠ and an amber left border when a provisional judgement
+  needs confirmation; indirect rows carry the **→ Group B** / **← Group C**
+  button);
+- the *k (N)* of studies reporting this outcome (auto-derived, read-only);
 - the total *k (N)* identified in the systematic review (auto-filled, editable —
-  increase it if the SR contains studies for this comparison that did not report
-  this outcome);
+  **this is the one number the data cannot know**: raise k above the reporting
+  count if the SR contains studies for this comparison that did not report this
+  outcome);
 - the **within-study bias** cell — a dropdown (*No bias detected* / *Suspected
-  bias favouring t1* / *Suspected bias favouring t2*) with a **ROB-ME** button
-  that opens the ROB-ME Step 2 helper (Q1: were eligible studies missing? Q2:
+  bias favouring t1* / *Suspected bias favouring t2*), pre-filled by the auto
+  rule with a one-line explanation beneath it, and a **ROB-ME** button that
+  opens the ROB-ME Step 2 helper (Q1: were eligible studies missing? Q2:
   selective omission direction?), backed by a forest plot of the comparison;
-- the **across-study bias** cell — a dropdown with either a **Funnel** button
-  (when k ≥ 10, showing the contour-enhanced funnel plot, Egger's test, and
-  trim-and-fill) or a **Hints** button (when k < 10, listing the qualitative
-  conditions);
-- the **pairwise overall** dropdown, defaulting to **(auto)** — the value
-  computed by step 3.
+- the **across-study bias** cell — a dropdown pre-filled by Egger's test (with
+  a **Funnel** button when k ≥ 10, showing the contour-enhanced funnel plot,
+  Egger's test, and trim-and-fill) or by the qualitative rule (with a
+  **Hints** button when k < 10, listing the conditions);
+- the **pairwise overall** dropdown, showing the value computed by step 3; it
+  follows ① / ② live.
+
+Column headers carry **↺ auto** (restore auto values) and **set all → No
+bias** buttons for ① and ②, and an **auto** button for ③.
 
 > **Background plots (Component 2).** For comparisons with k ≥ 10 direct studies,
 > the app runs a Bayesian Egger test using the MCMC settings from the
 > Configuration tab and provides funnel and forest background plots. With fewer
-> than 10 studies, the quantitative test is not applicable and only the
-> qualitative Hints are offered.
+> than 10 studies, the quantitative test is not applicable; the qualitative rule
+> and the Hints are used instead.
 
 ---
 
@@ -133,13 +208,24 @@ The ROB-MEN Table has one row per NMA estimate. It reports:
   reaches the contribution threshold);
 - the **contribution evaluation** dropdown (*No substantial* / *Substantial –
   balanced* / *Substantial – favouring one*), pre-filled by the algorithm;
-- for indirect-only estimates, an **indirect-evidence bias** dropdown;
+- for indirect-only estimates, an **indirect-evidence bias** dropdown, copied
+  from the pairwise judgement;
 - the NMA estimate and the NMR (network meta-regression) effect at the smallest
   observed variance, for reading small-study patterns;
 - the **small-study-effects** dropdown (*No evidence* / *Evidence – reinforcing*
-  / *Evidence – not reinforcing*);
+  / *Evidence – not reinforcing*), pre-filled from the NMA-vs-NMR comparison,
+  with the reinforcing / not-reinforcing direction honouring the outcome
+  direction setting;
 - the **ROB-MEN final rating** dropdown (**Low risk** / **Some concerns** /
   **High risk**), pre-filled by the algorithm and overridable.
+
+Every cell of this table follows Tab 1 live, and the table itself is no longer
+re-rendered when CINeMA ratings change elsewhere, so a manual override of the
+final rating survives the Domain 2 sync.
+
+The ROB-MEN evaluation exports (Word / Excel, Chapter 10) contain the full
+table: % biased contribution, contribution evaluation, indirect-evidence bias,
+NMA and NMR effects, small-study effects and the final rating.
 
 ---
 
@@ -153,15 +239,16 @@ section is where the ROB-MEN result becomes the CINeMA Domain 2 rating.
 *Figure 9.3 — The Domain 2 Final Ratings section. Bulk buttons and
 per-comparison dropdowns allow manual adjustment.*
 
-The on-screen guidance reads: "ROB-MEN ratings above populate this domain
-automatically. Use the bulk buttons or per-comparison overrides for manual
-adjustment." In practice one explicit step is required: after completing the
-pairwise judgement dropdowns, click **Update CINeMA Domain 2** (bottom right
-of the ROB-MEN tables). Until you do, the Report tab's Domain 2 column stays
-**Not assessed** — filling in the dropdowns alone does not sync. The button
-also navigates to the Domain 2 section and confirms with a notification
-showing how many comparisons were rated. Three bulk buttons act on all
-comparisons at once:
+With **Sync … automatically** on (the default), every change to a ⑤ ROB-MEN
+rating — automatic or manual — is pushed to Domain 2 within a fraction of a
+second; the status text next to the **Update CINeMA Domain 2** button shows the
+time of the last sync and how many comparisons are rated. The Report tab's
+Domain 2 column is therefore populated as soon as the analysis finishes. The
+button remains available: it forces a sync and navigates to the Domain 2
+section. With automatic sync off, the button is the only way to push ratings,
+and the Report shows **Not assessed** until it is clicked.
+
+Three bulk buttons act on all comparisons at once:
 
 - **Set all: No concerns**
 - **Set all: Some concerns**
@@ -178,6 +265,26 @@ ratings map into CINeMA Domain 2 as follows:
 | (unassessed) | Not assessed |
 
 These Domain 2 ratings then feed the Report exactly like the other five domains.
+
+---
+
+## 9.7 What still needs a human
+
+Only three inputs cannot be derived from the data, and the tab is designed so
+that each is entered once, in one place:
+
+1. **How many SR studies did not report this outcome** — the *Total identified
+   in the SR* count per comparison (from your PRISMA flow / screening records).
+   Leaving it at the auto-filled value asserts that no study is missing.
+2. **The review-level conditions** — four checkboxes and the novel-agent list
+   in the automation panel, answered once for the whole review.
+3. **Confirmation of ⚠ provisional rows** — a suspected-bias direction proposed
+   from the observed effect (Component 1 when studies are missing; the
+   qualitative rule; Egger's test when significant). Open ROB-ME / Funnel /
+   Hints on the flagged row and keep or change the dropdown.
+
+Everything else — grouping, ③, ④, ⑤a, ⑤b, ⑤, and the Domain 2 rating — is
+computed and kept in sync automatically.
 
 ---
 

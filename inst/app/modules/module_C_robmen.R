@@ -345,15 +345,41 @@ disabled_cell <- function(label, title = "") {
 #   Group A (is_group_a = TRUE, default): observed for this outcome — direct evidence exists
 #   Group B (is_group_b = TRUE): observed for OTHER outcomes — studies exist but didn't report this outcome
 #   Group C (is_group_c = TRUE): unobserved — no studies at all for this comparison
+#
+# Extra arguments (all optional, so the historical positional signature used
+# by tests keeps working):
+#   overall_default — initial value of the ③ overall dropdown
+#   k_sr_default / n_sr_default — current "Total identified in the SR" values
+#                   (preserved across re-renders); NULL = derive from n_direct
+#   within_note / across_note — small grey explanation printed under the
+#                   dropdown (what the auto-rule did and why)
+#   group_toggle    — optional tag (e.g. "→ Group B" button) placed after the
+#                   comparison label
 make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
                         within_default = "", n_total = NA_integer_,
                         bg = "white", is_group_c = FALSE, is_group_b = FALSE,
-                        bias_required = FALSE) {
+                        bias_required = FALSE,
+                        overall_default = "",
+                        k_sr_default = NULL, n_sr_default = NULL,
+                        within_note = NULL, across_note = NULL,
+                        group_toggle = NULL) {
   sid <- safe_id(ck)
   bias_choices <- pairwise_bias_choices(t1, t2)
   overall_choices <- pairwise_overall_choices(t1, t2)
+  clean <- function(v) {
+    v <- as.character(v %||% "")
+    if (length(v) == 0 || is.na(v[1])) "" else v[1]
+  }
+  within_default  <- clean(within_default)
+  across_default  <- clean(across_default)
+  overall_default <- clean(overall_default)
+  note_tag <- function(txt) {
+    if (is.null(txt) || !nzchar(txt)) return(NULL)
+    tags$small(style = "display:block; color:#6c757d; font-size:0.74em; max-width:230px; line-height:1.2; margin-top:1px;",
+               txt)
+  }
 
-  # ---- "Reporting this outcome" cell: k (editable) / N (editable), auto-filled ----
+  # ---- "Reporting this outcome" cell: k / N, auto-derived (read-only) ----
   reporting_cell <- if (is_group_b || is_group_c) {
     tags$td(style = "padding:4px 8px; text-align:center; color:#6c757d;",
       tags$span(style = paste0("background:#e9ecef; padding:3px 8px;",
@@ -375,19 +401,27 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
     )
   }
 
-  # ---- "Total identified in the SR" cell: k_sr (editable) / N_sr (editable) ----
-  # Defaults to same as reporting_cell; increase if SR contains studies for this
-  # comparison that did not report this outcome (those are Group B candidates).
+  # ---- "Total identified in the SR" cell: k_sr / N_sr (editable) ----
+  # Auto-filled with the reporting count. This number DRIVES the automation:
+  #   k_sr >  k  -> ROB-ME Q1 = Yes (studies missing) -> provisional ①
+  #   k_sr == k  -> ROB-ME Q1 = No  -> ① "No bias detected"
+  #   indirect comparison with k_sr >= 1 -> Group B (else Group C)
+  is_direct <- !is_group_b && !is_group_c
+  k_sr_val <- if (!is.null(k_sr_default)) k_sr_default
+              else if (is_direct && !is.na(n_direct)) n_direct else NA
+  n_sr_val <- if (!is.null(n_sr_default)) n_sr_default
+              else if (is_direct && !is.na(n_total)) n_total else NA
   sr_total_cell <- tags$td(style = "padding:4px 8px;",
     div(style = "display:flex; align-items:center; gap:3px; white-space:nowrap;",
-      title = "All studies in SR for this comparison (k and N), including those not reporting this outcome — auto-filled from data, editable",
+      title = paste0("All studies in the SR for this comparison (k and N), including",
+                     " those not reporting this outcome. Auto-filled from the data.",
+                     " Raise k above the reporting count to flag missing studies;",
+                     " for an indirect comparison, k >= 1 makes it Group B."),
       numericInput(ns(paste0("n_sr_k_", sid)), label = NULL,
-                   value = if (!is_group_b && !is_group_c && !is.na(n_direct)) n_direct else NA,
-                   min = 0, step = 1, width = "60px"),
+                   value = k_sr_val, min = 0, step = 1, width = "60px"),
       tags$span("("),
       numericInput(ns(paste0("n_sr_n_", sid)), label = NULL,
-                   value = if (!is_group_b && !is_group_c && !is.na(n_total)) n_total else NA,
-                   min = 0, step = 1, width = "80px"),
+                   value = n_sr_val, min = 0, step = 1, width = "80px"),
       tags$span(")")
     )
   )
@@ -403,22 +437,25 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
     tags$td(style = "padding:4px 8px;",
       selectInput(ns(paste0("within_", sid)), label = NULL,
                   choices = bias_choices,
-                  selected = if (nzchar(within_default)) within_default else "",  # nolint
-                  width = "190px")
+                  selected = within_default,
+                  width = "190px"),
+      note_tag(within_note %||%
+        "Q1 = Yes by definition. Rate whether the omission is outcome-selective.")
     )
   } else {
     tags$td(style = "padding:4px 8px;",
       div(style = "display:flex; gap:4px; align-items:flex-start;",
         selectInput(ns(paste0("within_", sid)), label = NULL,
                     choices = bias_choices,
-                    selected = if (nzchar(within_default)) within_default else "",  # nolint
+                    selected = within_default,
                     width = "190px"),
         actionButton(ns(paste0("robme_q_", sid)),
                      label = "ROB-ME",
                      class = "btn btn-xs btn-outline-info",
                      style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
                      title = "Open ROB-ME Step 2 helper (Q1: studies missing? Q2: selective omission?)")
-      )
+      ),
+      note_tag(within_note)
     )
   }
 
@@ -426,66 +463,53 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
   # Group A: selectInput + Funnel button (k>=10) or Hints button (k<10)
   # Group B: disabled "Not applicable" (no data for this outcome -> Egger's not applicable)
   # Group C: selectInput + Hints button, qualitative assessment
+  hints_button <- actionButton(ns(paste0("hints_btn_", sid)),
+                   label = tagList(icon("lightbulb"), " Hints"),
+                   class = "btn btn-xs btn-outline-secondary",
+                   style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
+                   title = "Show qualitative conditions for across-study bias")
   across_cell <- if (is_group_b) {
     disabled_cell("Not applicable",
       title = "Group B: no direct studies for this outcome — statistical tests (Egger's) not applicable")
-  } else if (is_group_c) {
-    tags$td(style = "padding:4px 8px;",
-      div(style = "display:flex; gap:4px; align-items:flex-start;",
-        selectInput(ns(paste0("across_", sid)), label = NULL,
-                    choices = bias_choices,
-                    selected = if (!is.null(across_default) && !is.na(across_default))
-                                 across_default else "",
-                    width = "190px"),
-        actionButton(ns(paste0("hints_btn_", sid)),
-                     label = tagList(icon("lightbulb"), " Hints"),
-                     class = "btn btn-xs btn-outline-secondary",
-                     style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
-                     title = "Show qualitative conditions for across-study bias")
-      )
-    )
   } else {
-    across_help_button <- if (!is.na(n_direct) && n_direct >= 10) {
+    across_help_button <- if (!is_group_c && !is.na(n_direct) && n_direct >= 10) {
       actionButton(ns(paste0("funnel_btn_", sid)),
                    label = tagList(icon("chart-bar"), " Funnel"),
                    class = "btn btn-xs btn-outline-secondary",
                    style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
                    title = "Show contour-enhanced funnel plot, Egger's test, trim-and-fill")
     } else {
-      actionButton(ns(paste0("hints_btn_", sid)),
-                   label = tagList(icon("lightbulb"), " Hints"),
-                   class = "btn btn-xs btn-outline-secondary",
-                   style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
-                   title = "Show qualitative conditions for across-study bias")
+      hints_button
     }
     tags$td(style = "padding:4px 8px;",
       div(style = "display:flex; gap:4px; align-items:flex-start;",
         selectInput(ns(paste0("across_", sid)), label = NULL,
                     choices = bias_choices,
-                    selected = if (!is.null(across_default) && !is.na(across_default))
-                                 across_default else "",
+                    selected = across_default,
                     width = "190px"),
         across_help_button
-      )
+      ),
+      note_tag(across_note)
     )
   }
 
   # Faint-grey background for fully auto-rated rows so the eye is drawn
   # to rows that need user attention.
-  needs_attention <- isTRUE(bias_required) || is_group_b
-  row_bg <- if (needs_attention) bg else "#fbfbfb"
+  needs_attention <- isTRUE(bias_required)
+  row_bg <- if (needs_attention || !identical(bg, "white")) bg else "#fbfbfb"
+  label_content <- tagList(strong(ck), if (!is.null(group_toggle)) tagList(" ", group_toggle))
   ck_cell <- if (needs_attention) {
     tags$td(style = "padding:4px 8px; white-space:nowrap;
                      border-left:3px solid #f59e0b;",
       tags$span(
         style = "color:#b45309; margin-right:4px;",
-        title = "This row needs your input — see highlighted cells",
+        title = "This row needs your confirmation — a provisional judgement was auto-filled",
         icon("triangle-exclamation")),
-      strong(ck))
+      label_content)
   } else {
     tags$td(style = "padding:4px 8px; white-space:nowrap;
                      border-left:3px solid transparent;",
-      strong(ck))
+      label_content)
   }
 
   tags$tr(style = paste0("background:", row_bg, ";"),
@@ -496,7 +520,8 @@ make_pw_row <- function(ns, ck, t1, t2, n_direct, across_default,
     across_cell,
     tags$td(style = "padding:4px 8px;",
       selectInput(ns(paste0("ov_pw_", sid)), label = NULL,
-                  choices = overall_choices, selected = "", width = "190px")
+                  choices = overall_choices, selected = overall_default,
+                  width = "190px")
     )
   )
 }
@@ -711,11 +736,14 @@ moduleC_ui <- function(id) {
     ),
 
     p(style = "font-size:0.9em; color:#555; margin-bottom:8px;",
-      icon("info-circle"), " ROB-MEN analysis runs automatically after CINeMA completes.",
-      " Results appear below once the contribution matrix is available.",
+      icon("info-circle"), " ROB-MEN analysis runs automatically after CINeMA completes",
+      " and every judgement is pre-filled; only rows flagged ",
+      icon("triangle-exclamation"), " need your confirmation.",
       tags$br(),
-      tags$small("Mark indirect comparisons as Group B in Tab 1 if you know",
-                 " studies exist for that comparison but did not report this outcome.")),
+      tags$small("The one fact the data cannot know is how many SR studies did NOT",
+                 " report this outcome: edit “Total identified in the SR”",
+                 " (k) in the table below. k above the reporting count flags",
+                 " missing studies; k ≥ 1 on an indirect comparison makes it Group B.")),
 
     div(style = "display:flex; align-items:center; gap:8px; margin:8px 0 12px 0;",
       numericInput(ns("contrib_threshold_pp"),
@@ -723,6 +751,55 @@ moduleC_ui <- function(id) {
                    value = 15, min = 0, step = 1, width = "170px"),
       tags$small(style = "color:#666; max-width:520px;",
                  "User-set threshold applied consistently across all NMA estimates.")
+    ),
+
+    # ---- Automation settings + review-level conditions -----------------
+    # Everything ROB-MEN can decide without a per-comparison click lives
+    # here. The review-level conditions are asked ONCE (they describe the
+    # systematic review, not a comparison) and drive the qualitative
+    # across-study judgement for every row where Egger's test is not
+    # applicable (k < 10, Group C).
+    tags$details(open = "open",
+      style = paste0("background:#f8f9fa; border:1px solid #dee2e6; border-radius:6px;",
+                     " padding:8px 14px; margin-bottom:12px;"),
+      tags$summary(style = "cursor:pointer; font-weight:600; color:#4a235a;",
+                   HTML("&#9881; Automation settings &amp; review-level conditions")),
+      div(style = "display:flex; flex-wrap:wrap; gap:24px; margin-top:8px;",
+        div(style = "min-width:280px; flex:1;",
+          tags$b(style = "font-size:0.9em;", "Auto-fill"),
+          checkboxInput(ns("auto_fill"),
+            label = tagList("Auto-fill ① within-study and ② across-study",
+                            " judgements (provisional rows are flagged ",
+                            icon("triangle-exclamation"), ")"),
+            value = TRUE, width = "100%"),
+          checkboxInput(ns("auto_sync_d2"),
+            label = "Sync ROB-MEN ratings to CINeMA Domain 2 automatically",
+            value = TRUE, width = "100%"),
+          tags$small(style = "color:#666; display:block; line-height:1.3;",
+            "① follows the “Total identified in the SR” counts:",
+            " k_SR = k → No bias detected; k_SR > k → suspected bias",
+            " favouring the treatment the observed effect favours (confirm via",
+            " ROB-ME). Manual edits are never overwritten; use ↺ auto in",
+            " the column header to return to the auto values.")
+        ),
+        div(style = "min-width:300px; flex:1;",
+          tags$b(style = "font-size:0.9em;",
+                 "Review-level conditions for across-study bias (k < 10 / Group C)"),
+          checkboxInput(ns("cond_no_grey_lit"),
+            "Grey literature / unpublished studies were NOT searched", FALSE, width = "100%"),
+          checkboxInput(ns("cond_prior_pub_bias"),
+            "Previous evidence of publication bias in this field", FALSE, width = "100%"),
+          checkboxInput(ns("cond_registration"),
+            "Tradition of prospective trial registration in this field", FALSE, width = "100%"),
+          checkboxInput(ns("cond_unpub_consistent"),
+            "Unpublished studies available and consistent with published results", FALSE, width = "100%"),
+          uiOutput(ns("novel_agents_ui")),
+          tags$small(style = "color:#666; display:block; line-height:1.3;",
+            "Rule: (conditions suggesting bias) − (conditions suggesting",
+            " no bias) > 0 → suspected bias, favouring the novel agent or",
+            " else the treatment the observed effect favours.")
+        )
+      )
     ),
 
     hr(),
@@ -746,6 +823,27 @@ moduleC_server <- function(id, processed_data, cinema_module,
     })
 
     # ------------------------------------------------------------------
+    # Automation settings
+    # ------------------------------------------------------------------
+    # Outcome direction ("desirable": lower = better) from the Configuration
+    # tab. Every "favouring X" label produced by the auto rules depends on it.
+    small_values <- reactive({
+      s  <- tryCatch(if (!is.null(nma_settings)) nma_settings() else NULL,
+                     error = function(e) NULL)
+      sv <- s$small_value_desirable %||% "desirable"
+      if (identical(sv, "undesirable")) "undesirable" else "desirable"
+    })
+    auto_fill_on <- reactive(isTRUE(input$auto_fill %||% TRUE))
+    auto_sync_on <- reactive(isTRUE(input$auto_sync_d2 %||% TRUE))
+    qual_conditions <- reactive(list(
+      no_grey_lit      = isTRUE(input$cond_no_grey_lit),
+      prior_pub_bias   = isTRUE(input$cond_prior_pub_bias),
+      registration     = isTRUE(input$cond_registration),
+      unpub_consistent = isTRUE(input$cond_unpub_consistent)
+    ))
+    novel_agents <- reactive(as.character(input$novel_agents %||% character(0)))
+
+    # ------------------------------------------------------------------
     # Data accessors
     # ------------------------------------------------------------------
     pairwise_data <- reactive({
@@ -761,36 +859,69 @@ moduleC_server <- function(id, processed_data, cinema_module,
       cr
     })
 
-    nma_net <- reactive({ cinema_res()$net })
-
     # ------------------------------------------------------------------
-    # Auto-trigger: fire Egger's test when the NMA net object changes.
-    # We track only the net structure (treatments + study labels), NOT the
-    # full cinema_results() list.  This prevents re-triggering when only
-    # Domain 2 ratings change (e.g. after set_robmen / ROB-MEN sync),
-    # which would cause robmen_main_ui to re-render and reset the active tab.
+    # Stable NMA core. cinema_results() is invalidated by EVERY CINeMA
+    # change — including our own Domain 2 sync and any D1/D3-D6 override —
+    # so nothing in this module may depend on it directly, otherwise the
+    # ROB-MEN tables would re-render (and lose user overrides) each time
+    # ratings are synced. Instead a fingerprint of the fitted network is
+    # kept and `nma_core_rv` is replaced only when the NMA itself changes.
     # ------------------------------------------------------------------
     auto_egger_trigger <- reactiveVal(0)
     last_net_key       <- reactiveVal(NULL)
+    nma_core_rv        <- reactiveVal(NULL)
 
     observeEvent(cinema_res(), {
       cr <- tryCatch(cinema_res(), error = function(e) NULL)
       if (is.null(cr) || is.null(cr$net)) return()
-      # Fingerprint the net structure — changes only when NMA is re-run
+      mt <- if (identical(cr$model_type, "random")) "random" else "common"
+      te_mat <- tryCatch(
+        if (mt == "random") cr$net$TE.random else cr$net$TE.common,
+        error = function(e) NULL)
       new_key <- list(
-        trts     = sort(cr$net$trts),
-        studlab  = sort(cr$net$studlab),
-        sm       = cr$net$sm,
-        n_studies = cr$net$k
+        trts      = sort(cr$net$trts),
+        studlab   = sort(cr$net$studlab),
+        sm        = cr$net$sm,
+        n_studies = cr$net$k,
+        model     = mt,
+        comps     = cr$merged$comparison,
+        te        = if (is.null(te_mat)) NULL else round(unname(te_mat), 6)
       )
       if (!identical(new_key, last_net_key())) {
         last_net_key(new_key)
+        nma_core_rv(list(
+          net         = cr$net,
+          model_type  = mt,
+          comp_labels = cr$merged$comparison,
+          nsplit      = cr$nsplit,
+          contrib     = cr$contrib,
+          sm          = cr$net$sm %||% ""
+        ))
         df <- tryCatch(pairwise_data(), error = function(e) NULL)
         if (!is.null(df) && nrow(df) > 0) {
           auto_egger_trigger(auto_egger_trigger() + 1)
         }
       }
     }, ignoreNULL = TRUE, ignoreInit = TRUE)
+
+    nma_core <- reactive({
+      core <- nma_core_rv()
+      validate(need(!is.null(core),
+        "Please run CINeMA analysis in Module B first."))
+      core
+    })
+    nma_net <- reactive({ nma_core()$net })
+
+    output$novel_agents_ui <- renderUI({
+      core <- tryCatch(nma_core(), error = function(e) NULL)
+      trts <- if (is.null(core)) character(0) else sort(core$net$trts)
+      selectizeInput(ns("novel_agents"),
+        label = tags$span(style = "font-weight:normal; font-size:0.9em;",
+          "Novel agents (few early trials — bias favours these treatments)"),
+        choices = trts, selected = isolate(input$novel_agents),
+        multiple = TRUE, width = "100%",
+        options = list(placeholder = if (length(trts)) "(none)" else "(run the analysis first)"))
+    })
 
     # ------------------------------------------------------------------
     # All pairwise comparisons
@@ -824,25 +955,69 @@ moduleC_server <- function(id, processed_data, cinema_module,
         arrange(comp_key)
     })
 
+    all_comps_df <- reactive({
+      dc <- direct_comps_df()   %>% mutate(is_direct = TRUE)
+      ic <- indirect_comps_df() %>% mutate(is_direct = FALSE,
+                                           n_total = NA_integer_)
+      bind_rows(dc, ic) %>% arrange(comp_key)
+    })
+
     # ------------------------------------------------------------------
-    # Group B/C classification (Chiocchia 2021):
-    #   group_b_keys_rv: comparisons "observed for other outcomes"
-    #     — studies for these comparisons exist in the SR but did NOT
-    #       report the current outcome of interest.
-    #     — within-study bias CAN be assessed (ROB-ME Q1 = Yes by definition)
-    #     — across-study bias: not applicable (no outcome data → no Egger's)
-    #   group_c: everything else in indirect_comps_df = "truly unobserved"
-    #     — no studies at all for this comparison
-    #     — only qualitative across-study judgment applies
+    # "Total identified in the SR" counts (k_sr / n_sr) — read from the
+    # editable cells of the pairwise table. These two numbers are the
+    # single user-facing driver of Group B/C classification and of the
+    # ROB-ME Q1 answer (see _robmen_auto.R).
     # ------------------------------------------------------------------
-    group_b_keys_rv <- reactiveVal(character(0))
+    read_num_input <- function(id) {
+      v <- suppressWarnings(as.numeric(input[[id]]))
+      if (length(v) == 0 || is.na(v[1]) || !is.finite(v[1])) NA_real_ else v[1]
+    }
+
+    sr_totals <- reactive({
+      comps <- tryCatch(all_comps_df(), error = function(e) NULL)
+      if (is.null(comps) || nrow(comps) == 0)
+        return(data.frame(comp_key = character(0), k_sr = numeric(0),
+                          n_sr = numeric(0), stringsAsFactors = FALSE))
+      data.frame(
+        comp_key = comps$comp_key,
+        k_sr = vapply(comps$comp_key, function(ck)
+                 read_num_input(paste0("n_sr_k_", safe_id(ck))), numeric(1)),
+        n_sr = vapply(comps$comp_key, function(ck)
+                 read_num_input(paste0("n_sr_n_", safe_id(ck))), numeric(1)),
+        stringsAsFactors = FALSE
+      )
+    })
+
+    # ------------------------------------------------------------------
+    # Group B/C classification (Chiocchia 2021), derived automatically:
+    #   Group A: direct evidence for this outcome (k_reported > 0)
+    #   Group B: indirect comparison with k_sr >= 1 — studies exist in the
+    #            SR but did NOT report this outcome
+    #            → within-study bias assessable (ROB-ME Q1 = Yes by definition)
+    #            → across-study bias not applicable (no outcome data)
+    #   Group C: indirect comparison with no SR studies at all
+    #            → qualitative across-study judgement only
+    # The "→ Group B" / "← Group C" buttons simply set k_sr to 1 / 0.
+    # ------------------------------------------------------------------
+    group_b_keys <- reactive({
+      ic <- tryCatch(indirect_comps_df(), error = function(e) NULL)
+      st <- tryCatch(sr_totals(),         error = function(e) NULL)
+      if (is.null(ic) || is.null(st) || nrow(ic) == 0) return(character(0))
+      ks <- st$k_sr[match(ic$comp_key, st$comp_key)]
+      ic$comp_key[!is.na(ks) & ks > 0]
+    })
+    # Debounced copy drives the (expensive) pairwise-table re-render so a
+    # user typing "12" into a cell does not lose focus after the "1".
+    group_b_keys_debounced <- debounce(group_b_keys, 700)
+    # Kept for callers that still expect a reactiveVal-style accessor.
+    group_b_keys_rv <- function() group_b_keys()
 
     group_b_comps_df <- reactive({
       ic   <- tryCatch(indirect_comps_df(), error = function(e) NULL)
       if (is.null(ic)) return(data.frame(comp_key=character(), t1=character(),
                                           t2=character(), n_direct=integer(),
                                           stringsAsFactors=FALSE))
-      keys <- group_b_keys_rv()
+      keys <- group_b_keys_debounced()
       ic %>% filter(comp_key %in% keys)
     })
 
@@ -851,11 +1026,11 @@ moduleC_server <- function(id, processed_data, cinema_module,
       if (is.null(ic)) return(data.frame(comp_key=character(), t1=character(),
                                           t2=character(), n_direct=integer(),
                                           stringsAsFactors=FALSE))
-      keys <- group_b_keys_rv()
+      keys <- group_b_keys_debounced()
       ic %>% filter(!comp_key %in% keys)
     })
 
-    # Toggle a comparison between Group B and Group C
+    # Toggle a comparison between Group B and Group C by editing k_sr
     grpb_observers_created <- reactiveVal(FALSE)
     observe({
       ic <- tryCatch(indirect_comps_df(), error = function(e) NULL)
@@ -866,9 +1041,9 @@ moduleC_server <- function(id, processed_data, cinema_module,
           ck_i  <- ic$comp_key[i]
           sid_i <- safe_id(ck_i)
           observeEvent(input[[paste0("grpb_toggle_", sid_i)]], {
-            keys <- group_b_keys_rv()
-            if (ck_i %in% keys) group_b_keys_rv(setdiff(keys, ck_i))
-            else                group_b_keys_rv(c(keys, ck_i))
+            cur <- read_num_input(paste0("n_sr_k_", sid_i))
+            new_val <- if (!is.na(cur) && cur > 0) 0 else 1
+            updateNumericInput(session, paste0("n_sr_k_", sid_i), value = new_val)
           }, ignoreNULL = TRUE, ignoreInit = TRUE)
         })
       }
@@ -883,8 +1058,9 @@ moduleC_server <- function(id, processed_data, cinema_module,
     }, ignoreInit = TRUE, ignoreNULL = TRUE)
 
     egger_df <- eventReactive(run_egger_counter(), {
-      df    <- pairwise_data()
-      comps <- direct_comps_df()
+      df     <- pairwise_data()
+      comps  <- direct_comps_df()
+      sv_now <- small_values()
 
       results <- lapply(seq_len(nrow(comps)), function(i) {
         sub <- df %>%
@@ -933,13 +1109,12 @@ moduleC_server <- function(id, processed_data, cinema_module,
           list(p = NA_real_, bias = NA_real_, eff = NA_real_)
         })
 
-        across_auto <- if (length(eg$p) == 0 || is.na(eg$p) || eg$p >= 0.05) {
-          NO_BIAS
-        } else if (!is.na(eg$bias) && sign(eg$bias) < 0) {
-          bias_label(comps$t1[i])
-        } else {
-          bias_label(comps$t2[i])
-        }
+        # Direction is outcome-aware: a negative intercept means small
+        # studies report LOWER values for t1, which favours t1 only when
+        # lower values are desirable (robmen_egger_auto handles both).
+        across_auto <- robmen_egger_auto(eg$p, eg$bias,
+                                         comps$t1[i], comps$t2[i],
+                                         small_values = sv_now)
 
         data.frame(
           comp_key    = comps$comp_key[i],
@@ -956,17 +1131,258 @@ moduleC_server <- function(id, processed_data, cinema_module,
     })
 
     # ------------------------------------------------------------------
-    # NOTE: within-study bias (Component 1) is NOT auto-populated.
-    # Chiocchia 2021: Component 1 assesses SELECTIVE NON-REPORTING OF
-    # OUTCOMES — whether any studies identified in the SR failed to report
-    # the outcome of interest, possibly because of direction/magnitude/p-value.
-    # This requires a qualitative judgment using ROB-ME Step 2
-    # (Page & Sterne, BMJ 2023); it cannot be proxied from RoB 2 scores.
-    #   - NOT RoB 2 Domain 3 (missing participant data — dropouts)
-    #   - NOT RoB 2 Domain 5 (selection of reported result — within-study)
-    # Default for Group A/B: "Not assessed" (user must click ROB-ME button
-    # or select rating directly).
+    # Pooled direct estimate per comparison (inverse-variance, canonical
+    # t1c vs t2c direction). Used only to READ A DIRECTION for the
+    # provisional auto judgements; it is not a replacement for the NMA.
     # ------------------------------------------------------------------
+    pooled_direct_df <- reactive({
+      df    <- pairwise_data()
+      comps <- direct_comps_df()
+      lapply(seq_len(nrow(comps)), function(i) {
+        sub <- df %>%
+          filter((t1 == comps$t1[i] & t2 == comps$t2[i]) |
+                 (t1 == comps$t2[i] & t2 == comps$t1[i])) %>%
+          mutate(y_can = ifelse(t1 == comps$t1[i] & t2 == comps$t2[i], y, -y)) %>%
+          filter(!is.na(y_can), !is.na(se), se > 0)
+        if (nrow(sub) == 0)
+          return(data.frame(comp_key = comps$comp_key[i], te = NA_real_,
+                            se = NA_real_, stringsAsFactors = FALSE))
+        w <- 1 / sub$se^2
+        data.frame(comp_key = comps$comp_key[i],
+                   te = sum(sub$y_can * w) / sum(w),
+                   se = sqrt(1 / sum(w)),
+                   stringsAsFactors = FALSE)
+      }) %>% bind_rows()
+    })
+
+    # NMA estimate for a canonical (t1c < t2c) comparison key, as t1c vs t2c.
+    nma_te_for_key <- function(ne, t1c, t2c) {
+      if (is.null(ne) || nrow(ne) == 0) return(NA_real_)
+      r <- ne[ne$t1 == t1c & ne$t2 == t2c, , drop = FALSE]
+      if (nrow(r) > 0) return(r$te[1])
+      r <- ne[ne$t1 == t2c & ne$t2 == t1c, , drop = FALSE]
+      if (nrow(r) > 0) return(-r$te[1])
+      NA_real_
+    }
+
+    # ------------------------------------------------------------------
+    # ① Within-study bias (Component 1) — AUTO.
+    # Chiocchia 2021: Component 1 assesses SELECTIVE NON-REPORTING OF
+    # OUTCOMES — whether studies identified in the SR failed to report the
+    # outcome of interest. That is exactly what the "Total identified in the
+    # SR" count expresses, so ROB-ME Q1 is answered from k_sr vs k:
+    #   k_sr == k -> Q1 = No  -> "No bias detected"
+    #   k_sr >  k -> Q1 = Yes -> provisional "Suspected bias favouring X",
+    #                X = treatment favoured by the observed effect (pooled
+    #                direct for Group A, NMA estimate for Group B)
+    # Provisional rows are flagged and should be confirmed via ROB-ME.
+    # It is still NOT proxied from RoB 2 scores (not Domain 3 / Domain 5).
+    # ------------------------------------------------------------------
+    within_auto_df <- reactive({
+      comps <- tryCatch(all_comps_df(),   error = function(e) NULL)
+      st    <- tryCatch(sr_totals(),      error = function(e) NULL)
+      pool  <- tryCatch(pooled_direct_df(), error = function(e) NULL)
+      ne    <- tryCatch(nma_estimates(),  error = function(e) NULL)
+      sv    <- small_values()
+      if (is.null(comps) || nrow(comps) == 0)
+        return(data.frame(comp_key = character(0), grp = character(0),
+                          rating = character(0), provisional = logical(0),
+                          note = character(0), k_sr = numeric(0),
+                          n_missing = numeric(0), stringsAsFactors = FALSE))
+      lapply(seq_len(nrow(comps)), function(i) {
+        ck   <- comps$comp_key[i]
+        k_rep <- if (isTRUE(comps$is_direct[i])) comps$n_direct[i] else 0
+        k_sr <- if (!is.null(st)) st$k_sr[match(ck, st$comp_key)] else NA_real_
+        grp  <- robmen_group_auto(k_rep, k_sr)
+        if (grp == "C")
+          return(data.frame(comp_key = ck, grp = grp, rating = "",
+                            provisional = FALSE, note = "",
+                            k_sr = k_sr, n_missing = 0,
+                            stringsAsFactors = FALSE))
+        te <- if (grp == "A" && !is.null(pool)) {
+          pool$te[match(ck, pool$comp_key)]
+        } else {
+          nma_te_for_key(ne, comps$t1[i], comps$t2[i])
+        }
+        res <- robmen_within_auto(k_rep, k_sr, te, comps$t1[i], comps$t2[i], sv)
+        data.frame(comp_key = ck, grp = grp, rating = res$rating,
+                   provisional = res$provisional, note = res$note,
+                   k_sr = k_sr, n_missing = res$n_missing,
+                   stringsAsFactors = FALSE)
+      }) %>% bind_rows()
+    })
+
+    # ------------------------------------------------------------------
+    # ② Across-study bias (Component 2) — AUTO.
+    #   Group A, k >= 10 : Egger's test (egger_df)
+    #   Group A, k <  10 : review-level qualitative conditions
+    #   Group C          : review-level qualitative conditions (NMA direction)
+    #   Group B          : not applicable
+    # ------------------------------------------------------------------
+    across_auto_df <- reactive({
+      comps <- tryCatch(all_comps_df(),   error = function(e) NULL)
+      eg    <- tryCatch(egger_df(),       error = function(e) NULL)
+      pool  <- tryCatch(pooled_direct_df(), error = function(e) NULL)
+      ne    <- tryCatch(nma_estimates(),  error = function(e) NULL)
+      wa    <- tryCatch(within_auto_df(), error = function(e) NULL)
+      sv    <- small_values()
+      conds <- qual_conditions()
+      nov   <- novel_agents()
+      if (is.null(comps) || nrow(comps) == 0)
+        return(data.frame(comp_key = character(0), grp = character(0),
+                          rating = character(0), provisional = logical(0),
+                          source = character(0), note = character(0),
+                          stringsAsFactors = FALSE))
+      lapply(seq_len(nrow(comps)), function(i) {
+        ck  <- comps$comp_key[i]
+        grp <- if (!is.null(wa)) wa$grp[match(ck, wa$comp_key)] else
+                 if (isTRUE(comps$is_direct[i])) "A" else "C"
+        if (is.na(grp)) grp <- "C"
+        if (grp == "B")
+          return(data.frame(comp_key = ck, grp = grp, rating = "",
+                            provisional = FALSE, source = "", note = "",
+                            stringsAsFactors = FALSE))
+        k <- if (isTRUE(comps$is_direct[i])) comps$n_direct[i] else 0L
+        if (grp == "A" && !is.na(k) && k >= 10 && !is.null(eg)) {
+          r <- eg[eg$comp_key == ck, , drop = FALSE]
+          if (nrow(r) > 0 && !isTRUE(r$n_few[1])) {
+            rating <- robmen_egger_auto(r$egger_p[1], r$egger_bias[1],
+                                        comps$t1[i], comps$t2[i], sv)
+            p_txt <- if (is.na(r$egger_p[1])) "Egger's test failed" else
+              paste0("Egger p = ", formatC(r$egger_p[1], digits = 3, format = "f"))
+            return(data.frame(comp_key = ck, grp = grp, rating = rating,
+                              provisional = is_suspected(rating),
+                              source = "egger",
+                              note = paste0("Auto: ", p_txt, " (k = ", k, ")",
+                                            if (is_suspected(rating))
+                                              "; check the funnel plot" else ""),
+                              stringsAsFactors = FALSE))
+          }
+        }
+        te <- if (grp == "A" && !is.null(pool)) pool$te[match(ck, pool$comp_key)]
+              else nma_te_for_key(ne, comps$t1[i], comps$t2[i])
+        res <- robmen_across_qual_auto(te, comps$t1[i], comps$t2[i], sv,
+                                       conditions = conds, novel_agents = nov)
+        data.frame(comp_key = ck, grp = grp, rating = res$rating,
+                   provisional = res$provisional, source = "qual",
+                   note = res$note, stringsAsFactors = FALSE)
+      }) %>% bind_rows()
+    })
+
+    # ------------------------------------------------------------------
+    # Auto-fill observer with override tracking.
+    # `auto_pushed[[id]]` remembers the last auto value written to a
+    # dropdown. If the dropdown now holds something else, the user changed
+    # it and the auto rule keeps its hands off; "↺ auto" clears the memory.
+    # ------------------------------------------------------------------
+    auto_pushed <- reactiveValues()
+
+    push_auto <- function(id, auto_val, force = FALSE) {
+      if (is.null(auto_val) || is.na(auto_val) || !nzchar(auto_val)) return(FALSE)
+      cur  <- isolate(input[[id]])
+      last <- isolate(auto_pushed[[id]])
+      user_overrode <- !force && !is.null(cur) && nzchar(cur) &&
+                       !is.null(last) && !identical(cur, last)
+      if (user_overrode) return(FALSE)
+      if (is.null(cur) || !identical(cur, auto_val))
+        updateSelectInput(session, id, selected = auto_val)
+      auto_pushed[[id]] <- auto_val
+      TRUE
+    }
+
+    observe({
+      if (!auto_fill_on()) return()
+      wa <- tryCatch(within_auto_df(), error = function(e) NULL)
+      aa <- tryCatch(across_auto_df(), error = function(e) NULL)
+      if (!is.null(wa)) {
+        for (i in seq_len(nrow(wa))) {
+          if (wa$grp[i] %in% c("A", "B"))
+            push_auto(paste0("within_", safe_id(wa$comp_key[i])), wa$rating[i])
+        }
+      }
+      if (!is.null(aa)) {
+        for (i in seq_len(nrow(aa))) {
+          if (aa$grp[i] %in% c("A", "C"))
+            push_auto(paste0("across_", safe_id(aa$comp_key[i])), aa$rating[i])
+        }
+      }
+    }, priority = -50)
+
+    # "↺ auto" header buttons: discard manual edits in a column
+    reset_col_to_auto <- function(col) {
+      df <- tryCatch(if (col == "within") within_auto_df() else across_auto_df(),
+                     error = function(e) NULL)
+      if (is.null(df)) return()
+      ok_grp <- if (col == "within") c("A", "B") else c("A", "C")
+      for (i in seq_len(nrow(df))) {
+        if (!df$grp[i] %in% ok_grp) next
+        id <- paste0(col, "_", safe_id(df$comp_key[i]))
+        auto_pushed[[id]] <- NULL
+        push_auto(id, df$rating[i], force = TRUE)
+      }
+    }
+    observeEvent(input$reset_within_auto, reset_col_to_auto("within"))
+    observeEvent(input$reset_across_auto, reset_col_to_auto("across"))
+
+    # Which rows differ from their auto value right now (live)
+    overridden_keys <- reactive({
+      wa <- tryCatch(within_auto_df(), error = function(e) NULL)
+      aa <- tryCatch(across_auto_df(), error = function(e) NULL)
+      out <- character(0)
+      chk <- function(df, col, grps) {
+        if (is.null(df)) return(character(0))
+        keys <- character(0)
+        for (i in seq_len(nrow(df))) {
+          if (!df$grp[i] %in% grps) next
+          cur <- input[[paste0(col, "_", safe_id(df$comp_key[i]))]]
+          if (!is.null(cur) && nzchar(cur) && !identical(cur, df$rating[i]))
+            keys <- c(keys, df$comp_key[i])
+        }
+        keys
+      }
+      unique(c(chk(wa, "within", c("A", "B")), chk(aa, "across", c("A", "C"))))
+    })
+
+    # Live status line above the pairwise table
+    output$auto_status_ui <- renderUI({
+      wa <- tryCatch(within_auto_df(), error = function(e) NULL)
+      aa <- tryCatch(across_auto_df(), error = function(e) NULL)
+      if (is.null(wa) || is.null(aa) || nrow(wa) == 0) return(NULL)
+      rows <- data.frame(
+        comp_key           = wa$comp_key,
+        grp                = wa$grp,
+        within_rating      = wa$rating,
+        within_provisional = wa$provisional,
+        across_rating      = aa$rating[match(wa$comp_key, aa$comp_key)],
+        across_provisional = aa$provisional[match(wa$comp_key, aa$comp_key)],
+        across_source      = aa$source[match(wa$comp_key, aa$comp_key)],
+        stringsAsFactors   = FALSE
+      )
+      s  <- robmen_auto_summary(rows)
+      ov <- overridden_keys()
+      on <- auto_fill_on()
+      n_prov <- length(s$prov_keys)
+      div(class = if (n_prov > 0) "alert alert-warning" else "alert alert-success",
+          style = "font-size:0.86em; padding:8px 12px; margin-bottom:8px;",
+        icon(if (n_prov > 0) "triangle-exclamation" else "check-circle"),
+        strong(if (on) " Auto-fill on. " else " Auto-fill off. "),
+        sprintf("%d comparisons: Group A %d · B %d · C %d.", s$n, s$n_a, s$n_b, s$n_c),
+        " ① auto ", strong(s$n_within_auto + s$n_within_prov), " / ② Egger ",
+        strong(s$n_across_egger), ", qualitative ", strong(s$n_across_qual), ". ",
+        if (n_prov > 0) tagList(
+          tags$br(),
+          strong(sprintf("%d row%s carry a provisional judgement and need confirmation: ",
+                         n_prov, if (n_prov == 1) "" else "s")),
+          paste(s$prov_keys, collapse = ", "), "."
+        ) else " No provisional judgements — all rows are fully auto-rated.",
+        if (length(ov) > 0) tagList(
+          tags$br(),
+          tags$span(style = "color:#6c757d;",
+            sprintf("Manually edited (auto will not overwrite): %s.",
+                    paste(ov, collapse = ", ")))
+        )
+      )
+    })
 
     # ------------------------------------------------------------------
     # ROB-ME Step 2 Helper: per-comparison modal with Q1 + Q2
@@ -1280,16 +1696,14 @@ moduleC_server <- function(id, processed_data, cinema_module,
     # NMA estimates: reference vs all other treatments
     # ------------------------------------------------------------------
     nma_estimates <- reactive({
-      net <- nma_net()
-      cr  <- cinema_res()
-      mt  <- cr$model_type
+      core <- nma_core()
+      net  <- core$net
+      mt   <- core$model_type
 
       # Use ALL pairwise comparisons from CINeMA (alphabetical t1 < t2 ordering),
       # not just ref vs others, so ROB-MEN covers every comparison in Domain 2.
-      merged <- cr$merged
-      if (!is.null(merged) && nrow(merged) > 0) {
-        comp_labels <- merged$comparison  # "T1 vs T2" canonical labels from CINeMA
-      } else {
+      comp_labels <- core$comp_labels  # "T1 vs T2" canonical labels from CINeMA
+      if (is.null(comp_labels) || length(comp_labels) == 0) {
         ref  <- net$reference.group
         trts <- setdiff(sort(net$trts), ref)
         comp_labels <- paste(ref, trts, sep = " vs ")
@@ -1309,8 +1723,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
           hi <- tryCatch(net$upper.common[t1, t2], error = function(e) NA_real_)
         }
         ev <- "indirect"
-        if (!is.null(cr$nsplit)) {
-          lbls <- cr$nsplit$comparison
+        if (!is.null(core$nsplit)) {
+          lbls <- core$nsplit$comparison
           if (any(lbls == paste(t1, t2, sep = ":") |
                   lbls == paste(t2, t1, sep = ":"))) ev <- "mixed"
         }
@@ -1331,17 +1745,33 @@ moduleC_server <- function(id, processed_data, cinema_module,
     # `sid` / `ck` identify the PAIRWISE row (comp_key-based safe_id, e.g.
     # "A_B"), distinct from the ROB-MEN table sid ("A_vs_B").
     # ------------------------------------------------------------------
+    # `eg` may be the across_auto_df() table (preferred: covers Egger AND the
+    # qualitative rule) or the legacy egger_df(); both carry comp_key.
     pw_overall_from_inputs <- function(sid, ck, t1, t2, eg = NULL) {
       w <- input[[paste0("within_", sid)]]
       a <- input[[paste0("across_", sid)]]
-      if (is.null(w) || !nzchar(w)) w <- NO_BIAS
+      auto_on <- auto_fill_on()
+      if (is.null(w) || !nzchar(w)) {
+        w <- NO_BIAS
+        if (auto_on) {
+          wa <- tryCatch(within_auto_df(), error = function(e) NULL)
+          wrow <- if (!is.null(wa)) wa[wa$comp_key == ck, , drop = FALSE] else NULL
+          if (!is.null(wrow) && nrow(wrow) > 0 && nzchar(wrow$rating[1]))
+            w <- wrow$rating[1]
+        }
+      }
       if (is.null(a) || !nzchar(a)) {
-        if (is.null(eg)) eg <- tryCatch(egger_df(), error = function(e) NULL)
+        if (is.null(eg)) eg <- tryCatch(across_auto_df(), error = function(e) NULL)
         arow <- if (!is.null(eg) && "comp_key" %in% names(eg))
                   eg[eg$comp_key == ck, , drop = FALSE] else NULL
-        a <- if (!is.null(arow) && nrow(arow) > 0 &&
-                 !is.na(arow$across_auto[1]) && nzchar(arow$across_auto[1]))
-               arow$across_auto[1] else NO_BIAS
+        a_col <- if (!is.null(arow) && "rating" %in% names(arow)) "rating" else "across_auto"
+        # With auto-fill off, only the statistical (Egger) rating is used as
+        # a silent fallback — the qualitative rule is an auto-fill feature.
+        use_row <- !is.null(arow) && nrow(arow) > 0 &&
+                   (auto_on || !"source" %in% names(arow) ||
+                    identical(arow$source[1], "egger"))
+        a <- if (use_row && !is.na(arow[[a_col]][1]) && nzchar(arow[[a_col]][1]))
+               arow[[a_col]][1] else NO_BIAS
       }
       compute_overall_pw(w, a, t1, t2)
     }
@@ -1354,15 +1784,15 @@ moduleC_server <- function(id, processed_data, cinema_module,
     #     Threshold: |pct_t1 - pct_t2| > 15 pp → Substantial contribution
     # ------------------------------------------------------------------
     pct_biased <- reactive({
-      ne  <- tryCatch(nma_estimates(), error = function(e) NULL)
-      eg  <- tryCatch(egger_df(),      error = function(e) NULL)
-      cr  <- tryCatch(cinema_res(),    error = function(e) NULL)
-      if (is.null(ne) || is.null(eg)) {
+      ne   <- tryCatch(nma_estimates(),  error = function(e) NULL)
+      eg   <- tryCatch(across_auto_df(), error = function(e) NULL)
+      core <- tryCatch(nma_core(),       error = function(e) NULL)
+      if (is.null(ne) || is.null(eg) || is.null(core)) {
         return(data.frame(comparison = character(0),
                           pct_fav_t1 = numeric(0),
                           pct_fav_t2 = numeric(0)))
       }
-      cm <- get_contrib_matrix(cr$contrib)
+      cm <- get_contrib_matrix(core$contrib)
 
       lapply(seq_len(nrow(ne)), function(i) {
         pct_t1 <- 0; pct_t2 <- 0
@@ -1418,31 +1848,34 @@ moduleC_server <- function(id, processed_data, cinema_module,
     # → no evidence of SSE.
     # Returns data.frame: comparison, nmr_te, nmr_lo, nmr_hi, nma_te, sse_auto
     # ------------------------------------------------------------------
+    # The NMR fit depends only on the network, so it is cached separately
+    # from the (cheap, input-driven) direction judgement below.
+    network_nmr_fit <- reactive({
+      core <- tryCatch(nma_core(),      error = function(e) NULL)
+      pw   <- tryCatch(pairwise_data(), error = function(e) NULL)
+      if (is.null(core) || is.null(pw)) return(NULL)
+      net <- core$net
+      mt  <- if (identical(core$model_type, "random")) "random" else "fixed"
+      tryCatch(
+        compute_network_nmr(
+          pairwise_df    = pw,
+          treatments     = sort(net$trts),
+          reference      = tryCatch(net$reference.group, error = function(e) NULL),
+          model_type     = mt,
+          covar          = "variance",
+          coef_type      = "common",
+          extrapolate_to = "min"
+        ),
+        error = function(e) NULL)
+    })
+
     network_sse_df <- reactive({
-      net <- tryCatch(nma_net(),      error = function(e) NULL)
-      cr  <- tryCatch(cinema_res(),   error = function(e) NULL)
-      ne  <- tryCatch(nma_estimates(), error = function(e) NULL)
-      pw  <- tryCatch(pairwise_data(), error = function(e) NULL)
-      if (is.null(net) || is.null(cr) || is.null(ne) || nrow(ne) == 0) return(NULL)
+      ne <- tryCatch(nma_estimates(), error = function(e) NULL)
+      if (is.null(ne) || nrow(ne) == 0) return(NULL)
+      nmr_all <- network_nmr_fit()
+      pb <- tryCatch(pct_biased(), error = function(e) NULL)
+      sv <- small_values()
       tryCatch({
-        mt <- if (identical(cr$model_type, "random")) "random" else "fixed"
-        nmr_all <- tryCatch(
-          compute_network_nmr(
-            pairwise_df    = pw,
-            treatments     = sort(net$trts),
-            reference      = tryCatch(net$reference.group, error = function(e) NULL),
-            model_type     = mt,
-            covar          = "variance",
-            coef_type      = "common",
-            extrapolate_to = "min"
-          ),
-          error = function(e) NULL)
-
-        # SSE labels matching SSE_CHOICES exactly
-        SSE_IN  <- "Evidence of small-study effects \u2013 reinforcing biased contribution"
-        SSE_NOT <- "Evidence of small-study effects \u2013 not reinforcing biased contribution"
-        pb <- tryCatch(pct_biased(), error = function(e) NULL)
-
         lapply(seq_len(nrow(ne)), function(i) {
           t1 <- ne$t1[i]; t2 <- ne$t2[i]
           comp   <- ne$comparison[i]
@@ -1470,40 +1903,26 @@ moduleC_server <- function(id, processed_data, cinema_module,
             }
           }
 
-          # CI overlap test requires all four bounds; if NMR CI is unavailable
-          # (e.g. tau²=0 boundary, insufficient df), fall back to "No evidence".
-          ci_available <- !anyNA(c(nmr_lo, nmr_hi, nma_lo, nma_hi))
-          overlaps     <- ci_available && nmr_hi >= nma_lo && nma_hi >= nmr_lo
-
-          sse_auto <- if (!ci_available || anyNA(c(nmr_te, nma_te)) || overlaps) {
-            "No evidence of small-study effects"
-          } else {
-            bias_dir <- ""
-            if (!is.null(pb) && nrow(pb) > 0) {
-              pb_row <- pb %>% filter(comparison == comp)
-              if (nrow(pb_row) > 0 &&
-                  !any(is.na(c(pb_row$pct_fav_t1[1], pb_row$pct_fav_t2[1]))) &&
-                  pb_row$pct_fav_t1[1] != pb_row$pct_fav_t2[1]) {
-                bias_dir <- if (pb_row$pct_fav_t1[1] > pb_row$pct_fav_t2[1])
-                              "t1" else "t2"
-              }
-            }
-            delta <- nmr_te - nma_te
-            if (nzchar(bias_dir) && bias_dir == "t1") {
-              if (sign(delta) > 0) SSE_IN else SSE_NOT
-            } else if (nzchar(bias_dir) && bias_dir == "t2") {
-              if (sign(delta) < 0) SSE_IN else SSE_NOT
-            } else {
-              # Fallback: legacy shrinkage-based heuristic
-              sse_shrinks <- !is.na(nmr_te) && abs(nmr_te) < abs(nma_te)
-              if (sse_shrinks && !is.na(nma_te) && sign(nmr_te) == sign(nma_te))
-                SSE_IN
-              else if (is.na(nma_te) || is.na(nmr_te))
-                "No evidence of small-study effects"
-              else
-                SSE_NOT
+          # Treatment favoured by the biased contribution (4): NA when
+          # balanced or absent, so robmen_sse_auto() falls back to the
+          # shrinkage heuristic.
+          bias_fav <- NA_character_
+          if (!is.null(pb) && nrow(pb) > 0) {
+            pb_row <- pb %>% filter(comparison == comp)
+            if (nrow(pb_row) > 0 &&
+                !any(is.na(c(pb_row$pct_fav_t1[1], pb_row$pct_fav_t2[1]))) &&
+                pb_row$pct_fav_t1[1] != pb_row$pct_fav_t2[1]) {
+              bias_fav <- if (pb_row$pct_fav_t1[1] > pb_row$pct_fav_t2[1]) t1 else t2
             }
           }
+
+          # CI overlap test requires all four bounds; if the NMR CI is
+          # unavailable (tau^2 = 0 boundary, insufficient df) the helper
+          # returns "No evidence". Direction is outcome-aware (small_values).
+          sse_auto <- robmen_sse_auto(nma_te, nma_lo, nma_hi,
+                                      nmr_te, nmr_lo, nmr_hi,
+                                      t1, t2, bias_favoured = bias_fav,
+                                      small_values = sv)
 
           data.frame(comparison = comp,
                      nmr_te   = round(nmr_te, 3),
@@ -1546,6 +1965,13 @@ moduleC_server <- function(id, processed_data, cinema_module,
         easyClose = TRUE, footer = modalButton("Close"),
         tags$b("Did any study selectively NOT report this outcome?"),
         tags$ul(
+          tags$li(strong("Auto rule:"), " ROB-ME Q1 is answered from the",
+            " “Total identified in the SR” count. k_SR = k reporting",
+            " → No bias detected. k_SR > k → provisional",
+            em(" Suspected bias favouring X"), ", X = treatment favoured by the",
+            " observed effect (selective non-reporting hides results unfavourable",
+            " to the treatment the published evidence favours). Flagged rows",
+            " should be confirmed."),
           tags$li(strong("Group A:"), " click ROB-ME → answer Q1 (any eligible studies",
             " not reporting this outcome?) and Q2 (omission due to result",
             " direction/p-value?) → rating auto-derived."),
@@ -1980,71 +2406,33 @@ moduleC_server <- function(id, processed_data, cinema_module,
     # Group B: within only (across has no outcome data, so no-bias default)
     # Group C: across only (within = "Not applicable" → treat as "No bias" in formula)
     # ------------------------------------------------------------------
+    # The header "auto" button and the reactive observer below both derive
+    # ③ from the same source of truth: pw_overall_from_inputs(), which reads
+    # the ① / ② dropdowns and falls back to the auto tables when blank.
     observeEvent(input$calc_overall_pw, {
-      comps <- tryCatch(
-        bind_rows(
-          direct_comps_df()   %>% mutate(grp = "A"),
-          indirect_comps_df() %>% mutate(grp = if_else(
-            comp_key %in% group_b_keys_rv(), "B", "C"))
-        ),
-        error = function(e) NULL)
-      eg <- tryCatch(egger_df(), error = function(e) NULL)
+      comps <- tryCatch(all_comps_df(), error = function(e) NULL)
       if (is.null(comps)) return()
-
+      aa <- tryCatch(across_auto_df(), error = function(e) NULL)
       for (i in seq_len(nrow(comps))) {
         ck  <- comps$comp_key[i]
         sid <- safe_id(ck)
-        grp <- comps$grp[i]
-
-        w_val <- input[[paste0("within_", sid)]]
-        a_val <- input[[paste0("across_", sid)]]
-
-        if (grp == "C") {
-          # Group C: within = not applicable → use "No bias detected" in formula
-          # across = user's qualitative choice
-          w_val <- NO_BIAS
-          if (is.null(a_val) || !nzchar(a_val)) a_val <- NO_BIAS
-        } else if (grp == "B") {
-          # Group B: across not applicable; pairwise overall follows within.
-          if (is.null(w_val) || !nzchar(w_val)) w_val <- NO_BIAS
-          a_val <- NO_BIAS
-        } else {
-          # Group A: both components
-          if (is.null(w_val) || !nzchar(w_val)) w_val <- NO_BIAS
-          if (is.null(a_val) || !nzchar(a_val)) {
-            eg_row <- if (!is.null(eg)) eg %>% filter(comp_key == ck) else data.frame()
-            a_val  <- if (nrow(eg_row) > 0 && !is.na(eg_row$across_auto[1]))
-                        eg_row$across_auto[1] else NO_BIAS
-            if (is.null(a_val) || !nzchar(a_val)) a_val <- NO_BIAS
-          }
-        }
-        # normalize legacy labels
-        if (!is.null(a_val) && a_val == "High risk") a_val <- "Suspected bias"
-        if (!is.null(w_val) && w_val == "High risk") w_val <- "Suspected bias"
-        if (!is.null(a_val) && a_val == "No bias") a_val <- "No bias detected"
-        if (!is.null(w_val) && w_val == "No bias") w_val <- "No bias detected"
         updateSelectInput(session, paste0("ov_pw_", sid),
-                          selected = compute_overall_pw(w_val, a_val,
-                                                        comps$t1[i], comps$t2[i]))
+                          selected = pw_overall_from_inputs(
+                            sid, ck, comps$t1[i], comps$t2[i], aa))
       }
     })
 
     # ------------------------------------------------------------------
     # Reactive auto-update: within/across → auto pairwise overall
-    # Fires whenever any within_* or across_* input changes.
-    # Short-circuit in compute_overall_pw(): within suspected takes precedence,
-    # but across-study inputs remain editable.
+    # Fires whenever any within_* or across_* input (or an auto table)
+    # changes. Short-circuit in compute_overall_pw(): within suspected takes
+    # precedence, but across-study inputs remain editable.
     # ------------------------------------------------------------------
     observe({
-      comps <- tryCatch(
-        bind_rows(
-          direct_comps_df()   %>% mutate(grp = "A"),
-          indirect_comps_df() %>% mutate(grp = if_else(
-            comp_key %in% group_b_keys_rv(), "B", "C"))
-        ),
-        error = function(e) NULL)
+      comps <- tryCatch(all_comps_df(), error = function(e) NULL)
       if (is.null(comps) || nrow(comps) == 0) return()
-      eg <- tryCatch(egger_df(), error = function(e) NULL)
+      aa <- tryCatch(across_auto_df(), error = function(e) NULL)
+      auto_on <- auto_fill_on()
 
       for (i in seq_len(nrow(comps))) {
         ck  <- comps$comp_key[i]
@@ -2055,18 +2443,16 @@ moduleC_server <- function(id, processed_data, cinema_module,
         has_w <- !is.null(w_raw) && nzchar(w_raw)
         has_a <- !is.null(a_raw) && nzchar(a_raw)
 
-        # Recompute ③ overall from ① / ② whenever either has been assessed —
-        # including when ① is reverted from "Suspected bias" back to
-        # "No bias detected" (previously the overall was left stale because
-        # the update only fired for the suspected / both-filled cases). Skip
-        # only when nothing is assessed yet, to preserve the initial blank.
-        if (has_w || has_a) {
+        # Recompute ③ from ① / ② whenever either has been assessed — or
+        # always while auto-fill is on, so the column never stays blank.
+        # With auto-fill off, skip untouched rows to preserve the blank.
+        if (auto_on || has_w || has_a) {
           updateSelectInput(session, paste0("ov_pw_", sid),
                             selected = pw_overall_from_inputs(
-                              sid, ck, comps$t1[i], comps$t2[i], eg))
+                              sid, ck, comps$t1[i], comps$t2[i], aa))
         }
       }
-    })
+    }, priority = -60)
 
     # ------------------------------------------------------------------
     # Set-all observers — ROB-MEN Table
@@ -2193,25 +2579,107 @@ moduleC_server <- function(id, processed_data, cinema_module,
     # ------------------------------------------------------------------
     # Collect final ROB-MEN ratings (for Module B integration + return)
     # ------------------------------------------------------------------
+    # `comparison` + `robmen_rating` are the contract with Module B
+    # (set_robmen) and Module D (summary / export). The remaining columns
+    # make the "ROB-MEN evaluation" Word / Excel export a complete Table 5
+    # instead of a two-column list.
     robmen_results <- reactive({
       ne <- tryCatch(nma_estimates(), error = function(e) NULL)
       req(!is.null(ne))
+      pb  <- tryCatch(pct_biased(),     error = function(e) NULL)
+      nmr <- tryCatch(network_sse_df(), error = function(e) NULL)
+      sm_val <- tryCatch(nma_core()$sm, error = function(e) "") %||% ""
       lapply(seq_len(nrow(ne)), function(i) {
         sid <- safe_id(ne$comparison[i])
         ov  <- input[[paste0("ov_robmen_", sid)]]
+        get_in <- function(prefix) {
+          v <- input[[paste0(prefix, sid)]]
+          if (is.null(v) || !nzchar(v)) "" else as.character(v)
+        }
+        pb_row  <- if (!is.null(pb)) pb[pb$comparison == ne$comparison[i], , drop = FALSE] else NULL
+        nmr_row <- if (!is.null(nmr)) nmr[nmr$comparison == ne$comparison[i], , drop = FALSE] else NULL
+        p1 <- if (!is.null(pb_row) && nrow(pb_row) > 0) pb_row$pct_fav_t1[1] else NA_real_
+        p2 <- if (!is.null(pb_row) && nrow(pb_row) > 0) pb_row$pct_fav_t2[1] else NA_real_
+        nmr_te <- if (!is.null(nmr_row) && nrow(nmr_row) > 0) nmr_row$nmr_te[1] else NA_real_
+        nmr_lo <- if (!is.null(nmr_row) && nrow(nmr_row) > 0) nmr_row$nmr_lo[1] else NA_real_
+        nmr_hi <- if (!is.null(nmr_row) && nrow(nmr_row) > 0) nmr_row$nmr_hi[1] else NA_real_
+        ib <- get_in("indirect_bias_")
+        ib_label <- if (identical(ib, "Suspected bias favouring t1")) bias_label(ne$t1[i])
+                    else if (identical(ib, "Suspected bias favouring t2")) bias_label(ne$t2[i])
+                    else ib
         data.frame(
-          comparison    = ne$comparison[i],
-          robmen_rating = if (!is.null(ov) && nzchar(ov)) ov else "Not assessed",
+          comparison             = ne$comparison[i],
+          robmen_rating          = if (!is.null(ov) && nzchar(ov)) ov else "Not assessed",
+          evidence_type          = ne$evidence_type[i],
+          pct_biased_fav_t1      = p1,
+          pct_biased_fav_t2      = p2,
+          contribution_eval      = get_in("contrib_eval_"),
+          indirect_evidence_bias = if (identical(ne$evidence_type[i], "indirect")) ib_label else "",
+          nma_effect             = format_te_ci(ne$te[i], ne$lo[i], ne$hi[i], sm_val),
+          nmr_effect             = if (is.na(nmr_te)) "" else
+                                     format_te_ci(nmr_te, nmr_lo, nmr_hi, sm_val),
+          sse_eval               = get_in("sse_eval_"),
           stringsAsFactors = FALSE
         )
       }) %>% bind_rows()
+    })
+
+    # ------------------------------------------------------------------
+    # Domain 2 sync.
+    # Automatic: whenever a final ⑤ rating changes (auto or manual) the
+    # ratings are pushed to Module B — no button click needed. The push is
+    # skipped when nothing changed, which is what stops the feedback loop
+    # (set_robmen -> cinema_results -> ... -> robmen_results).
+    # Manual: the button forces a push and navigates to Domain 2.
+    # ------------------------------------------------------------------
+    last_synced   <- reactiveVal(NULL)
+    last_sync_at  <- reactiveVal(NULL)
+
+    sync_to_cinema <- function(force = FALSE) {
+      rb <- tryCatch(robmen_results(), error = function(e) NULL)
+      if (is.null(rb) || nrow(rb) == 0) return(FALSE)
+      key <- rb[, c("comparison", "robmen_rating")]
+      rownames(key) <- NULL
+      if (!force && identical(key, last_synced())) return(FALSE)
+      cinema_module$set_robmen(rb)
+      last_synced(key)
+      last_sync_at(Sys.time())
+      TRUE
+    }
+
+    robmen_results_safe <- reactive(
+      tryCatch(robmen_results(), error = function(e) NULL))
+    robmen_results_deb  <- debounce(robmen_results_safe, 300)
+
+    observe({
+      rb <- robmen_results_deb()
+      if (is.null(rb) || !auto_sync_on()) return()
+      isolate(sync_to_cinema())
+    }, priority = -300)
+
+    output$send_status <- renderUI({
+      at <- last_sync_at()
+      on <- auto_sync_on()
+      rb <- robmen_results_deb()
+      if (is.null(rb)) return(NULL)
+      n_rated <- sum(rb$robmen_rating != "Not assessed")
+      txt <- if (!is.null(at)) {
+        paste0(if (on) "Auto-synced" else "Synced", " to Domain 2 at ",
+               format(at, "%H:%M:%S"), " (", n_rated, "/", nrow(rb), " rated)")
+      } else if (on) {
+        "Waiting for ratings to sync…"
+      } else {
+        "Auto-sync off — click to send ratings to Domain 2"
+      }
+      tags$small(style = "color:#6c757d;",
+                 icon(if (!is.null(at)) "check" else "clock"), " ", txt)
     })
 
     # Manual "sync now" button — sync ratings then navigate to CINeMA Domain 2
     observeEvent(input$send_to_cinema, {
       rb <- tryCatch(robmen_results(), error = function(e) NULL)
       req(!is.null(rb))
-      cinema_module$set_robmen(rb)
+      sync_to_cinema(force = TRUE)
       n_rated <- sum(rb$robmen_rating != "Not assessed")
       n_total <- nrow(rb)
       showNotification(
@@ -2276,7 +2744,42 @@ moduleC_server <- function(id, processed_data, cinema_module,
                                                t2=character(), n_direct=integer(),
                                                stringsAsFactors=FALSE)
 
+      # Everything below is read with isolate(): the table must re-render
+      # only when the row STRUCTURE changes (new NMA, Group B/C move) —
+      # never while the user is typing a count or picking a judgement.
+      # Current input values are passed back as defaults so a re-render is
+      # invisible to the user (no lost selections).
+      wa      <- isolate(tryCatch(within_auto_df(), error = function(e) NULL))
+      aa      <- isolate(tryCatch(across_auto_df(), error = function(e) NULL))
+      auto_on <- isolate(auto_fill_on())
+      cur <- function(id) {
+        v <- isolate(input[[id]])
+        if (is.null(v) || length(v) == 0 || is.na(v[1])) NULL else v[1]
+      }
+      cur_num <- function(id) {
+        v <- suppressWarnings(as.numeric(isolate(input[[id]])))
+        if (length(v) == 0 || is.na(v[1])) NULL else v[1]
+      }
+      auto_row <- function(df, ck) {
+        if (is.null(df)) return(NULL)
+        r <- df[df$comp_key == ck, , drop = FALSE]
+        if (nrow(r) == 0) NULL else r
+      }
+      # Default for a judgement dropdown: current value if set, else the
+      # auto value (when auto-fill is on), else blank.
+      pick_default <- function(id, arow) {
+        v <- cur(id)
+        if (!is.null(v) && nzchar(v)) return(v)
+        if (auto_on && !is.null(arow) && nzchar(arow$rating[1])) return(arow$rating[1])
+        ""
+      }
+      note_for <- function(arow, prefix = "") {
+        if (!auto_on || is.null(arow) || !nzchar(arow$note[1])) return(NULL)
+        paste0(prefix, arow$note[1])
+      }
+
       th_style <- "padding:8px 10px; text-align:left; white-space:nowrap;"
+      header_btn_style <- "font-size:0.75em;"
 
       header_row <- tags$tr(style = "background:#6c3483; color:white; font-weight:bold;",
         tags$th(style = th_style, "Pairwise comparison"),
@@ -2286,8 +2789,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
                      HTML("k (n)"))),
         tags$th(style = paste0(th_style, "text-align:center;"),
           div("Total identified in the SR"),
-          tags$small(style = "font-weight:normal; opacity:0.85;",
-                     HTML("k (n)"))),
+          tags$small(style = "font-weight:normal; opacity:0.85; white-space:normal; display:block; font-size:0.8em;",
+                     HTML("k (n) — raise k to flag missing studies;<br>indirect rows: k ≥ 1 → Group B"))),
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("① Within-study bias"),
@@ -2299,9 +2802,12 @@ moduleC_server <- function(id, processed_data, cinema_module,
                 ns("info_within")),
               title = "Assessment guide",
               "?")),
-          div(style = "margin-top:4px;",
-            actionButton(ns("set_all_within_no"), "set all \u2192 No bias",
-              class = "btn btn-xs btn-warning", style = "font-size:0.75em;"))),
+          div(style = "margin-top:4px; display:flex; gap:4px;",
+            actionButton(ns("reset_within_auto"), "↺ auto",
+              class = "btn btn-xs btn-info", style = header_btn_style,
+              title = "Discard manual edits in this column and restore the auto judgements"),
+            actionButton(ns("set_all_within_no"), "set all → No bias",
+              class = "btn btn-xs btn-warning", style = header_btn_style))),
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("② Across-study bias"),
@@ -2313,9 +2819,12 @@ moduleC_server <- function(id, processed_data, cinema_module,
                 ns("info_across")),
               title = "Assessment guide",
               "?")),
-          div(style = "margin-top:4px;",
-            actionButton(ns("set_all_across_no"), "set all \u2192 No bias",
-              class = "btn btn-xs btn-warning", style = "font-size:0.75em;"))),
+          div(style = "margin-top:4px; display:flex; gap:4px;",
+            actionButton(ns("reset_across_auto"), "↺ auto",
+              class = "btn btn-xs btn-info", style = header_btn_style,
+              title = "Discard manual edits in this column and restore the auto judgements"),
+            actionButton(ns("set_all_across_no"), "set all → No bias",
+              class = "btn btn-xs btn-warning", style = header_btn_style))),
         tags$th(style = th_style,
           div(style = "display:flex; align-items:center; gap:4px;",
             HTML("③ Overall judgement"),
@@ -2329,19 +2838,19 @@ moduleC_server <- function(id, processed_data, cinema_module,
               "?")),
           div(style = "margin-top:4px;",
             actionButton(ns("calc_overall_pw"), tagList(icon("calculator"), " auto"),
-              class = "btn btn-xs btn-info", style = "font-size:0.75em;",
+              class = "btn btn-xs btn-info", style = header_btn_style,
               title = paste0(
                 "Algorithm (Chiocchia 2021):\n",
-                "\u2460 Suspected bias \u2192 Suspected bias (short-circuit)\n",
-                "\u2461 Across = Suspected bias \u2192 Suspected bias\n",
-                "\u2462 Both = No bias detected \u2192 No bias detected\n",
+                "① Suspected bias → Suspected bias (short-circuit)\n",
+                "② Across = Suspected bias → Suspected bias\n",
+                "③ Both = No bias detected → No bias detected\n",
                 "Within suspected carries its direction\n",
                 "Across suspected carries its direction\n",
-                "Both No bias detected \u2192 No bias detected\n",
+                "Both No bias detected → No bias detected\n",
                 "If directions conflict, within-study direction takes precedence"
               ))),
           tags$small(style = "display:block; font-weight:normal; opacity:0.85; white-space:normal; font-size:0.8em; margin-top:2px;",
-            HTML("Suspected judgement carries direction<br>Both No bias \u2192 No bias")))
+            HTML("Suspected judgement carries direction<br>Both No bias → No bias")))
       )
 
       grp_header <- function(label, subtitle = NULL, ncols = 6) {
@@ -2355,131 +2864,59 @@ moduleC_server <- function(id, processed_data, cinema_module,
         )
       }
 
-      # Build Group A rows (direct evidence for this outcome)
-      group_a_rows <- lapply(seq_len(nrow(dir_c)), function(i) {
-        ck     <- dir_c$comp_key[i]
-        eg_row <- eg %>% filter(comp_key == ck)
-        ad <- if (nrow(eg_row) > 0 && !is.na(eg_row$across_auto[1]))
-                eg_row$across_auto[1] else NA
-        bias_req <- !is.na(ad) && is_suspected(ad)
-        make_pw_row(ns, ck, dir_c$t1[i], dir_c$t2[i], dir_c$n_direct[i],
-                    across_default = ad,
-                    within_default = "",
-                    n_total = dir_c$n_total[i],
-                    bias_required = bias_req)
-      })
+      build_row <- function(ck, t1, t2, n_direct, n_total, grp) {
+        sid  <- safe_id(ck)
+        wrow <- auto_row(wa, ck)
+        arow <- auto_row(aa, ck)
+        within_def  <- if (grp == "C") "" else pick_default(paste0("within_", sid), wrow)
+        across_def  <- if (grp == "B") "" else pick_default(paste0("across_", sid), arow)
+        # ③ follows ① / ② deterministically; show it in the same render pass
+        overall_def <- cur(paste0("ov_pw_", sid)) %||% {
+          w_eff <- if (grp == "C") NO_BIAS else if (nzchar(within_def)) within_def else NO_BIAS
+          a_eff <- if (grp == "B") NO_BIAS else if (nzchar(across_def)) across_def else NO_BIAS
+          if (auto_on || nzchar(within_def) || nzchar(across_def))
+            compute_overall_pw(w_eff, a_eff, t1, t2) else ""
+        }
+        provisional <- (auto_on && !is.null(wrow) && isTRUE(wrow$provisional[1])) ||
+                       (auto_on && !is.null(arow) && isTRUE(arow$provisional[1]))
+        toggle <- if (grp == "B") {
+          actionButton(ns(paste0("grpb_toggle_", sid)), label = "← Group C",
+                       class = "btn btn-xs btn-outline-secondary",
+                       style = "font-size:0.72em; padding:1px 5px;",
+                       title = paste0("Move '", ck, "' back to Group C (sets SR k = 0)"))
+        } else if (grp == "C") {
+          actionButton(ns(paste0("grpb_toggle_", sid)), label = "→ Group B",
+                       class = "btn btn-xs btn-outline-warning",
+                       style = "font-size:0.72em; padding:1px 5px;",
+                       title = paste0("Mark '", ck, "' as Group B: studies exist for this",
+                                      " comparison but did not report this outcome (sets SR k = 1)"))
+        } else NULL
+        make_pw_row(ns, ck, t1, t2, n_direct,
+                    across_default  = across_def,
+                    within_default  = within_def,
+                    n_total         = n_total,
+                    bg              = switch(grp, A = "white", B = "#fffde7", C = "#f8f9fa"),
+                    is_group_b      = grp == "B",
+                    is_group_c      = grp == "C",
+                    bias_required   = provisional,
+                    overall_default = overall_def,
+                    k_sr_default    = cur_num(paste0("n_sr_k_", sid)),
+                    n_sr_default    = cur_num(paste0("n_sr_n_", sid)),
+                    within_note     = if (grp != "C") note_for(wrow) else NULL,
+                    across_note     = if (grp != "B") note_for(arow) else NULL,
+                    group_toggle    = toggle)
+      }
 
-      # Group C rows with "→ Group B" toggle button
-      grp_c_with_toggle <- if (nrow(grp_c) > 0) {
-        lapply(seq_len(nrow(grp_c)), function(i) {
-          ck  <- grp_c$comp_key[i]
-          sid <- safe_id(ck)
-          tags$tr(style = "background:#f8f9fa;",
-            tags$td(style = "padding:4px 8px; white-space:nowrap;",
-              strong(ck), " ",
-              actionButton(ns(paste0("grpb_toggle_", sid)),
-                           label = "→ Group B",
-                           class = "btn btn-xs btn-outline-warning",
-                           style = "font-size:0.72em; padding:1px 5px;",
-                           title = paste0("Mark '", ck, "' as Group B: ",
-                                          "studies exist for this comparison but did not report this outcome"))),
-            tags$td(style = "padding:4px 8px; text-align:center;",
-              tags$span(style = paste0("background:#e9ecef; color:#6c757d; padding:3px 8px;",
-                                       " border:1px solid #ced4da; border-radius:4px; font-size:0.85em;"),
-                        "0 (—)")),
-            # Total identified in SR: editable
-            tags$td(style = "padding:4px 8px;",
-              div(style = "display:flex; align-items:center; gap:3px; white-space:nowrap;",
-                numericInput(ns(paste0("n_sr_k_", sid)), label = NULL,
-                             value = NA, min = 0, step = 1, width = "60px"),
-                tags$span("("),
-                numericInput(ns(paste0("n_sr_n_", sid)), label = NULL,
-                             value = NA, min = 0, step = 1, width = "80px"),
-                tags$span(")")
-              )
-            ),
-            # within: not applicable
-            tags$td(style = "padding:4px 8px;",
-              tags$span(style = paste0("background:#e9ecef; color:#6c757d; padding:4px 8px;",
-                                       " border:1px solid #ced4da; border-radius:4px;",
-                                       " display:inline-block; font-size:0.85em;"),
-                        title = "Group C: no studies — within-study bias does not apply",
-                        "Not applicable")),
-            # across: qualitative dropdown
-            tags$td(style = "padding:4px 8px;",
-              div(style = "display:flex; gap:4px; align-items:flex-start;",
-                selectInput(ns(paste0("across_", sid)), label = NULL,
-                            choices = pairwise_bias_choices(grp_c$t1[i], grp_c$t2[i]),
-                            selected = "", width = "190px"),
-                actionButton(ns(paste0("hints_btn_", sid)),
-                             label = tagList(icon("lightbulb"), " Hints"),
-                             class = "btn btn-xs btn-outline-secondary",
-                             style = "margin-top:2px; white-space:nowrap; font-size:0.75em;",
-                             title = "Show qualitative conditions for across-study bias")
-              )
-            ),
-            tags$td(style = "padding:4px 8px;",
-              selectInput(ns(paste0("ov_pw_", sid)), label = NULL,
-                          choices = pairwise_overall_choices(grp_c$t1[i], grp_c$t2[i]),
-                          selected = "", width = "190px"))
-          )
-        })
-      } else list()
-
-      # Group B rows with toggle back to C
-      grp_b_with_toggle <- if (nrow(grp_b) > 0) {
-        lapply(seq_len(nrow(grp_b)), function(i) {
-          ck  <- grp_b$comp_key[i]
-          sid <- safe_id(ck)
-          tags$tr(style = "background:#fffde7;",
-            tags$td(style = "padding:4px 8px; white-space:nowrap;",
-              strong(ck), " ",
-              actionButton(ns(paste0("grpb_toggle_", sid)),
-                           label = "← Group C",
-                           class = "btn btn-xs btn-outline-secondary",
-                           style = "font-size:0.72em; padding:1px 5px;",
-                           title = paste0("Move '", ck, "' back to Group C (unobserved)"))),
-            tags$td(style = "padding:4px 8px; text-align:center;",
-              tags$span(style = paste0("background:#e9ecef; color:#6c757d; padding:3px 8px;",
-                                       " border:1px solid #ced4da; border-radius:4px; font-size:0.85em;"),
-                        "0 (—)")),
-            # Total identified in SR: editable (studies were found in SR)
-            tags$td(style = "padding:4px 8px;",
-              div(style = "display:flex; align-items:center; gap:3px; white-space:nowrap;",
-                numericInput(ns(paste0("n_sr_k_", sid)), label = NULL,
-                             value = NA, min = 0, step = 1, width = "60px"),
-                tags$span("("),
-                numericInput(ns(paste0("n_sr_n_", sid)), label = NULL,
-                             value = NA, min = 0, step = 1, width = "80px"),
-                tags$span(")")
-              )
-            ),
-            # within: enabled selectInput (Q1 = Yes by definition; assess Q2)
-            tags$td(style = "padding:4px 8px;",
-              div(style = "display:flex; gap:4px; align-items:flex-start; flex-direction:column;",
-                selectInput(ns(paste0("within_", sid)), label = NULL,
-                            choices = pairwise_bias_choices(grp_b$t1[i], grp_b$t2[i]),
-                            selected = "", width = "190px"),
-                tags$small(style = "color:#856404; font-size:0.78em;",
-                  HTML("Q1=Yes (by def). Rate based on whether omission is outcome-selective."))
-              )
-            ),
-            # across: not applicable
-            tags$td(style = "padding:4px 8px;",
-              tags$span(style = paste0("background:#e9ecef; color:#6c757d; padding:4px 8px;",
-                                       " border:1px solid #ced4da; border-radius:4px;",
-                                       " display:inline-block; font-size:0.85em;"),
-                        title = "Group B: no outcome data — Egger's test not applicable",
-                        "Not applicable")),
-            tags$td(style = "padding:4px 8px;",
-              selectInput(ns(paste0("ov_pw_", sid)), label = NULL,
-                          choices = pairwise_overall_choices(grp_b$t1[i], grp_b$t2[i]),
-                          selected = "", width = "190px"))
-          )
-        })
-      } else list()
+      group_a_rows <- lapply(seq_len(nrow(dir_c)), function(i)
+        build_row(dir_c$comp_key[i], dir_c$t1[i], dir_c$t2[i],
+                  dir_c$n_direct[i], dir_c$n_total[i], "A"))
+      grp_b_rows <- lapply(seq_len(nrow(grp_b)), function(i)
+        build_row(grp_b$comp_key[i], grp_b$t1[i], grp_b$t2[i], 0L, NA_integer_, "B"))
+      grp_c_rows <- lapply(seq_len(nrow(grp_c)), function(i)
+        build_row(grp_c$comp_key[i], grp_c$t1[i], grp_c$t2[i], 0L, NA_integer_, "C"))
 
       tagList(
+        uiOutput(ns("auto_status_ui")),
         div(style = "font-size:0.82em; color:#666; margin-bottom:4px;",
           icon("arrows-alt-h"), " Scroll horizontally to see all columns"),
         div(style = "overflow-x: auto; -webkit-overflow-scrolling: touch;",
@@ -2490,19 +2927,23 @@ moduleC_server <- function(id, processed_data, cinema_module,
             tags$thead(header_row),
             tags$tbody(
               grp_header("Group A — Observed for this outcome",
-                         subtitle = "(direct evidence: Egger's test + ROB-ME Step 2)"),
+                         subtitle = "(direct evidence: Egger's test / qualitative rule + ROB-ME Step 2)"),
               group_a_rows,
 
               grp_header("Group B — Observed for other outcomes",
                          subtitle = "(studies exist but did NOT report this outcome: within-study only)"),
-              if (nrow(grp_b) > 0) grp_b_with_toggle
+              if (nrow(grp_b) > 0) grp_b_rows
               else tags$tr(tags$td(colspan = 6,
                 style = "padding:6px 10px; color:#6c757d; font-style:italic; font-size:0.88em;",
-                "No Group B comparisons identified.")),
+                "No Group B comparisons — enter k ≥ 1 under “Total identified in the SR”",
+                " on a Group C row (or click → Group B) if studies exist that did not report this outcome.")),
 
               grp_header("Group C — Unobserved",
-                         subtitle = "(no studies at all: qualitative across-study assessment only; click '\u2192 Group B' to reclassify)"),
-              grp_c_with_toggle
+                         subtitle = "(no studies at all: qualitative across-study assessment only)"),
+              if (nrow(grp_c) > 0) grp_c_rows
+              else tags$tr(tags$td(colspan = 6,
+                style = "padding:6px 10px; color:#6c757d; font-style:italic; font-size:0.88em;",
+                "No Group C comparisons."))
             )
           )
         )
@@ -2519,8 +2960,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
                    pct_fav_t1 = numeric(0),
                    pct_fav_t2 = numeric(0))
       })
-      eg <- tryCatch(egger_df(), error = function(e) NULL)
-      sm_val <- tryCatch(cinema_res()$net$sm, error = function(e) "") %||% ""
+      eg <- tryCatch(across_auto_df(), error = function(e) NULL)
+      sm_val <- tryCatch(nma_core()$sm, error = function(e) "") %||% ""
 
       th_style <- "padding:6px 8px; text-align:left; white-space:normal;"
       te_lab   <- te_col_label(sm_val)

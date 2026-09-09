@@ -66,6 +66,7 @@ source("modules/utils.R",            encoding = "UTF-8")  # shared constants and
 source("modules/_d1_sens_judge.R",   encoding = "UTF-8")  # pure RoB sensitivity flowchart (used by Module B)
 source("modules/_robmen_bg_plots.R", encoding = "UTF-8")  # pure forest/funnel builder (spec-13 phase 1; used by Module C)
 source("modules/_robmen_nmr.R",      encoding = "UTF-8")  # pure network NMR builder (used by Module C)
+source("modules/_robmen_auto.R",     encoding = "UTF-8")  # pure ROB-MEN auto-judgement rules (used by Module C)
 source("modules/_export_helpers.R",  encoding = "UTF-8")  # Word/Excel writers + table builders (Bundle Export Phase B+)
 source("modules/module_A_data_input.R", encoding = "UTF-8")
 source("modules/module_B_cinema.R",     encoding = "UTF-8")
