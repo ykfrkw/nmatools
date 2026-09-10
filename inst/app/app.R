@@ -66,6 +66,7 @@ source("modules/utils.R",            encoding = "UTF-8")  # shared constants and
 source("modules/_d1_sens_judge.R",   encoding = "UTF-8")  # pure RoB sensitivity flowchart (used by Module B)
 source("modules/_robmen_bg_plots.R", encoding = "UTF-8")  # pure forest/funnel builder (spec-13 phase 1; used by Module C)
 source("modules/_robmen_nmr.R",      encoding = "UTF-8")  # pure network NMR builder (used by Module C)
+source("modules/_robmen_auto.R",     encoding = "UTF-8")  # pure ROB-MEN auto-judgement rules (used by Module C)
 source("modules/_export_helpers.R",  encoding = "UTF-8")  # Word/Excel writers + table builders (Bundle Export Phase B+)
 source("modules/module_A_data_input.R", encoding = "UTF-8")
 source("modules/module_B_cinema.R",     encoding = "UTF-8")
@@ -109,7 +110,11 @@ ui <- fluidPage(
   )
 )
 
-make_server <- function(initial_data = NULL) {
+make_server <- function(initial_data = NULL, robmen_defaults = NULL) {
+  # ROB-MEN defaults set from R via cinema(robmen = list(...))
+  if (is.null(robmen_defaults)) {
+    robmen_defaults <- tryCatch(nmatools:::.cinema_env$robmen, error = function(e) NULL)
+  }
   # When launched via nmatools::cinema(data = ...), retrieve pre-loaded raw data
   if (is.null(initial_data)) {
     raw <- tryCatch(nmatools:::.cinema_env$initial_data, error = function(e) NULL)
@@ -154,7 +159,8 @@ make_server <- function(initial_data = NULL) {
                                go_to_cinema   = function() {
                                  updateNavbarPage(session, "main_navbar",
                                                   selected = "② Reporting bias")
-                               })
+                               },
+                               robmen_defaults = robmen_defaults)
     moduleD_server("module_d",
                    cinema_module  = cinema_b,
                    robmen_module  = robmen_c,
@@ -178,6 +184,9 @@ make_server <- function(initial_data = NULL) {
 #   format         — "continuous" | "binary" | "pairwise"
 #   effect_measure — "SMD" | "MD" | "OR" | "RR"
 #   launch         — if TRUE (default), starts the app immediately via runApp()
+#   robmen         — optional list of ROB-MEN defaults (bias_order,
+#                    novel_agents, no_grey_lit, prior_pub_bias, registration,
+#                    unpub_consistent, ...); see ?nmatools::cinema
 #
 # Returns invisibly: the shinyApp object (useful for shinyapps.io deployment).
 # =============================================================================
@@ -185,7 +194,8 @@ launch_nma_evaluator <- function(
   data,
   format         = c("continuous", "binary", "pairwise"),
   effect_measure = c("SMD", "MD", "OR", "RR"),
-  launch         = TRUE
+  launch         = TRUE,
+  robmen         = NULL
 ) {
   format         <- match.arg(format)
   effect_measure <- match.arg(effect_measure)
@@ -213,7 +223,7 @@ launch_nma_evaluator <- function(
     effect_measure = effect_measure
   )
 
-  app <- shinyApp(ui = ui, server = make_server(initial_data))
+  app <- shinyApp(ui = ui, server = make_server(initial_data, robmen_defaults = robmen))
   if (launch) shiny::runApp(app)
   invisible(app)
 }

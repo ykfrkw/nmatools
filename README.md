@@ -109,13 +109,23 @@ run many outcomes at once with `run_nma_batch()`.
 implementing CINeMA (Nikolakopoulou et al. 2020) and ROB-MEN (Chiocchia et al.
 2021). Launch it empty or pre-load a data frame, then work left to right through
 the domain tabs to the Report and export bundle — see
-[Chapters 6–10](docs/manual/06-gui-overview.md).
+[Chapters 6–10](docs/manual/06-gui-overview.md). All six CINeMA domains are
+computed automatically; the ROB-MEN assessment behind Domain 2 is pre-filled
+from the data (Egger's test, SR study counts, review-level conditions) and
+synced into CINeMA without further clicks, with only provisional rows flagged
+for confirmation ([Chapter 9](docs/manual/09-gui-robmen.md)).
 
 ```r
 library(nmatools)
 
 cinema()                                          # launch empty; upload in the GUI
 cinema(load_w2i(), format = "binary", effect_measure = "OR")   # pre-load from R
+
+# Script the ROB-MEN assumptions (which treatment missing evidence would
+# favour, review-level conditions) instead of clicking them in the GUI
+cinema(load_w2i(), format = "binary", effect_measure = "OR",
+       robmen = list(bias_order  = c("Combination", "Pharmacotherapy", "CBT-I"),
+                     no_grey_lit = TRUE))
 ```
 
 ![The CINeMA report summary table](docs/manual/images/gui_13_report_summary.png)

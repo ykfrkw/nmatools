@@ -265,6 +265,34 @@ here, see [Getting help](#158-getting-help) at the end.
 > [Chapters 6–7](06-gui-overview.md) for launch modes and required columns, and
 > [Chapter 8](08-gui-cinema-domains.md) onward for the domain tabs.
 
+### Domain 2 shows "Not assessed" on the Report tab
+
+> **Symptom.** Every other domain is rated but the D2 (Reporting bias) column
+> stays **Not assessed**.
+>
+> **Cause.** The ROB-MEN ratings have not been pushed to CINeMA. With the
+> default settings this happens automatically a fraction of a second after the
+> ROB-MEN tables appear, so the usual reason is that **Sync ROB-MEN ratings to
+> CINeMA Domain 2 automatically** was switched off in the ⚙ Automation
+> settings panel of the ② Reporting bias tab.
+>
+> **Fix.** Switch automatic sync back on, or click **Update CINeMA Domain 2**
+> below the ROB-MEN tables. See [Chapter 9](09-gui-robmen.md), Section 9.6.
+
+### A ROB-MEN dropdown keeps reverting to the auto value / does not follow the data
+
+> **Symptom.** Either a ① / ② dropdown snaps back to the automatic judgement,
+> or it no longer changes when you edit the SR counts or the review-level
+> conditions.
+>
+> **Cause.** Auto-fill never overwrites a cell you edited by hand, and it only
+> writes cells it filled itself. A cell you changed manually is frozen; a cell
+> you never touched follows the data.
+>
+> **Fix.** Use **↺ auto** in the ① or ② column header to discard the manual
+> edits in that column and return to the automatic values, then edit again if
+> needed. See [Chapter 9](09-gui-robmen.md), Section 9.4.1.
+
 ### The analysis is slow
 
 > **Symptom.** Clicking **▶ Run CINeMA + ROB-MEN Analysis** takes a long time.

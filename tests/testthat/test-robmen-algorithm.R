@@ -13,7 +13,14 @@ if (!file.exists(helper_path)) {
   helper_path <- system.file("app", "modules", "module_C_robmen.R",
                              package = "nmatools")
 }
+auto_path <- testthat::test_path("..", "..", "inst", "app",
+                                 "modules", "_robmen_auto.R")
+if (!file.exists(auto_path)) {
+  auto_path <- system.file("app", "modules", "_robmen_auto.R",
+                           package = "nmatools")
+}
 source(utils_path, local = TRUE)
+source(auto_path, local = TRUE)
 source(helper_path, local = TRUE)
 
 FAV_ONE <- "Substantial contribution from bias \u2013 favouring one treatment"
@@ -120,6 +127,43 @@ test_that("make_pw_row omits funnel and separate direction inputs below k=10", {
   html_10 <- paste(as.character(row_10), collapse = "")
   expect_true(grepl("funnel_btn", html_10, fixed = TRUE))
   expect_false(grepl("bias_dir_", html_10, fixed = TRUE))
+})
+
+test_that("make_pw_row pre-fills auto judgements and preserves SR counts", {
+  row <- make_pw_row(shiny::NS("rob"), "A:B", "A", "B",
+                     n_direct = 4, n_total = 200,
+                     across_default  = "No bias detected",
+                     within_default  = "Suspected bias favouring A",
+                     overall_default = "Suspected bias favouring A",
+                     k_sr_default    = 6, n_sr_default = 260,
+                     within_note     = "2 SR studies did not report this outcome",
+                     bias_required   = TRUE)
+  html <- paste(as.character(row), collapse = "")
+  expect_true(grepl("2 SR studies did not report", html, fixed = TRUE))
+  expect_true(grepl('value="6"', html, fixed = TRUE))
+  expect_true(grepl('value="260"', html, fixed = TRUE))
+  expect_true(grepl("triangle-exclamation", html, fixed = TRUE))
+  # every dropdown (within / across / overall) carries a selected option
+  expect_true(length(regmatches(html, gregexpr("selected", html))[[1]]) >= 3)
+
+  # Group C row: within cell is disabled, across dropdown + hints present
+  row_c <- make_pw_row(shiny::NS("rob"), "B:C", "B", "C", n_direct = 0,
+                       across_default = "", is_group_c = TRUE,
+                       group_toggle = shiny::actionButton("rob-grpb_toggle_B_C", "-> Group B"))
+  html_c <- paste(as.character(row_c), collapse = "")
+  expect_true(grepl("Not applicable", html_c, fixed = TRUE))
+  expect_false(grepl("within_B_C", html_c, fixed = TRUE))
+  expect_true(grepl("across_B_C", html_c, fixed = TRUE))
+  expect_true(grepl("hints_btn_B_C", html_c, fixed = TRUE))
+  expect_true(grepl("grpb_toggle_B_C", html_c, fixed = TRUE))
+
+  # Group B row: within enabled, across disabled
+  row_b <- make_pw_row(shiny::NS("rob"), "B:C", "B", "C", n_direct = 0,
+                       across_default = "", is_group_b = TRUE, k_sr_default = 2)
+  html_b <- paste(as.character(row_b), collapse = "")
+  expect_true(grepl("within_B_C", html_b, fixed = TRUE))
+  expect_false(grepl("across_B_C", html_b, fixed = TRUE))
+  expect_true(grepl('value="2"', html_b, fixed = TRUE))
 })
 
 test_that("compute_auto_contrib honours the user threshold", {

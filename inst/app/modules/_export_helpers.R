@@ -509,7 +509,7 @@ write_pairwise_appendix_docx <- function(net,
 build_robmen_export_df <- function(robmen_results) {
   if (is.null(robmen_results)) return(NULL)
   if (is.data.frame(robmen_results) && nrow(robmen_results) > 0)
-    return(robmen_results)
+    return(robmen_pretty_names(robmen_results))
   # If it's a list with named slots, prefer a "final" table; otherwise the
   # first data.frame we find.
   if (is.list(robmen_results)) {
@@ -518,8 +518,29 @@ build_robmen_export_df <- function(robmen_results) {
     if (is.data.frame(robmen_results$final))
       return(robmen_results$final)
     for (el in robmen_results) {
-      if (is.data.frame(el) && nrow(el) > 0) return(el)
+      if (is.data.frame(el) && nrow(el) > 0) return(robmen_pretty_names(el))
     }
   }
   NULL
+}
+
+# Human-readable headers for the columns moduleC's robmen_results emits.
+# Unknown columns are left untouched so older / richer schemas still export.
+robmen_pretty_names <- function(df) {
+  if (!is.data.frame(df)) return(df)
+  map <- c(
+    comparison             = "NMA estimate",
+    robmen_rating          = "ROB-MEN rating",
+    evidence_type          = "Evidence",
+    pct_biased_fav_t1      = "% biased contribution favouring 1st treatment",
+    pct_biased_fav_t2      = "% biased contribution favouring 2nd treatment",
+    contribution_eval      = "Evaluation of contribution",
+    indirect_evidence_bias = "Indirect evidence bias (only-indirect estimates)",
+    nma_effect             = "NMA effect [95% CI]",
+    nmr_effect             = "NMR effect at smallest variance [95% CI]",
+    sse_eval               = "Small-study effects"
+  )
+  hit <- names(df) %in% names(map)
+  names(df)[hit] <- unname(map[names(df)[hit]])
+  df
 }
