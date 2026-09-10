@@ -99,14 +99,16 @@ flowchart LR
    signalling questions (Page & Sterne, BMJ 2023), answered from the SR counts:
    - *k in SR = k reporting* → Q1 = No → **No bias detected** (auto).
    - *k in SR > k reporting* → Q1 = Yes → **Suspected bias favouring X**
-     (provisional, ⚠), where X comes from the bias-favour ordering (Section
-     9.4.1) when both treatments are ranked, else from a single novel agent,
-     else from the treatment favoured by the observed effect (the pooled
-     direct estimate for Group A; the NMA estimate for Group B), because
-     selective non-reporting suppresses results unfavourable to the treatment
-     the published evidence favours. Confirm or change it with the **ROB-ME**
-     helper. When no direction is available, the row is left at *No bias
-     detected* and flagged.
+     (provisional, ⚠), where X is the treatment ranked higher in the
+     bias-favour ordering (Section 9.4.1). When the two treatments are not
+     both ranked, no direction is proposed: the row is left at *No bias
+     detected*, flagged, and Q2 is yours to set — unless the optional
+     **observed-effect fallback** is on, in which case a Group A row takes
+     the direction of its pooled direct estimate, and only when that
+     estimate's 95% CI excludes the null (selective non-reporting hides
+     non-significant results, so clearly directional reported evidence is
+     exaggerated in its own direction; a null result carries no such
+     information). Confirm or change the proposal with the **ROB-ME** helper.
    It is never proxied from RoB 2 scores.
 2. **Component 2 — across-study small-study effects.**
    - *k ≥ 10 studies* → Egger's test: p ≥ 0.05 → **No bias detected**;
@@ -116,9 +118,12 @@ flowchart LR
      ROB-MEN paper, answered once for the whole review (Section 9.4.1):
      score = (conditions suggesting bias) − (conditions suggesting no bias);
      score ≤ 0 → **No bias detected**; score > 0 → **Suspected bias favouring**
-     the treatment ranked higher in the bias-favour ordering, else the flagged
-     novel agent, else the treatment the observed effect favours
-     (provisional, ⚠).
+     the treatment ranked higher in the bias-favour ordering (provisional, ⚠).
+     Without an ordering the row is flagged with no direction; the
+     observed-effect fallback applies as for Component 1 (Group A rows,
+     significant direct estimate only). A flagged novel agent counts as a
+     bias condition but does not set the direction — rank it at the top of
+     the ordering instead.
    All "favouring X" directions honour the **Small outcome value is** setting
    from the Configuration tab (desirable vs undesirable), for OR/RR/SMD/MD alike.
 3. **Pairwise overall judgement** (per comparison). If **either** component is
@@ -174,12 +179,22 @@ decide without a per-comparison click.
   comparator last; for psychotherapies, whatever order expert judgement
   suggests). Every provisional *Suspected bias favouring X* the app proposes —
   Component 1 when studies did not report the outcome, and the qualitative
-  Component 2 rule — takes X from this ordering. For a comparison whose two
-  treatments are not both ranked, the direction falls back to a single novel
-  agent in the comparison, and then to the treatment the observed effect
-  favours. The ordering never creates a suspicion of bias by itself; it only
-  decides the direction once a rule has fired. The note under each dropdown
+  Component 2 rule — takes X from this ordering. A comparison whose two
+  treatments are not both ranked gets **no direction**: the row stays at *No
+  bias detected* and is flagged for you. The ordering never creates a
+  suspicion of bias by itself; it only decides the direction once a rule has
+  fired. Put novel agents at the top; the status line warns if the ordering
+  ranks a novel agent below another treatment. The note under each dropdown
   states which source decided the direction.
+- **Fall back to the observed direct effect** (checkbox, default **off**).
+  When on, a Group A comparison not covered by the ordering takes the
+  direction of its pooled direct estimate, and only when that estimate's 95%
+  CI excludes the null. It is off by default because it aligns every bias
+  direction with the NMA result; combined with the NMR-based small-study
+  direction (⑤b), that pushes estimates towards *High risk* whenever a study
+  is missing or a condition is flagged and the NMR adjustment shrinks the
+  effect — with no reviewer judgement involved. Group B and C rows never use
+  it (there is no direct evidence to read).
 
 All of these can be passed from R instead of clicked, for example:
 
@@ -321,10 +336,11 @@ that each is entered once, in one place:
    checkboxes, the novel-agent list and the treatment ordering in the
    automation panel, answered once for the whole review (or passed from R via
    `cinema(robmen = list(...))`).
-3. **Confirmation of ⚠ provisional rows** — a suspected-bias direction proposed
-   from the observed effect (Component 1 when studies are missing; the
-   qualitative rule; Egger's test when significant). Open ROB-ME / Funnel /
-   Hints on the flagged row and keep or change the dropdown.
+3. **Confirmation of ⚠ provisional rows** — either a suspected-bias direction
+   proposed from the ordering (Component 1 when studies are missing; the
+   qualitative rule) or from Egger's test, or a row where a rule fired but no
+   direction could be given because the treatments are not both ranked. Open
+   ROB-ME / Funnel / Hints on the flagged row and keep or change the dropdown.
 
 Everything else — grouping, ③, ④, ⑤a, ⑤b, ⑤, and the Domain 2 rating — is
 computed and kept in sync automatically.

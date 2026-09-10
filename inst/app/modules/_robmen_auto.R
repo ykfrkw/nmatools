@@ -14,15 +14,16 @@
 # 2. Component 1 (within-study selective non-reporting): the ROB-ME Step 2
 #    Q1 answer follows from k_sr vs k_reported. When studies are missing
 #    (k_sr > k_reported) a PROVISIONAL direction is proposed from the
-#    observed effect: selective non-reporting suppresses results that are
-#    unfavourable to the treatment the published evidence favours.
+#    bias-favour ordering (which treatment missing evidence would favour);
+#    optionally, and only when the direct evidence is statistically
+#    significant, from the observed effect.
 # 3. Component 2 (across-study bias):
 #      k >= 10  — Egger's test (p < 0.05) with the direction of the
 #                 intercept, made outcome-direction aware via small_values.
 #      k <  10  — the review-level qualitative conditions listed in the
 #                 ROB-MEN paper, scored as (conditions suggesting bias) minus
-#                 (conditions suggesting no bias); direction from a flagged
-#                 novel agent, otherwise from the observed effect.
+#                 (conditions suggesting no bias); direction from the
+#                 bias-favour ordering (robmen_direction()).
 # 4. Small-study-effect direction (reinforcing / not reinforcing) relative to
 #    the biased-contribution direction, again small_values-aware.
 #
@@ -120,30 +121,61 @@ robmen_favoured_by_order <- function(t1, t2, bias_order = NULL) {
   if (p1 < p2) as.character(t1) else as.character(t2)
 }
 
-# One resolver for every unmeasured direction. Priority:
-#   1. bias_order (both treatments ranked)
-#   2. a single novel agent in the comparison
-#   3. the observed effect (te, small_values)
-# Returns list(favoured, source) with source in
-# "order" / "novel" / "effect" / NA.
+# One resolver for every unmeasured direction.
+#   1. bias_order — both treatments ranked -> the higher-ranked one.
+#   2. (only when effect_fallback = TRUE) the observed effect, and only when
+#      its 95% CI [lo, hi] excludes the null: the mechanism behind both
+#      selective non-reporting and publication bias is "non-significant
+#      results go missing", so the reported evidence is exaggerated in its
+#      own direction ONLY when it is clearly directional. A point estimate
+#      whose CI covers the null carries no such information.
+#   3. otherwise NA — the reviewer decides.
+# Novel agents are deliberately NOT a direction source: they belong at the
+# top of the ordering (robmen_order_conflicts() flags an ordering that
+# contradicts the novel-agent list).
+# Returns list(favoured, source) with source in "order" / "effect" / NA.
 robmen_direction <- function(te, t1, t2, small_values = "desirable",
-                             bias_order = NULL, novel_agents = character(0)) {
+                             bias_order = NULL,
+                             lo = NA_real_, hi = NA_real_,
+                             effect_fallback = FALSE) {
   fav <- robmen_favoured_by_order(t1, t2, bias_order)
   if (!is.na(fav)) return(list(favoured = fav, source = "order"))
-  novel_in <- intersect(as.character(novel_agents %||% character(0)),
-                        c(as.character(t1), as.character(t2)))
-  if (length(novel_in) == 1) return(list(favoured = novel_in, source = "novel"))
-  fav <- robmen_favoured_treatment(te, t1, t2, small_values)
-  if (!is.na(fav)) return(list(favoured = fav, source = "effect"))
+  if (isTRUE(effect_fallback)) {
+    fav <- robmen_favoured_treatment(te, t1, t2, small_values,
+                                     lo = lo, hi = hi, require_ci = TRUE)
+    if (!is.na(fav)) return(list(favoured = fav, source = "effect"))
+  }
   list(favoured = NA_character_, source = NA_character_)
 }
 
 .robmen_source_txt <- function(source, fav) {
   switch(as.character(source),
     order  = paste0("direction from the bias-favour ordering (", fav, " ranked higher)"),
-    novel  = paste0("direction from the novel agent ", fav),
-    effect = paste0("direction proposed from the observed effect favouring ", fav),
+    effect = paste0("direction proposed from the observed effect, which",
+                    " significantly favours ", fav),
     "no direction available")
+}
+
+.robmen_no_direction_txt <- function(effect_fallback) {
+  if (isTRUE(effect_fallback))
+    "no direction available (treatments not both ranked and the observed effect is not significant)"
+  else
+    "no direction available (treatments not both in the bias-favour ordering)"
+}
+
+# Novel agents that the ordering ranks BELOW some other treatment: the two
+# inputs then contradict each other (a novel agent is, by definition, the
+# treatment bias would favour). Returns the offending novel agents.
+robmen_order_conflicts <- function(bias_order, novel_agents) {
+  ord <- robmen_normalize_bias_order(bias_order)
+  nov <- unique(as.character(novel_agents %||% character(0)))
+  nov <- nov[!is.na(nov) & nzchar(nov)]
+  if (length(ord) < 2 || length(nov) == 0) return(character(0))
+  pos_nov <- match(nov, ord)
+  others  <- setdiff(ord, nov)
+  if (length(others) == 0) return(character(0))
+  top_other <- min(match(others, ord))
+  nov[!is.na(pos_nov) & pos_nov > top_other]
 }
 
 # ---------------------------------------------------------------------------
@@ -166,13 +198,14 @@ robmen_group_auto <- function(k_reported, k_sr = NA) {
 #
 #   k_sr <= k_reported (or NA)  -> Q1 = "no"  -> "No bias detected"
 #   k_sr >  k_reported          -> Q1 = "yes" -> provisional
-#        "Suspected bias favouring <treatment the observed effect favours>";
-#        when no direction can be read (te NA / 0) -> "No bias detected",
-#        still flagged provisional so the row is reviewed.
+#        "Suspected bias favouring X" with X from robmen_direction();
+#        when no direction is available -> "No bias detected", flagged
+#        provisional so the reviewer sets Q2.
 #
-# `te` is the observed effect for the comparison: pooled direct estimate for
-# Group A, NMA estimate for Group B (no direct data). The direction comes
-# from robmen_direction(): bias_order first, then a novel agent, then `te`.
+# te / lo / hi: the pooled DIRECT estimate of the comparison (Group A).
+# effect_fallback: allow the observed effect as a direction source (see
+#   robmen_direction). Callers pass FALSE for Group B, where there is no
+#   direct evidence and the NMA estimate would be too weak a proxy.
 # Returns a list:
 #   rating, q1 ("no"/"yes"), favoured, source, provisional (logical),
 #   n_missing, note
@@ -181,7 +214,8 @@ robmen_within_auto <- function(k_reported, k_sr, te = NA_real_,
                                t1 = "t1", t2 = "t2",
                                small_values = "desirable",
                                bias_order = NULL,
-                               novel_agents = character(0)) {
+                               lo = NA_real_, hi = NA_real_,
+                               effect_fallback = FALSE) {
   k_reported <- .robmen_num1(k_reported, default = 0)
   k_sr       <- .robmen_num1(k_sr, default = NA_real_)
   if (is.na(k_sr)) k_sr <- k_reported
@@ -195,13 +229,13 @@ robmen_within_auto <- function(k_reported, k_sr, te = NA_real_,
 
   miss_txt <- paste0(n_missing, " SR stud", if (n_missing == 1) "y" else "ies",
                      " did not report this outcome (Q1 = Yes)")
-  d <- robmen_direction(te, t1, t2, small_values, bias_order, novel_agents)
+  d <- robmen_direction(te, t1, t2, small_values, bias_order,
+                        lo = lo, hi = hi, effect_fallback = effect_fallback)
   if (is.na(d$favoured)) {
     return(list(rating = ROBMEN_NO_BIAS, q1 = "yes", favoured = NA_character_,
                 source = NA_character_, provisional = TRUE, n_missing = n_missing,
-                note = paste0(miss_txt, ", but no direction is available",
-                              " (no ordering and the observed effect is null);",
-                              " set Q2 manually.")))
+                note = paste0(miss_txt, "; ", .robmen_no_direction_txt(effect_fallback),
+                              ". Set Q2 manually or add the bias-favour ordering.")))
   }
   list(rating = robmen_bias_label(d$favoured), q1 = "yes", favoured = d$favoured,
        source = d$source, provisional = TRUE, n_missing = n_missing,
@@ -235,25 +269,27 @@ robmen_egger_auto <- function(p, intercept, t1, t2,
 #   prior_pub_bias    — previous evidence of publication bias in this field
 #   registration      — tradition of prospective trial registration
 #   unpub_consistent  — unpublished studies available and consistent
-# novel_agents: character vector of treatments that are novel agents (few
-#   early trials); a comparison involving exactly one of them is biased in
-#   favour of that agent.
-#
-# bias_order: treatments ordered from most to least favoured by bias (see
-#   robmen_normalize_bias_order); decides the direction before the novel
-#   agent and the observed effect.
+# novel_agents: treatments supported only by a few early trials; a
+#   comparison involving one of them carries a bias-suggesting condition.
+#   (Direction is NOT taken from this list — put novel agents at the top of
+#   bias_order instead.)
+# bias_order: treatments ordered from most to least favoured by bias.
+# te / lo / hi + effect_fallback: see robmen_direction(); callers pass
+#   effect_fallback = FALSE for Group C (no direct evidence).
 #
 # score = (#conditions suggesting bias) - (#conditions suggesting no bias)
 #   score <= 0 -> "No bias detected"
-#   score >  0 -> suspected bias; direction = bias_order, else novel agent,
-#                 else the treatment the observed effect favours; no
-#                 direction -> "No bias detected" flagged provisional.
+#   score >  0 -> suspected bias favouring the treatment robmen_direction()
+#                 returns; no direction -> "No bias detected" flagged
+#                 provisional.
 # ---------------------------------------------------------------------------
 robmen_across_qual_auto <- function(te = NA_real_, t1 = "t1", t2 = "t2",
                                     small_values = "desirable",
                                     conditions = list(),
                                     novel_agents = character(0),
-                                    bias_order = NULL) {
+                                    bias_order = NULL,
+                                    lo = NA_real_, hi = NA_real_,
+                                    effect_fallback = FALSE) {
   flag <- function(nm) isTRUE(conditions[[nm]])
   novel_in <- intersect(as.character(novel_agents %||% character(0)),
                         c(as.character(t1), as.character(t2)))
@@ -274,18 +310,19 @@ robmen_across_qual_auto <- function(te = NA_real_, t1 = "t1", t2 = "t2",
 
   if (score <= 0) {
     return(list(rating = ROBMEN_NO_BIAS, favoured = NA_character_,
-                provisional = FALSE, score = score,
+                source = NA_character_, provisional = FALSE, score = score,
                 note = paste0("Qualitative auto: ", reason_txt, ".")))
   }
 
-  d <- robmen_direction(te, t1, t2, small_values, bias_order, novel_agents)
+  d <- robmen_direction(te, t1, t2, small_values, bias_order,
+                        lo = lo, hi = hi, effect_fallback = effect_fallback)
   if (is.na(d$favoured)) {
     return(list(rating = ROBMEN_NO_BIAS, favoured = NA_character_,
                 source = NA_character_, provisional = TRUE, score = score,
                 note = paste0("Qualitative auto: ", reason_txt,
-                              " -> bias suspected but no direction is available",
-                              " (no ordering and the observed effect is null);",
-                              " set manually.")))
+                              " -> bias suspected but ",
+                              .robmen_no_direction_txt(effect_fallback),
+                              "; set manually or add the bias-favour ordering.")))
   }
   list(rating = robmen_bias_label(d$favoured), favoured = d$favoured,
        source = d$source, provisional = TRUE, score = score,

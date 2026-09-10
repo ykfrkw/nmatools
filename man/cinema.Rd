@@ -56,11 +56,21 @@ as approval years (\code{c(New = 2019, Old = 1998)}), sorted
 decreasingly. Every provisional \emph{"Suspected bias favouring
 X"} the app proposes (Component 1 when studies did not report the
 outcome; the qualitative Component 2 rule) takes X from this
-ordering; treatments left out fall back to a single novel agent
-and then to the direction of the observed effect.}
+ordering. Comparisons whose two treatments are not both ranked get
+no direction and are flagged for the reviewer, unless
+\code{effect_fallback} is on. Put novel agents at the top.}
+\item{\code{effect_fallback}}{Logical (default \code{FALSE}). When
+\code{TRUE}, a comparison not covered by \code{bias_order} takes
+the direction of its pooled \emph{direct} estimate, and only when
+that estimate's 95\% CI excludes the null (Group A rows only).
+Off by default because it aligns every bias direction with the
+NMA result and, together with the NMR-based small-study-effects
+direction, pushes estimates towards \emph{High risk} without any
+reviewer input.}
 \item{\code{novel_agents}}{Character vector of treatments supported
 only by a few early trials (a bias-suggesting condition of the
-ROB-MEN paper).}
+ROB-MEN paper). This does not set a direction; rank the agent at
+the top of \code{bias_order} for that.}
 \item{\code{no_grey_lit}, \code{prior_pub_bias}, \code{registration},
 \code{unpub_consistent}}{Logicals for the review-level conditions
 (grey literature not searched; previous evidence of publication

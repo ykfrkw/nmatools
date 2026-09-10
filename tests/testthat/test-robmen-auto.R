@@ -1,6 +1,7 @@
 # Tests for the pure ROB-MEN auto-judgement rules in
 # inst/app/modules/_robmen_auto.R (Group A/B/C classification, ROB-ME Q1
-# from SR counts, Egger / qualitative across-study rules, SSE direction).
+# from SR counts, bias-favour ordering, Egger / qualitative across-study
+# rules, SSE direction, SR reference from the data-sheet skeleton).
 
 try(Sys.setlocale("LC_CTYPE", "en_US.UTF-8"), silent = TRUE)
 
@@ -14,8 +15,8 @@ source(helper_path, local = TRUE)
 
 NO_BIAS <- "No bias detected"
 SSE_NONE <- "No evidence of small-study effects"
-SSE_IN   <- "Evidence of small-study effects \u2013 reinforcing biased contribution"
-SSE_NOT  <- "Evidence of small-study effects \u2013 not reinforcing biased contribution"
+SSE_IN   <- "Evidence of small-study effects – reinforcing biased contribution"
+SSE_NOT  <- "Evidence of small-study effects – not reinforcing biased contribution"
 
 # ---------------------------------------------------------------------------
 # Direction convention
@@ -39,6 +40,9 @@ test_that("require_ci suppresses the direction when the CI includes the null", {
   expect_equal(robmen_favoured_treatment(-0.3, "A", "B", "desirable",
                                          lo = -0.5, hi = -0.1,
                                          require_ci = TRUE), "A")
+  # missing CI counts as "not significant"
+  expect_true(is.na(robmen_favoured_treatment(-0.3, "A", "B", "desirable",
+                                              require_ci = TRUE)))
 })
 
 # ---------------------------------------------------------------------------
@@ -65,50 +69,42 @@ test_that("favoured_by_order picks the higher-ranked treatment or NA", {
   expect_true(is.na(robmen_favoured_by_order("New", "New", ord)))
 })
 
-test_that("robmen_direction prefers order, then novel agent, then effect", {
+test_that("robmen_direction uses the ordering, then (optionally) a significant effect", {
   ord <- c("New", "Old")
-  # order wins even against a novel-agent flag and an opposite effect
-  d <- robmen_direction(-0.5, "Old", "New", "desirable",
-                        bias_order = ord, novel_agents = "Old")
+  # ordering wins over an opposite, significant effect
+  d <- robmen_direction(-0.5, "Old", "New", "desirable", bias_order = ord,
+                        lo = -0.8, hi = -0.2, effect_fallback = TRUE)
   expect_equal(d$favoured, "New"); expect_equal(d$source, "order")
-  # not both ranked -> novel agent
-  d <- robmen_direction(-0.5, "Old", "X", "desirable",
-                        bias_order = ord, novel_agents = "X")
-  expect_equal(d$favoured, "X"); expect_equal(d$source, "novel")
-  # neither -> observed effect (Old has lower values, desirable)
-  d <- robmen_direction(-0.5, "Old", "X", "desirable")
-  expect_equal(d$favoured, "Old"); expect_equal(d$source, "effect")
-  # nothing available
-  d <- robmen_direction(NA, "Old", "X")
+
+  # not both ranked, fallback off -> no direction (the default)
+  d <- robmen_direction(-0.5, "Old", "X", "desirable", bias_order = ord,
+                        lo = -0.8, hi = -0.2)
   expect_true(is.na(d$favoured)); expect_true(is.na(d$source))
+
+  # fallback on + significant effect -> effect (Old has lower values)
+  d <- robmen_direction(-0.5, "Old", "X", "desirable", bias_order = ord,
+                        lo = -0.8, hi = -0.2, effect_fallback = TRUE)
+  expect_equal(d$favoured, "Old"); expect_equal(d$source, "effect")
+
+  # fallback on but CI covers the null -> no direction
+  d <- robmen_direction(-0.5, "Old", "X", "desirable", bias_order = ord,
+                        lo = -1.2, hi = 0.2, effect_fallback = TRUE)
+  expect_true(is.na(d$favoured))
+
+  # fallback on but no CI supplied -> no direction
+  d <- robmen_direction(-0.5, "Old", "X", "desirable", effect_fallback = TRUE)
+  expect_true(is.na(d$favoured))
 })
 
-test_that("the ordering drives Component 1 and the qualitative Component 2", {
-  ord <- c("New", "Old")
-  # missing studies; observed effect favours Old, ordering says New
-  r <- robmen_within_auto(5, 7, te = -0.4, t1 = "Old", t2 = "New",
-                          small_values = "desirable", bias_order = ord)
-  expect_equal(r$rating, "Suspected bias favouring New")
-  expect_equal(r$source, "order")
-  expect_match(r$note, "bias-favour ordering")
-  # no missing studies: ordering is irrelevant
-  expect_equal(robmen_within_auto(5, 5, te = -0.4, t1 = "Old", t2 = "New",
-                                  bias_order = ord)$rating, NO_BIAS)
-  # qualitative rule with a bias condition
-  q <- robmen_across_qual_auto(-0.4, "Old", "New", "desirable",
-                               conditions = list(no_grey_lit = TRUE),
-                               bias_order = ord)
-  expect_equal(q$rating, "Suspected bias favouring New")
-  expect_equal(q$source, "order")
-  # without conditions the ordering does not create bias on its own
-  expect_equal(robmen_across_qual_auto(-0.4, "Old", "New", "desirable",
-                                       bias_order = ord)$rating, NO_BIAS)
-  # a treatment outside the ordering falls back to the effect
-  q2 <- robmen_across_qual_auto(-0.4, "Old", "X", "desirable",
-                                conditions = list(no_grey_lit = TRUE),
-                                bias_order = ord)
-  expect_equal(q2$rating, "Suspected bias favouring Old")
-  expect_equal(q2$source, "effect")
+test_that("novel agents ranked below another treatment are reported as conflicts", {
+  expect_equal(robmen_order_conflicts(c("Old", "New"), "New"), "New")
+  expect_equal(robmen_order_conflicts(c("New", "Old"), "New"), character(0))
+  # two novel agents on top, in any order, is fine
+  expect_equal(robmen_order_conflicts(c("N2", "N1", "Old"), c("N1", "N2")), character(0))
+  # novel agent not in the ordering: nothing to contradict
+  expect_equal(robmen_order_conflicts(c("A", "B"), "N1"), character(0))
+  expect_equal(robmen_order_conflicts(NULL, "N1"), character(0))
+  expect_equal(robmen_order_conflicts(c("A", "B"), character(0)), character(0))
 })
 
 # ---------------------------------------------------------------------------
@@ -139,35 +135,63 @@ test_that("within-study auto is No bias when the SR count equals k", {
   # SR count below k (data entry slip) is not treated as missing studies
   r3 <- robmen_within_auto(5, 3, te = -0.4, t1 = "A", t2 = "B")
   expect_equal(r3$rating, NO_BIAS)
+  # the ordering is irrelevant when nothing is missing
+  expect_equal(robmen_within_auto(5, 5, te = -0.4, t1 = "Old", t2 = "New",
+                                  bias_order = c("New", "Old"))$rating, NO_BIAS)
 })
 
-test_that("within-study auto proposes a provisional direction when studies are missing", {
-  r <- robmen_within_auto(5, 7, te = -0.4, t1 = "A", t2 = "B",
-                          small_values = "desirable")
-  expect_equal(r$rating, "Suspected bias favouring A")
+test_that("missing studies: direction comes from the ordering", {
+  ord <- c("New", "Old")
+  # observed effect favours Old (significant), ordering says New
+  r <- robmen_within_auto(5, 7, te = -0.4, t1 = "Old", t2 = "New",
+                          small_values = "desirable", bias_order = ord,
+                          lo = -0.6, hi = -0.2, effect_fallback = TRUE)
+  expect_equal(r$rating, "Suspected bias favouring New")
   expect_equal(r$q1, "yes")
+  expect_equal(r$source, "order")
   expect_true(r$provisional)
   expect_equal(r$n_missing, 2)
   expect_match(r$note, "2 SR studies")
+  expect_match(r$note, "bias-favour ordering")
 
-  r_u <- robmen_within_auto(5, 7, te = -0.4, t1 = "A", t2 = "B",
-                            small_values = "undesirable")
-  expect_equal(r_u$rating, "Suspected bias favouring B")
-
-  # Group B: k = 0, direction from the NMA estimate
-  r_b <- robmen_within_auto(0, 1, te = 0.2, t1 = "A", t2 = "B",
-                            small_values = "desirable")
-  expect_equal(r_b$rating, "Suspected bias favouring B")
+  # Group B (k = 0): the ordering still works
+  r_b <- robmen_within_auto(0, 1, te = NA, t1 = "Old", t2 = "New",
+                            bias_order = ord)
+  expect_equal(r_b$rating, "Suspected bias favouring New")
   expect_equal(r_b$n_missing, 1)
   expect_match(r_b$note, "1 SR study ")
 })
 
-test_that("within-study auto stays No bias but flagged when no direction is readable", {
-  r <- robmen_within_auto(5, 6, te = NA, t1 = "A", t2 = "B")
+test_that("missing studies without an ordering: flagged, no direction by default", {
+  r <- robmen_within_auto(5, 7, te = -0.4, t1 = "A", t2 = "B",
+                          small_values = "desirable", lo = -0.6, hi = -0.2)
   expect_equal(r$rating, NO_BIAS)
   expect_equal(r$q1, "yes")
   expect_true(r$provisional)
-  expect_match(r$note, "set Q2 manually")
+  expect_true(is.na(r$source))
+  expect_match(r$note, "bias-favour ordering")
+  expect_match(r$note, "Set Q2 manually")
+})
+
+test_that("missing studies with the effect fallback on: only a significant effect sets X", {
+  # significant, desirable -> A (lower values); undesirable -> B
+  r <- robmen_within_auto(5, 7, te = -0.4, t1 = "A", t2 = "B",
+                          small_values = "desirable", lo = -0.6, hi = -0.2,
+                          effect_fallback = TRUE)
+  expect_equal(r$rating, "Suspected bias favouring A")
+  expect_equal(r$source, "effect")
+  expect_match(r$note, "significantly favours A")
+  r_u <- robmen_within_auto(5, 7, te = -0.4, t1 = "A", t2 = "B",
+                            small_values = "undesirable", lo = -0.6, hi = -0.2,
+                            effect_fallback = TRUE)
+  expect_equal(r_u$rating, "Suspected bias favouring B")
+  # CI covers the null -> flagged, no direction
+  r_ns <- robmen_within_auto(5, 7, te = -0.4, t1 = "A", t2 = "B",
+                             small_values = "desirable", lo = -0.9, hi = 0.1,
+                             effect_fallback = TRUE)
+  expect_equal(r_ns$rating, NO_BIAS)
+  expect_true(r_ns$provisional)
+  expect_match(r_ns$note, "not significant")
 })
 
 # ---------------------------------------------------------------------------
@@ -199,51 +223,75 @@ test_that("qualitative auto is No bias when nothing is flagged", {
   expect_equal(r$rating, NO_BIAS)
   expect_false(r$provisional)
   expect_equal(r$score, 0)
+  # an ordering alone never creates a suspicion of bias
+  expect_equal(robmen_across_qual_auto(-0.4, "Old", "New", "desirable",
+                                       bias_order = c("New", "Old"))$rating, NO_BIAS)
 })
 
-test_that("qualitative auto scores bias vs no-bias conditions", {
+test_that("qualitative auto scores bias vs no-bias conditions and takes X from the ordering", {
+  ord <- c("New", "Old")
   cond_bias <- list(no_grey_lit = TRUE)
-  r <- robmen_across_qual_auto(-0.3, "A", "B", "desirable", conditions = cond_bias)
-  expect_equal(r$rating, "Suspected bias favouring A")
+  r <- robmen_across_qual_auto(-0.3, "Old", "New", "desirable",
+                               conditions = cond_bias, bias_order = ord)
+  expect_equal(r$rating, "Suspected bias favouring New")
+  expect_equal(r$source, "order")
   expect_true(r$provisional)
   expect_equal(r$score, 1)
 
   # one bias condition offset by one no-bias condition -> No bias
   cond_tie <- list(no_grey_lit = TRUE, registration = TRUE)
-  expect_equal(robmen_across_qual_auto(-0.3, "A", "B", conditions = cond_tie)$rating,
-               NO_BIAS)
+  expect_equal(robmen_across_qual_auto(-0.3, "Old", "New", conditions = cond_tie,
+                                       bias_order = ord)$rating, NO_BIAS)
 
   # two bias conditions vs one no-bias -> suspected
   cond_2 <- list(no_grey_lit = TRUE, prior_pub_bias = TRUE, registration = TRUE)
-  expect_equal(robmen_across_qual_auto(-0.3, "A", "B", conditions = cond_2)$rating,
-               "Suspected bias favouring A")
-  expect_equal(robmen_across_qual_auto(-0.3, "A", "B", "undesirable",
-                                       conditions = cond_2)$rating,
-               "Suspected bias favouring B")
+  expect_equal(robmen_across_qual_auto(-0.3, "Old", "New", conditions = cond_2,
+                                       bias_order = ord)$rating,
+               "Suspected bias favouring New")
 })
 
-test_that("a novel agent in the comparison counts as a bias condition and sets the direction", {
-  # observed effect favours A, but B is the novel agent -> favouring B
-  r <- robmen_across_qual_auto(-0.3, "A", "B", "desirable",
-                               conditions = list(), novel_agents = "B")
-  expect_equal(r$rating, "Suspected bias favouring B")
-  expect_match(r$note, "novel agent: B")
-  # both treatments novel: direction from the observed effect
-  r2 <- robmen_across_qual_auto(-0.3, "A", "B", "desirable",
-                                conditions = list(), novel_agents = c("A", "B"))
-  expect_equal(r2$rating, "Suspected bias favouring A")
-  # novel agent not in this comparison: no effect
-  r3 <- robmen_across_qual_auto(-0.3, "A", "B", "desirable",
-                                conditions = list(), novel_agents = "C")
-  expect_equal(r3$rating, NO_BIAS)
-})
-
-test_that("qualitative auto with bias but no readable direction is flagged", {
-  r <- robmen_across_qual_auto(NA, "A", "B",
-                               conditions = list(prior_pub_bias = TRUE))
+test_that("qualitative auto without an ordering is flagged unless the effect fallback applies", {
+  cond <- list(no_grey_lit = TRUE)
+  # default: no direction
+  r <- robmen_across_qual_auto(-0.3, "A", "B", "desirable", conditions = cond,
+                               lo = -0.5, hi = -0.1)
   expect_equal(r$rating, NO_BIAS)
   expect_true(r$provisional)
   expect_match(r$note, "set manually")
+  # fallback on + significant -> A (desirable) / B (undesirable)
+  r2 <- robmen_across_qual_auto(-0.3, "A", "B", "desirable", conditions = cond,
+                                lo = -0.5, hi = -0.1, effect_fallback = TRUE)
+  expect_equal(r2$rating, "Suspected bias favouring A")
+  expect_equal(r2$source, "effect")
+  r3 <- robmen_across_qual_auto(-0.3, "A", "B", "undesirable", conditions = cond,
+                                lo = -0.5, hi = -0.1, effect_fallback = TRUE)
+  expect_equal(r3$rating, "Suspected bias favouring B")
+  # fallback on but not significant -> flagged
+  r4 <- robmen_across_qual_auto(-0.3, "A", "B", "desirable", conditions = cond,
+                                lo = -0.8, hi = 0.2, effect_fallback = TRUE)
+  expect_equal(r4$rating, NO_BIAS)
+  expect_true(r4$provisional)
+})
+
+test_that("a novel agent is a bias condition but not a direction source", {
+  ord <- c("B", "A")
+  r <- robmen_across_qual_auto(-0.3, "A", "B", "desirable",
+                               conditions = list(), novel_agents = "B",
+                               bias_order = ord)
+  expect_equal(r$rating, "Suspected bias favouring B")
+  expect_equal(r$source, "order")
+  expect_match(r$note, "novel agent: B")
+  # novel agent without an ordering: condition fires, direction is missing
+  r2 <- robmen_across_qual_auto(-0.3, "A", "B", "desirable",
+                                conditions = list(), novel_agents = "B")
+  expect_equal(r2$rating, NO_BIAS)
+  expect_true(r2$provisional)
+  expect_equal(r2$score, 1)
+  # novel agent not in this comparison: no condition
+  r3 <- robmen_across_qual_auto(-0.3, "A", "B", "desirable",
+                                conditions = list(), novel_agents = "C")
+  expect_equal(r3$rating, NO_BIAS)
+  expect_false(r3$provisional)
 })
 
 # ---------------------------------------------------------------------------

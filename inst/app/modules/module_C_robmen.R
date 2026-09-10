@@ -775,12 +775,18 @@ moduleC_ui <- function(id) {
           checkboxInput(ns("auto_sync_d2"),
             label = "Sync ROB-MEN ratings to CINeMA Domain 2 automatically",
             value = TRUE, width = "100%"),
+          checkboxInput(ns("effect_fallback"),
+            label = tagList("Fall back to the observed direct effect for “favouring X”",
+                            " when the treatments are not both ranked (only if its",
+                            " 95% CI excludes the null; Group A rows only)"),
+            value = FALSE, width = "100%"),
           tags$small(style = "color:#666; display:block; line-height:1.3;",
             "① follows the “Total identified in the SR” counts:",
             " k_SR = k → No bias detected; k_SR > k → suspected bias",
-            " favouring the treatment the observed effect favours (confirm via",
-            " ROB-ME). Manual edits are never overwritten; use ↺ auto in",
-            " the column header to return to the auto values.")
+            " favouring the treatment ranked higher in the bias-favour",
+            " ordering (confirm via ROB-ME); without an ordering the row is",
+            " flagged for you to set Q2. Manual edits are never overwritten;",
+            " use ↺ auto in the column header to return to the auto values.")
         ),
         div(style = "min-width:300px; flex:1;",
           tags$b(style = "font-size:0.9em;",
@@ -808,9 +814,10 @@ moduleC_ui <- function(id) {
             " comparator last; for psychotherapies, whatever order expert",
             " judgement suggests. Drag to reorder. Every provisional",
             " “favouring X” (① with missing studies, ② qualitative rule)",
-            " takes X from this ordering; treatments left out fall back to",
-            " a single novel agent, then to the observed effect.",
-            " Can also be passed from R: ",
+            " takes X from this ordering. Put novel agents at the top.",
+            " Comparisons whose treatments are not both ranked get no",
+            " direction and are flagged (unless the observed-effect",
+            " fallback above is on). Can also be passed from R: ",
             code("cinema(..., robmen = list(bias_order = c(\"New\", \"Old\")))"),
             ".")
         )
@@ -846,6 +853,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
       }
       set_chk("auto_fill",             "auto_fill")
       set_chk("auto_sync_d2",          "auto_sync_d2")
+      set_chk("effect_fallback",       "effect_fallback")
       set_chk("cond_no_grey_lit",      "no_grey_lit")
       set_chk("cond_prior_pub_bias",   "prior_pub_bias")
       set_chk("cond_registration",     "registration")
@@ -873,6 +881,11 @@ moduleC_server <- function(id, processed_data, cinema_module,
     })
     auto_fill_on <- reactive(isTRUE(input$auto_fill %||% TRUE))
     auto_sync_on <- reactive(isTRUE(input$auto_sync_d2 %||% TRUE))
+    # Observed-effect fallback for unmeasured directions: off by default —
+    # it systematically aligns the bias direction with the NMA result and,
+    # combined with the NMR-based small-study-effects direction, pushes
+    # estimates towards "High risk" without any reviewer input.
+    effect_fallback_on <- reactive(isTRUE(input$effect_fallback %||% FALSE))
     qual_conditions <- reactive(list(
       no_grey_lit      = isTRUE(input$cond_no_grey_lit),
       prior_pub_bias   = isTRUE(input$cond_prior_pub_bias),
@@ -986,7 +999,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
         multiple = TRUE, width = "100%",
         options = list(
           plugins = list("drag_drop", "remove_button"),
-          placeholder = if (length(trts)) "(not set — observed effect decides)"
+          placeholder = if (length(trts)) "(not set — provisional rows get no direction)"
                         else "(run the analysis first)"))
     })
 
@@ -1246,16 +1259,6 @@ moduleC_server <- function(id, processed_data, cinema_module,
       }) %>% bind_rows()
     })
 
-    # NMA estimate for a canonical (t1c < t2c) comparison key, as t1c vs t2c.
-    nma_te_for_key <- function(ne, t1c, t2c) {
-      if (is.null(ne) || nrow(ne) == 0) return(NA_real_)
-      r <- ne[ne$t1 == t1c & ne$t2 == t2c, , drop = FALSE]
-      if (nrow(r) > 0) return(r$te[1])
-      r <- ne[ne$t1 == t2c & ne$t2 == t1c, , drop = FALSE]
-      if (nrow(r) > 0) return(-r$te[1])
-      NA_real_
-    }
-
     # ------------------------------------------------------------------
     # ① Within-study bias (Component 1) — AUTO.
     # Chiocchia 2021: Component 1 assesses SELECTIVE NON-REPORTING OF
@@ -1273,11 +1276,10 @@ moduleC_server <- function(id, processed_data, cinema_module,
       comps <- tryCatch(all_comps_df(),   error = function(e) NULL)
       st    <- tryCatch(sr_totals(),      error = function(e) NULL)
       pool  <- tryCatch(pooled_direct_df(), error = function(e) NULL)
-      ne    <- tryCatch(nma_estimates(),  error = function(e) NULL)
       ref   <- sr_reference()
       sv    <- small_values()
       ord   <- bias_order()
-      nov   <- novel_agents()
+      fb    <- effect_fallback_on()
       if (is.null(comps) || nrow(comps) == 0)
         return(data.frame(comp_key = character(0), grp = character(0),
                           rating = character(0), provisional = logical(0),
@@ -1293,13 +1295,20 @@ moduleC_server <- function(id, processed_data, cinema_module,
                             provisional = FALSE, note = "",
                             k_sr = k_sr, n_missing = 0,
                             stringsAsFactors = FALSE))
-        te <- if (grp == "A" && !is.null(pool)) {
-          pool$te[match(ck, pool$comp_key)]
-        } else {
-          nma_te_for_key(ne, comps$t1[i], comps$t2[i])
+        # Direction sources: the ordering always; the observed DIRECT effect
+        # (with its CI) only for Group A and only when the fallback is on.
+        te <- lo <- hi <- NA_real_
+        if (grp == "A" && !is.null(pool)) {
+          pr <- pool[pool$comp_key == ck, , drop = FALSE]
+          if (nrow(pr) > 0 && !is.na(pr$te[1]) && !is.na(pr$se[1])) {
+            te <- pr$te[1]
+            lo <- te - 1.96 * pr$se[1]
+            hi <- te + 1.96 * pr$se[1]
+          }
         }
         res <- robmen_within_auto(k_rep, k_sr, te, comps$t1[i], comps$t2[i], sv,
-                                  bias_order = ord, novel_agents = nov)
+                                  bias_order = ord, lo = lo, hi = hi,
+                                  effect_fallback = fb && grp == "A")
         note <- res$note
         rr <- sr_ref_row(ref, ck)
         if (res$n_missing > 0 && !is.null(rr) && nzchar(rr$missing[1]))
@@ -1322,12 +1331,12 @@ moduleC_server <- function(id, processed_data, cinema_module,
       comps <- tryCatch(all_comps_df(),   error = function(e) NULL)
       eg    <- tryCatch(egger_df(),       error = function(e) NULL)
       pool  <- tryCatch(pooled_direct_df(), error = function(e) NULL)
-      ne    <- tryCatch(nma_estimates(),  error = function(e) NULL)
       wa    <- tryCatch(within_auto_df(), error = function(e) NULL)
       sv    <- small_values()
       conds <- qual_conditions()
       nov   <- novel_agents()
       ord   <- bias_order()
+      fb    <- effect_fallback_on()
       if (is.null(comps) || nrow(comps) == 0)
         return(data.frame(comp_key = character(0), grp = character(0),
                           rating = character(0), provisional = logical(0),
@@ -1359,11 +1368,19 @@ moduleC_server <- function(id, processed_data, cinema_module,
                               stringsAsFactors = FALSE))
           }
         }
-        te <- if (grp == "A" && !is.null(pool)) pool$te[match(ck, pool$comp_key)]
-              else nma_te_for_key(ne, comps$t1[i], comps$t2[i])
+        te <- lo <- hi <- NA_real_
+        if (grp == "A" && !is.null(pool)) {
+          pr <- pool[pool$comp_key == ck, , drop = FALSE]
+          if (nrow(pr) > 0 && !is.na(pr$te[1]) && !is.na(pr$se[1])) {
+            te <- pr$te[1]
+            lo <- te - 1.96 * pr$se[1]
+            hi <- te + 1.96 * pr$se[1]
+          }
+        }
         res <- robmen_across_qual_auto(te, comps$t1[i], comps$t2[i], sv,
                                        conditions = conds, novel_agents = nov,
-                                       bias_order = ord)
+                                       bias_order = ord, lo = lo, hi = hi,
+                                       effect_fallback = fb && grp == "A")
         data.frame(comp_key = ck, grp = grp, rating = res$rating,
                    provisional = res$provisional, source = "qual",
                    note = res$note, stringsAsFactors = FALSE)
@@ -1486,7 +1503,18 @@ moduleC_server <- function(id, processed_data, cinema_module,
           tags$span(style = "color:#6c757d;",
             sprintf("Manually edited (auto will not overwrite): %s.",
                     paste(ov, collapse = ", ")))
-        )
+        ),
+        {
+          conflicts <- robmen_order_conflicts(bias_order(), novel_agents())
+          if (length(conflicts) > 0) tagList(
+            tags$br(),
+            tags$span(style = "color:#b45309;",
+              icon("triangle-exclamation"),
+              sprintf(" The bias-favour ordering ranks the novel agent%s %s below another treatment; a novel agent should be at the top. Directions follow the ordering as given.",
+                      if (length(conflicts) == 1) "" else "s",
+                      paste(conflicts, collapse = ", ")))
+          )
+        }
       )
     })
 
@@ -2098,10 +2126,11 @@ moduleC_server <- function(id, processed_data, cinema_module,
           tags$li(strong("Auto rule:"), " ROB-ME Q1 is answered from the",
             " “Total identified in the SR” count. k_SR = k reporting",
             " → No bias detected. k_SR > k → provisional",
-            em(" Suspected bias favouring X"), ", X = treatment favoured by the",
-            " observed effect (selective non-reporting hides results unfavourable",
-            " to the treatment the published evidence favours). Flagged rows",
-            " should be confirmed."),
+            em(" Suspected bias favouring X"), ", X = the treatment ranked",
+            " higher in the bias-favour ordering (automation panel). Without an",
+            " ordering the row is flagged and Q2 is yours to set; the optional",
+            " observed-effect fallback uses the pooled direct estimate only when",
+            " its 95% CI excludes the null. Flagged rows should be confirmed."),
           tags$li(strong("Group A:"), " click ROB-ME → answer Q1 (any eligible studies",
             " not reporting this outcome?) and Q2 (omission due to result",
             " direction/p-value?) → rating auto-derived."),

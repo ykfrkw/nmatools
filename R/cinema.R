@@ -43,11 +43,21 @@
 #'       decreasingly. Every provisional \emph{"Suspected bias favouring
 #'       X"} the app proposes (Component 1 when studies did not report the
 #'       outcome; the qualitative Component 2 rule) takes X from this
-#'       ordering; treatments left out fall back to a single novel agent
-#'       and then to the direction of the observed effect.}
+#'       ordering. Comparisons whose two treatments are not both ranked get
+#'       no direction and are flagged for the reviewer, unless
+#'       \code{effect_fallback} is on. Put novel agents at the top.}
+#'     \item{\code{effect_fallback}}{Logical (default \code{FALSE}). When
+#'       \code{TRUE}, a comparison not covered by \code{bias_order} takes
+#'       the direction of its pooled \emph{direct} estimate, and only when
+#'       that estimate's 95\% CI excludes the null (Group A rows only).
+#'       Off by default because it aligns every bias direction with the
+#'       NMA result and, together with the NMR-based small-study-effects
+#'       direction, pushes estimates towards \emph{High risk} without any
+#'       reviewer input.}
 #'     \item{\code{novel_agents}}{Character vector of treatments supported
 #'       only by a few early trials (a bias-suggesting condition of the
-#'       ROB-MEN paper).}
+#'       ROB-MEN paper). This does not set a direction; rank the agent at
+#'       the top of \code{bias_order} for that.}
 #'     \item{\code{no_grey_lit}, \code{prior_pub_bias}, \code{registration},
 #'       \code{unpub_consistent}}{Logicals for the review-level conditions
 #'       (grey literature not searched; previous evidence of publication
@@ -126,9 +136,9 @@ cinema <- function(data           = NULL,
     if (!is.list(robmen) || is.null(names(robmen)) || any(!nzchar(names(robmen))))
       stop("`robmen` must be a named list, e.g. list(bias_order = c(...)).",
            call. = FALSE)
-    known <- c("bias_order", "novel_agents", "no_grey_lit", "prior_pub_bias",
-               "registration", "unpub_consistent", "auto_fill", "auto_sync_d2",
-               "contrib_threshold_pp")
+    known <- c("bias_order", "effect_fallback", "novel_agents", "no_grey_lit",
+               "prior_pub_bias", "registration", "unpub_consistent",
+               "auto_fill", "auto_sync_d2", "contrib_threshold_pp")
     unknown <- setdiff(names(robmen), known)
     if (length(unknown))
       warning("cinema(): ignoring unknown `robmen` element(s): ",
