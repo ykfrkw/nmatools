@@ -42,6 +42,76 @@ test_that("require_ci suppresses the direction when the CI includes the null", {
 })
 
 # ---------------------------------------------------------------------------
+# Bias-favour ordering
+# ---------------------------------------------------------------------------
+test_that("bias order normalises character and named-numeric input", {
+  expect_equal(robmen_normalize_bias_order(c("New", "Mid", "Old")),
+               c("New", "Mid", "Old"))
+  expect_equal(robmen_normalize_bias_order(c(" New ", "New", "", NA, "Old")),
+               c("New", "Old"))
+  # approval years: newest first
+  expect_equal(robmen_normalize_bias_order(c(Old = 1998, New = 2019, Mid = 2005)),
+               c("New", "Mid", "Old"))
+  expect_equal(robmen_normalize_bias_order(NULL), character(0))
+  expect_equal(robmen_normalize_bias_order(character(0)), character(0))
+})
+
+test_that("favoured_by_order picks the higher-ranked treatment or NA", {
+  ord <- c("New", "Mid", "Old")
+  expect_equal(robmen_favoured_by_order("Old", "New", ord), "New")
+  expect_equal(robmen_favoured_by_order("Mid", "Old", ord), "Mid")
+  expect_true(is.na(robmen_favoured_by_order("New", "Other", ord)))
+  expect_true(is.na(robmen_favoured_by_order("A", "B", NULL)))
+  expect_true(is.na(robmen_favoured_by_order("New", "New", ord)))
+})
+
+test_that("robmen_direction prefers order, then novel agent, then effect", {
+  ord <- c("New", "Old")
+  # order wins even against a novel-agent flag and an opposite effect
+  d <- robmen_direction(-0.5, "Old", "New", "desirable",
+                        bias_order = ord, novel_agents = "Old")
+  expect_equal(d$favoured, "New"); expect_equal(d$source, "order")
+  # not both ranked -> novel agent
+  d <- robmen_direction(-0.5, "Old", "X", "desirable",
+                        bias_order = ord, novel_agents = "X")
+  expect_equal(d$favoured, "X"); expect_equal(d$source, "novel")
+  # neither -> observed effect (Old has lower values, desirable)
+  d <- robmen_direction(-0.5, "Old", "X", "desirable")
+  expect_equal(d$favoured, "Old"); expect_equal(d$source, "effect")
+  # nothing available
+  d <- robmen_direction(NA, "Old", "X")
+  expect_true(is.na(d$favoured)); expect_true(is.na(d$source))
+})
+
+test_that("the ordering drives Component 1 and the qualitative Component 2", {
+  ord <- c("New", "Old")
+  # missing studies; observed effect favours Old, ordering says New
+  r <- robmen_within_auto(5, 7, te = -0.4, t1 = "Old", t2 = "New",
+                          small_values = "desirable", bias_order = ord)
+  expect_equal(r$rating, "Suspected bias favouring New")
+  expect_equal(r$source, "order")
+  expect_match(r$note, "bias-favour ordering")
+  # no missing studies: ordering is irrelevant
+  expect_equal(robmen_within_auto(5, 5, te = -0.4, t1 = "Old", t2 = "New",
+                                  bias_order = ord)$rating, NO_BIAS)
+  # qualitative rule with a bias condition
+  q <- robmen_across_qual_auto(-0.4, "Old", "New", "desirable",
+                               conditions = list(no_grey_lit = TRUE),
+                               bias_order = ord)
+  expect_equal(q$rating, "Suspected bias favouring New")
+  expect_equal(q$source, "order")
+  # without conditions the ordering does not create bias on its own
+  expect_equal(robmen_across_qual_auto(-0.4, "Old", "New", "desirable",
+                                       bias_order = ord)$rating, NO_BIAS)
+  # a treatment outside the ordering falls back to the effect
+  q2 <- robmen_across_qual_auto(-0.4, "Old", "X", "desirable",
+                                conditions = list(no_grey_lit = TRUE),
+                                bias_order = ord)
+  expect_equal(q2$rating, "Suspected bias favouring Old")
+  expect_equal(q2$source, "effect")
+})
+
+# ---------------------------------------------------------------------------
 # Group classification
 # ---------------------------------------------------------------------------
 test_that("groups follow the reporting and SR counts", {

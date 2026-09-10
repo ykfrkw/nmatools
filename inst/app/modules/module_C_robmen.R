@@ -796,8 +796,23 @@ moduleC_ui <- function(id) {
           uiOutput(ns("novel_agents_ui")),
           tags$small(style = "color:#666; display:block; line-height:1.3;",
             "Rule: (conditions suggesting bias) − (conditions suggesting",
-            " no bias) > 0 → suspected bias, favouring the novel agent or",
-            " else the treatment the observed effect favours.")
+            " no bias) > 0 → suspected bias.")
+        ),
+        div(style = "min-width:300px; flex:1;",
+          tags$b(style = "font-size:0.9em;",
+                 "Which treatment would missing evidence favour?"),
+          uiOutput(ns("bias_order_ui")),
+          tags$small(style = "color:#666; display:block; line-height:1.3;",
+            "Order treatments from most to least likely to be favoured",
+            " by bias — e.g. the newest drug first, an established",
+            " comparator last; for psychotherapies, whatever order expert",
+            " judgement suggests. Drag to reorder. Every provisional",
+            " “favouring X” (① with missing studies, ② qualitative rule)",
+            " takes X from this ordering; treatments left out fall back to",
+            " a single novel agent, then to the observed effect.",
+            " Can also be passed from R: ",
+            code("cinema(..., robmen = list(bias_order = c(\"New\", \"Old\")))"),
+            ".")
         )
       )
     ),
@@ -810,12 +825,35 @@ moduleC_ui <- function(id) {
 # =============================================================================
 # SERVER FUNCTION
 # =============================================================================
+# robmen_defaults: optional list passed from R via cinema(robmen = list(...)):
+#   bias_order, novel_agents, no_grey_lit, prior_pub_bias, registration,
+#   unpub_consistent, auto_fill, auto_sync_d2, contrib_threshold_pp.
 moduleC_server <- function(id, processed_data, cinema_module,
                            nma_settings = NULL, run_trigger = NULL,
-                           go_to_cinema = NULL) {
+                           go_to_cinema = NULL, robmen_defaults = NULL) {
 
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    defaults <- if (is.list(robmen_defaults)) robmen_defaults else list()
+
+    # Apply scripted defaults to the static controls once, at start-up.
+    observe({
+      set_chk <- function(id, key) {
+        v <- defaults[[key]]
+        if (!is.null(v) && length(v) == 1 && !is.na(v))
+          updateCheckboxInput(session, id, value = isTRUE(as.logical(v)))
+      }
+      set_chk("auto_fill",             "auto_fill")
+      set_chk("auto_sync_d2",          "auto_sync_d2")
+      set_chk("cond_no_grey_lit",      "no_grey_lit")
+      set_chk("cond_prior_pub_bias",   "prior_pub_bias")
+      set_chk("cond_registration",     "registration")
+      set_chk("cond_unpub_consistent", "unpub_consistent")
+      thr <- suppressWarnings(as.numeric(defaults$contrib_threshold_pp))
+      if (length(thr) == 1 && !is.na(thr) && thr >= 0)
+        updateNumericInput(session, "contrib_threshold_pp", value = thr)
+    }, priority = 1000)   # no reactive dependencies: runs exactly once
 
     contrib_threshold_pp <- reactive({
       val <- suppressWarnings(as.numeric(input$contrib_threshold_pp)[1])
@@ -841,7 +879,18 @@ moduleC_server <- function(id, processed_data, cinema_module,
       registration     = isTRUE(input$cond_registration),
       unpub_consistent = isTRUE(input$cond_unpub_consistent)
     ))
-    novel_agents <- reactive(as.character(input$novel_agents %||% character(0)))
+    novel_agents <- reactive({
+      v <- input$novel_agents
+      if (is.null(v)) v <- defaults$novel_agents
+      as.character(v %||% character(0))
+    })
+    # Bias-favour ordering: the selectize keeps the order in which items
+    # were added (drag_drop plugin reorders), so its value IS the ranking.
+    bias_order <- reactive({
+      v <- input$bias_order
+      if (is.null(v)) v <- defaults$bias_order
+      robmen_normalize_bias_order(v)
+    })
 
     # ------------------------------------------------------------------
     # Data accessors
@@ -915,12 +964,30 @@ moduleC_server <- function(id, processed_data, cinema_module,
     output$novel_agents_ui <- renderUI({
       core <- tryCatch(nma_core(), error = function(e) NULL)
       trts <- if (is.null(core)) character(0) else sort(core$net$trts)
+      sel  <- isolate(input$novel_agents) %||% defaults$novel_agents
       selectizeInput(ns("novel_agents"),
         label = tags$span(style = "font-weight:normal; font-size:0.9em;",
-          "Novel agents (few early trials — bias favours these treatments)"),
-        choices = trts, selected = isolate(input$novel_agents),
+          "Novel agents (few early trials — counts as a bias condition)"),
+        choices = trts, selected = intersect(as.character(sel %||% character(0)), trts),
         multiple = TRUE, width = "100%",
         options = list(placeholder = if (length(trts)) "(none)" else "(run the analysis first)"))
+    })
+
+    output$bias_order_ui <- renderUI({
+      core <- tryCatch(nma_core(), error = function(e) NULL)
+      trts <- if (is.null(core)) character(0) else sort(core$net$trts)
+      sel  <- isolate(input$bias_order) %||%
+              robmen_normalize_bias_order(defaults$bias_order)
+      sel  <- sel[sel %in% trts]
+      selectizeInput(ns("bias_order"),
+        label = tags$span(style = "font-weight:normal; font-size:0.9em;",
+          "Bias-favour ordering (1st = most favoured by missing evidence)"),
+        choices = trts, selected = sel,
+        multiple = TRUE, width = "100%",
+        options = list(
+          plugins = list("drag_drop", "remove_button"),
+          placeholder = if (length(trts)) "(not set — observed effect decides)"
+                        else "(run the analysis first)"))
     })
 
     # ------------------------------------------------------------------
@@ -1209,6 +1276,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
       ne    <- tryCatch(nma_estimates(),  error = function(e) NULL)
       ref   <- sr_reference()
       sv    <- small_values()
+      ord   <- bias_order()
+      nov   <- novel_agents()
       if (is.null(comps) || nrow(comps) == 0)
         return(data.frame(comp_key = character(0), grp = character(0),
                           rating = character(0), provisional = logical(0),
@@ -1229,7 +1298,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
         } else {
           nma_te_for_key(ne, comps$t1[i], comps$t2[i])
         }
-        res <- robmen_within_auto(k_rep, k_sr, te, comps$t1[i], comps$t2[i], sv)
+        res <- robmen_within_auto(k_rep, k_sr, te, comps$t1[i], comps$t2[i], sv,
+                                  bias_order = ord, novel_agents = nov)
         note <- res$note
         rr <- sr_ref_row(ref, ck)
         if (res$n_missing > 0 && !is.null(rr) && nzchar(rr$missing[1]))
@@ -1257,6 +1327,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
       sv    <- small_values()
       conds <- qual_conditions()
       nov   <- novel_agents()
+      ord   <- bias_order()
       if (is.null(comps) || nrow(comps) == 0)
         return(data.frame(comp_key = character(0), grp = character(0),
                           rating = character(0), provisional = logical(0),
@@ -1291,7 +1362,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
         te <- if (grp == "A" && !is.null(pool)) pool$te[match(ck, pool$comp_key)]
               else nma_te_for_key(ne, comps$t1[i], comps$t2[i])
         res <- robmen_across_qual_auto(te, comps$t1[i], comps$t2[i], sv,
-                                       conditions = conds, novel_agents = nov)
+                                       conditions = conds, novel_agents = nov,
+                                       bias_order = ord)
         data.frame(comp_key = ck, grp = grp, rating = res$rating,
                    provisional = res$provisional, source = "qual",
                    note = res$note, stringsAsFactors = FALSE)

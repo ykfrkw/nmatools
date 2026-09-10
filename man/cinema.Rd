@@ -8,7 +8,8 @@ cinema(
   data = NULL,
   format = c("continuous", "binary", "pairwise"),
   effect_measure = c("SMD", "MD", "OR", "RR"),
-  launch = TRUE
+  launch = TRUE,
+  robmen = NULL
 )
 }
 \arguments{
@@ -41,6 +42,37 @@ Ignored when \code{data = NULL}.}
 immediately via \code{\link[shiny]{runApp}}. Set to \code{FALSE} to
 return the \code{shinyApp} object for programmatic use (e.g.,
 \code{shinyapps.io} deployment).}
+
+\item{robmen}{Optional named list of ROB-MEN (Domain 2) defaults, applied
+to the automation panel of the \emph{Reporting bias} tab so that the
+assessment can be scripted instead of clicked. Recognised elements:
+\describe{
+\item{\code{bias_order}}{Treatments ordered from the one \emph{most}
+likely to be favoured by missing evidence to the least (for
+example the newest drug first, an established comparator last; for
+psychotherapies, whatever order expert judgement suggests). Either
+a character vector in that order, or a named numeric vector such
+as approval years (\code{c(New = 2019, Old = 1998)}), sorted
+decreasingly. Every provisional \emph{"Suspected bias favouring
+X"} the app proposes (Component 1 when studies did not report the
+outcome; the qualitative Component 2 rule) takes X from this
+ordering; treatments left out fall back to a single novel agent
+and then to the direction of the observed effect.}
+\item{\code{novel_agents}}{Character vector of treatments supported
+only by a few early trials (a bias-suggesting condition of the
+ROB-MEN paper).}
+\item{\code{no_grey_lit}, \code{prior_pub_bias}, \code{registration},
+\code{unpub_consistent}}{Logicals for the review-level conditions
+(grey literature not searched; previous evidence of publication
+bias; tradition of prospective registration; unpublished studies
+available and consistent).}
+\item{\code{auto_fill}, \code{auto_sync_d2}}{Logicals switching the
+auto-fill of the pairwise judgements and the automatic sync into
+CINeMA Domain 2 (both default \code{TRUE}).}
+\item{\code{contrib_threshold_pp}}{Contribution threshold in
+percentage points (default 15).}
+}
+Everything remains editable in the GUI.}
 }
 \value{
 Invisibly, the \code{shinyApp} object when \code{launch = FALSE};
@@ -59,6 +91,13 @@ cinema()
 # Pre-load binary data from the bundled W2I sample
 d <- load_w2i()
 cinema(d, format = "binary", effect_measure = "OR")
+
+# Script the ROB-MEN assumptions: Combination is the newest / most
+# promoted option, CBT-I the established comparator; grey literature
+# was not searched.
+cinema(d, format = "binary", effect_measure = "OR",
+       robmen = list(bias_order  = c("Combination", "Pharmacotherapy", "CBT-I"),
+                     no_grey_lit = TRUE))
 }
 }
 \references{

@@ -99,12 +99,14 @@ flowchart LR
    signalling questions (Page & Sterne, BMJ 2023), answered from the SR counts:
    - *k in SR = k reporting* → Q1 = No → **No bias detected** (auto).
    - *k in SR > k reporting* → Q1 = Yes → **Suspected bias favouring X**
-     (provisional, ⚠), where X is the treatment favoured by the observed effect
-     (the pooled direct estimate for Group A; the NMA estimate for Group B),
-     because selective non-reporting suppresses results unfavourable to the
-     treatment the published evidence favours. Confirm or change it with the
-     **ROB-ME** helper. When the observed effect gives no direction, the row is
-     left at *No bias detected* and flagged.
+     (provisional, ⚠), where X comes from the bias-favour ordering (Section
+     9.4.1) when both treatments are ranked, else from a single novel agent,
+     else from the treatment favoured by the observed effect (the pooled
+     direct estimate for Group A; the NMA estimate for Group B), because
+     selective non-reporting suppresses results unfavourable to the treatment
+     the published evidence favours. Confirm or change it with the **ROB-ME**
+     helper. When no direction is available, the row is left at *No bias
+     detected* and flagged.
    It is never proxied from RoB 2 scores.
 2. **Component 2 — across-study small-study effects.**
    - *k ≥ 10 studies* → Egger's test: p ≥ 0.05 → **No bias detected**;
@@ -114,7 +116,8 @@ flowchart LR
      ROB-MEN paper, answered once for the whole review (Section 9.4.1):
      score = (conditions suggesting bias) − (conditions suggesting no bias);
      score ≤ 0 → **No bias detected**; score > 0 → **Suspected bias favouring**
-     the flagged novel agent, or else the treatment the observed effect favours
+     the treatment ranked higher in the bias-favour ordering, else the flagged
+     novel agent, else the treatment the observed effect favours
      (provisional, ⚠).
    All "favouring X" directions honour the **Small outcome value is** setting
    from the Configuration tab (desirable vs undesirable), for OR/RR/SMD/MD alike.
@@ -164,8 +167,32 @@ decide without a per-comparison click.
   - *Unpublished studies available and consistent with published results*
     (suggests no bias);
   - *Novel agents* — treatments supported only by a few early trials; a
-    comparison involving one of them counts as a bias condition and the
-    suspected bias favours that agent.
+    comparison involving one of them counts as a bias condition.
+- **Which treatment would missing evidence favour?** — the **bias-favour
+  ordering**: drag the treatments into order from the one *most* likely to be
+  favoured by bias to the least (the newest drug first, an established
+  comparator last; for psychotherapies, whatever order expert judgement
+  suggests). Every provisional *Suspected bias favouring X* the app proposes —
+  Component 1 when studies did not report the outcome, and the qualitative
+  Component 2 rule — takes X from this ordering. For a comparison whose two
+  treatments are not both ranked, the direction falls back to a single novel
+  agent in the comparison, and then to the treatment the observed effect
+  favours. The ordering never creates a suspicion of bias by itself; it only
+  decides the direction once a rule has fired. The note under each dropdown
+  states which source decided the direction.
+
+All of these can be passed from R instead of clicked, for example:
+
+```r
+cinema(d, format = "binary", effect_measure = "OR",
+       robmen = list(bias_order  = c("Combination", "Pharmacotherapy", "CBT-I"),
+                     no_grey_lit = TRUE))
+```
+
+`bias_order` also accepts a named numeric vector such as approval years
+(`c(New = 2019, Old = 1998)`), sorted newest first. See `?cinema` for the full
+list (`novel_agents`, the four conditions, `auto_fill`, `auto_sync_d2`,
+`contrib_threshold_pp`).
 
 ### 9.4.2 The status line
 
@@ -290,8 +317,10 @@ that each is entered once, in one place:
    blank outcome cells and the count is filled in for you (Section 9.2);
    otherwise type it from your PRISMA flow / screening records. Leaving it at
    the reporting count asserts that no study is missing.
-2. **The review-level conditions** — four checkboxes and the novel-agent list
-   in the automation panel, answered once for the whole review.
+2. **The review-level conditions and the bias-favour ordering** — four
+   checkboxes, the novel-agent list and the treatment ordering in the
+   automation panel, answered once for the whole review (or passed from R via
+   `cinema(robmen = list(...))`).
 3. **Confirmation of ⚠ provisional rows** — a suspected-bias direction proposed
    from the observed effect (Component 1 when studies are missing; the
    qualitative rule; Egger's test when significant). Open ROB-ME / Funnel /

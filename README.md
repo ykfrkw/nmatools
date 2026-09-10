@@ -120,6 +120,12 @@ library(nmatools)
 
 cinema()                                          # launch empty; upload in the GUI
 cinema(load_w2i(), format = "binary", effect_measure = "OR")   # pre-load from R
+
+# Script the ROB-MEN assumptions (which treatment missing evidence would
+# favour, review-level conditions) instead of clicking them in the GUI
+cinema(load_w2i(), format = "binary", effect_measure = "OR",
+       robmen = list(bias_order  = c("Combination", "Pharmacotherapy", "CBT-I"),
+                     no_grey_lit = TRUE))
 ```
 
 ![The CINeMA report summary table](docs/manual/images/gui_13_report_summary.png)
