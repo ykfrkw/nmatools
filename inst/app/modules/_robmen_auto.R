@@ -261,6 +261,56 @@ robmen_sse_auto <- function(nma_te, nma_lo, nma_hi,
 }
 
 # ---------------------------------------------------------------------------
+# robmen_sr_reference: per-comparison SR totals from the data sheet.
+#
+# `sr_pairs` is the skeleton built by Module A (build_sr_pairs): one row per
+# study x treatment pair present in the sheet, with `reported` = both arms
+# carry outcome data. Aggregates to the canonical comparison key
+# ("t1:t2", t1 < t2):
+#   k_sr     — studies in the sheet that include the pair
+#   n_sr     — total participants across those studies (NA when unknown)
+#   k_rep    — studies with outcome data for the pair
+#   missing  — labels of the studies without outcome data (";"-separated)
+# Returns NULL when the sheet carries no unreported pair, so callers fall
+# back to the "k_sr = k reporting" default and the user-editable cell.
+# ---------------------------------------------------------------------------
+robmen_sr_reference <- function(sr_pairs) {
+  if (is.null(sr_pairs) || !is.data.frame(sr_pairs) || nrow(sr_pairs) == 0)
+    return(NULL)
+  need <- c("studlab", "t1", "t2", "reported")
+  if (!all(need %in% names(sr_pairs))) return(NULL)
+  rep_flag <- isTRUE_vec(sr_pairs$reported)
+  if (all(rep_flag)) return(NULL)
+
+  t1c <- pmin(as.character(sr_pairs$t1), as.character(sr_pairs$t2))
+  t2c <- pmax(as.character(sr_pairs$t1), as.character(sr_pairs$t2))
+  key <- paste(t1c, t2c, sep = ":")
+  n1  <- if ("n1" %in% names(sr_pairs)) suppressWarnings(as.numeric(sr_pairs$n1)) else NA_real_
+  n2  <- if ("n2" %in% names(sr_pairs)) suppressWarnings(as.numeric(sr_pairs$n2)) else NA_real_
+  n_pair <- n1 + n2
+  studlab <- as.character(sr_pairs$studlab)
+
+  keys <- sort(unique(key))
+  out <- lapply(keys, function(k) {
+    idx  <- which(key == k)
+    # one entry per study (a study lists each pair once, but be safe)
+    st   <- studlab[idx]
+    first <- !duplicated(st)
+    idx  <- idx[first]; st <- st[first]
+    n_tot <- if (all(is.na(n_pair[idx]))) NA_real_ else sum(n_pair[idx], na.rm = TRUE)
+    miss <- st[!rep_flag[idx]]
+    data.frame(comp_key = k,
+               t1 = t1c[idx[1]], t2 = t2c[idx[1]],
+               k_sr = length(idx),
+               n_sr = n_tot,
+               k_rep = sum(rep_flag[idx]),
+               missing = paste(sort(miss), collapse = "; "),
+               stringsAsFactors = FALSE)
+  })
+  do.call(rbind, out)
+}
+
+# ---------------------------------------------------------------------------
 # robmen_auto_summary: one-line status counts for the pairwise table.
 # `rows` is a data.frame with columns comp_key, grp, within_rating,
 # within_provisional, across_rating, across_provisional, across_source

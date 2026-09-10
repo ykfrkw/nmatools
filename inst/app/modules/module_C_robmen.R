@@ -973,17 +973,41 @@ moduleC_server <- function(id, processed_data, cinema_module,
       if (length(v) == 0 || is.na(v[1]) || !is.finite(v[1])) NA_real_ else v[1]
     }
 
+    # SR totals read straight from the data sheet: Module A keeps every
+    # study x treatment pair present in the sheet (including rows whose
+    # outcome cells are blank) as `sr_pairs`. NULL when the sheet has no
+    # such rows — then the editable cells are the only source.
+    sr_reference <- reactive({
+      res <- tryCatch(processed_data(), error = function(e) NULL)
+      if (is.null(res)) return(NULL)
+      tryCatch(robmen_sr_reference(res$sr_pairs), error = function(e) NULL)
+    })
+    sr_ref_row <- function(ref, ck) {
+      if (is.null(ref)) return(NULL)
+      r <- ref[ref$comp_key == ck, , drop = FALSE]
+      if (nrow(r) == 0) NULL else r
+    }
+
     sr_totals <- reactive({
       comps <- tryCatch(all_comps_df(), error = function(e) NULL)
       if (is.null(comps) || nrow(comps) == 0)
         return(data.frame(comp_key = character(0), k_sr = numeric(0),
                           n_sr = numeric(0), stringsAsFactors = FALSE))
+      ref <- sr_reference()
+      # The cell wins once it exists; before the table is rendered (or when
+      # the cell is blank) fall back to the sheet-derived totals so the
+      # automation is right from the first render.
+      pick <- function(ck, col) {
+        id  <- paste0(if (col == "k_sr") "n_sr_k_" else "n_sr_n_", safe_id(ck))
+        val <- read_num_input(id)
+        if (!is.na(val)) return(val)
+        r <- sr_ref_row(ref, ck)
+        if (is.null(r)) NA_real_ else as.numeric(r[[col]][1])
+      }
       data.frame(
         comp_key = comps$comp_key,
-        k_sr = vapply(comps$comp_key, function(ck)
-                 read_num_input(paste0("n_sr_k_", safe_id(ck))), numeric(1)),
-        n_sr = vapply(comps$comp_key, function(ck)
-                 read_num_input(paste0("n_sr_n_", safe_id(ck))), numeric(1)),
+        k_sr = vapply(comps$comp_key, pick, numeric(1), col = "k_sr"),
+        n_sr = vapply(comps$comp_key, pick, numeric(1), col = "n_sr"),
         stringsAsFactors = FALSE
       )
     })
@@ -1183,6 +1207,7 @@ moduleC_server <- function(id, processed_data, cinema_module,
       st    <- tryCatch(sr_totals(),      error = function(e) NULL)
       pool  <- tryCatch(pooled_direct_df(), error = function(e) NULL)
       ne    <- tryCatch(nma_estimates(),  error = function(e) NULL)
+      ref   <- sr_reference()
       sv    <- small_values()
       if (is.null(comps) || nrow(comps) == 0)
         return(data.frame(comp_key = character(0), grp = character(0),
@@ -1205,8 +1230,12 @@ moduleC_server <- function(id, processed_data, cinema_module,
           nma_te_for_key(ne, comps$t1[i], comps$t2[i])
         }
         res <- robmen_within_auto(k_rep, k_sr, te, comps$t1[i], comps$t2[i], sv)
+        note <- res$note
+        rr <- sr_ref_row(ref, ck)
+        if (res$n_missing > 0 && !is.null(rr) && nzchar(rr$missing[1]))
+          note <- paste0(note, " From the data sheet: ", rr$missing[1], ".")
         data.frame(comp_key = ck, grp = grp, rating = res$rating,
-                   provisional = res$provisional, note = res$note,
+                   provisional = res$provisional, note = note,
                    k_sr = k_sr, n_missing = res$n_missing,
                    stringsAsFactors = FALSE)
       }) %>% bind_rows()
@@ -1361,12 +1390,17 @@ moduleC_server <- function(id, processed_data, cinema_module,
       s  <- robmen_auto_summary(rows)
       ov <- overridden_keys()
       on <- auto_fill_on()
+      ref <- sr_reference()
       n_prov <- length(s$prov_keys)
       div(class = if (n_prov > 0) "alert alert-warning" else "alert alert-success",
           style = "font-size:0.86em; padding:8px 12px; margin-bottom:8px;",
         icon(if (n_prov > 0) "triangle-exclamation" else "check-circle"),
         strong(if (on) " Auto-fill on. " else " Auto-fill off. "),
         sprintf("%d comparisons: Group A %d · B %d · C %d.", s$n, s$n_a, s$n_b, s$n_c),
+        if (!is.null(ref)) sprintf(
+          " SR totals pre-filled from the data sheet (%d comparison%s with studies that did not report this outcome).",
+          sum(ref$k_sr > ref$k_rep), if (sum(ref$k_sr > ref$k_rep) == 1) "" else "s")
+        else " SR totals default to the reporting count (edit the cells, or keep unreported studies in the sheet with blank outcome cells).",
         " ① auto ", strong(s$n_within_auto + s$n_within_prov), " / ② Egger ",
         strong(s$n_across_egger), ", qualitative ", strong(s$n_across_qual), ". ",
         if (n_prov > 0) tagList(
@@ -1573,6 +1607,30 @@ moduleC_server <- function(id, processed_data, cinema_module,
               unique() %>%
               length()
 
+            ck_ref <- paste(pmin(t1_i, t2_i), pmax(t1_i, t2_i), sep = ":")
+            rr <- sr_ref_row(sr_reference(), ck_ref)
+            sheet_missing <- if (!is.null(rr) && nzchar(rr$missing[1]))
+              strsplit(rr$missing[1], "; ", fixed = TRUE)[[1]] else character(0)
+
+            if (length(sheet_missing) > 0) {
+              return(div(
+                class = "alert alert-warning",
+                style = "font-size:0.87em; margin-bottom:10px;",
+                strong(icon("clipboard-list"), " From your data sheet:"),
+                br(),
+                paste0(n_reported, " stud", if (n_reported == 1) "y" else "ies",
+                       " reported this outcome for this comparison; "),
+                strong(paste0(length(sheet_missing), " stud",
+                              if (length(sheet_missing) == 1) "y" else "ies",
+                              " in the sheet did NOT")),
+                ": ", paste(sheet_missing, collapse = ", "), ".",
+                br(),
+                "Q1 has therefore been answered ", strong("Yes"),
+                " automatically; use Q2 to decide whether the omission is",
+                " related to the results and which treatment it favours."
+              ))
+            }
+
             div(
               class = "alert alert-warning",
               style = "font-size:0.87em; margin-bottom:10px;",
@@ -1587,8 +1645,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
               "These studies are ", strong("not"), " in the dataset above — ",
               "they would have been excluded at screening (e.g., PRISMA flow: 'outcome not reported').",
               br(),
-              "If your PRISMA flow shows studies excluded for 'outcome not reported', ",
-              "those are the missing studies Q1 is referring to.",
+              "Tip: keep those studies in your data sheet with blank outcome cells;",
+              " the app then counts them here automatically.",
               br(),
               span(style = "color:#856404;",
                    strong("Please check your PRISMA flow / screening records before answering 'No'."))
@@ -2752,6 +2810,12 @@ moduleC_server <- function(id, processed_data, cinema_module,
       wa      <- isolate(tryCatch(within_auto_df(), error = function(e) NULL))
       aa      <- isolate(tryCatch(across_auto_df(), error = function(e) NULL))
       auto_on <- isolate(auto_fill_on())
+      sr_ref  <- isolate(sr_reference())
+      # Sheet-derived SR totals seed the editable cells (NULL = no sheet info)
+      sr_default <- function(ck, col) {
+        r <- sr_ref_row(sr_ref, ck)
+        if (is.null(r) || is.na(r[[col]][1])) NULL else as.numeric(r[[col]][1])
+      }
       cur <- function(id) {
         v <- isolate(input[[id]])
         if (is.null(v) || length(v) == 0 || is.na(v[1])) NULL else v[1]
@@ -2900,8 +2964,8 @@ moduleC_server <- function(id, processed_data, cinema_module,
                     is_group_c      = grp == "C",
                     bias_required   = provisional,
                     overall_default = overall_def,
-                    k_sr_default    = cur_num(paste0("n_sr_k_", sid)),
-                    n_sr_default    = cur_num(paste0("n_sr_n_", sid)),
+                    k_sr_default    = cur_num(paste0("n_sr_k_", sid)) %||% sr_default(ck, "k_sr"),
+                    n_sr_default    = cur_num(paste0("n_sr_n_", sid)) %||% sr_default(ck, "n_sr"),
                     within_note     = if (grp != "C") note_for(wrow) else NULL,
                     across_note     = if (grp != "B") note_for(arow) else NULL,
                     group_toggle    = toggle)

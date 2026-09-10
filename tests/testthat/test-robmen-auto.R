@@ -214,6 +214,32 @@ test_that("SSE auto without a biased direction falls back to shrinkage", {
 })
 
 # ---------------------------------------------------------------------------
+# SR reference from the data-sheet skeleton
+# ---------------------------------------------------------------------------
+test_that("robmen_sr_reference aggregates per canonical comparison", {
+  sk <- data.frame(
+    studlab  = c("S1", "S2", "S3", "S3", "S3"),
+    t1       = c("A", "B", "A", "A", "B"),
+    t2       = c("B", "A", "B", "C", "C"),
+    n1       = c(10L, 20L, 15L, 15L, 15L),
+    n2       = c(12L, 21L, 16L, 14L, 14L),
+    reported = c(TRUE, FALSE, TRUE, FALSE, FALSE),
+    stringsAsFactors = FALSE)
+  ref <- robmen_sr_reference(sk)
+  expect_equal(ref$comp_key, c("A:B", "A:C", "B:C"))
+  expect_equal(ref$k_sr,  c(3, 1, 1))
+  expect_equal(ref$k_rep, c(2, 0, 0))
+  expect_equal(ref$n_sr,  c(22 + 41 + 31, 29, 29))
+  expect_equal(ref$missing, c("S2", "S3", "S3"))
+
+  # all reported -> NULL; missing columns -> NULL
+  sk$reported <- TRUE
+  expect_null(robmen_sr_reference(sk))
+  expect_null(robmen_sr_reference(sk[, c("studlab", "t1")]))
+  expect_null(robmen_sr_reference(data.frame()))
+})
+
+# ---------------------------------------------------------------------------
 # Status summary
 # ---------------------------------------------------------------------------
 test_that("auto summary counts groups, sources and provisional rows", {

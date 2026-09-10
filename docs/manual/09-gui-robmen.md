@@ -55,13 +55,25 @@ assessed:
 The classification is derived automatically from two counts per comparison:
 
 - **k reporting this outcome** — auto-derived from the NMA data (read-only);
-- **k identified in the SR** — the editable *Total identified in the SR* cell,
-  auto-filled with the reporting count.
+- **k identified in the SR** — the editable *Total identified in the SR* cell.
+  It is pre-filled **from the data sheet** when the sheet lists studies (or
+  arms) with blank outcome cells (see below); otherwise it defaults to the
+  reporting count.
 
 Comparisons with direct evidence are Group A. An indirect comparison is Group C
-unless you enter **k ≥ 1** under *Total identified in the SR* (or click **→
-Group B**, which sets k = 1), in which case it becomes Group B. Clicking **←
-Group C** sets k back to 0.
+unless **k ≥ 1** under *Total identified in the SR* — from the sheet, typed in,
+or set by clicking **→ Group B** (k = 1) — in which case it becomes Group B.
+Clicking **← Group C** sets k back to 0.
+
+> **Let the data sheet do the counting.** Keep every study identified in your
+> systematic review in the input sheet and leave the outcome cells blank for
+> studies or arms that did not report this outcome (a blank `n` is fine on
+> those rows). The Configuration tab reports how many such studies were found;
+> the ② tab then pre-fills *Total identified in the SR* for every comparison,
+> classifies indirect comparisons with such studies as Group B, answers
+> ROB-ME Q1 = Yes for them, and names the studies under the ① dropdown and in
+> the ROB-ME helper. Nothing needs to be typed. See
+> [Chapter 2](02-data-formats.md).
 
 ---
 
@@ -274,8 +286,10 @@ Only three inputs cannot be derived from the data, and the tab is designed so
 that each is entered once, in one place:
 
 1. **How many SR studies did not report this outcome** — the *Total identified
-   in the SR* count per comparison (from your PRISMA flow / screening records).
-   Leaving it at the auto-filled value asserts that no study is missing.
+   in the SR* count per comparison. Keep those studies in the data sheet with
+   blank outcome cells and the count is filled in for you (Section 9.2);
+   otherwise type it from your PRISMA flow / screening records. Leaving it at
+   the reporting count asserts that no study is missing.
 2. **The review-level conditions** — four checkboxes and the novel-agent list
    in the automation panel, answered once for the whole review.
 3. **Confirmation of ⚠ provisional rows** — a suspected-bias direction proposed
