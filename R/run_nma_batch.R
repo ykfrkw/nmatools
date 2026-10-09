@@ -31,7 +31,8 @@
 #'     `"MD"`), `reference.group`, `small.values`.
 #'   * **Output**: `path`, `a4_rows_per_page`, `trim`, `trim_fuzz`.
 #'   * **Forwarded argument lists**: `netmeta_args`, `forest_args`,
-#'     `netpairwise_args`, `netsplit_args`.
+#'     `netpairwise_args`, `netsplit_args`. Tau^2 defaults to REML; set
+#'     e.g. `netmeta_args = list(method.tau = "DL")` to override.
 #'   * **Analysis options**: `rare_events`, `funnel_min_studies`.
 #'
 #' @param ... Shared [netmetawrap()] arguments applied to every outcome, using

@@ -64,7 +64,9 @@ load_w2i <- function() {
 #'
 #' Convenience wrapper that loads [load_w2i()] and runs `meta::pairwise()`
 #' followed by `netmeta::netmeta()` for a chosen outcome. Useful for
-#' demonstrating the visualization functions on a known dataset.
+#' demonstrating the visualization functions on a known dataset. The
+#' random-effects model uses REML for tau^2 (`method.tau = "REML"`), matching
+#' [netmetawrap()] and the CINeMA GUI.
 #'
 #' Four outcomes are available:
 #' \describe{
@@ -138,6 +140,7 @@ build_w2i_netmeta <- function(outcome   = c("remission_lt", "dropout_lt",
     ref          = reference,
     sm           = "OR",
     common       = FALSE,
+    method.tau   = "REML",
     small.values = small_values
   )
 }

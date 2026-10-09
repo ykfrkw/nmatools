@@ -360,7 +360,7 @@
     m_pw <- tryCatch(
       meta::metagen(
         .TE_h, seTE, studlab = studlab, data = group,
-        sm = sm, common = FALSE, random = TRUE
+        sm = sm, common = FALSE, random = TRUE, method.tau = "REML"
       ),
       error = function(e) NULL
     )

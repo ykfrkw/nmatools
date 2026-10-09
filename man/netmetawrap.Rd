@@ -58,7 +58,14 @@ netmetawrap(
 The function creates \verb{\{path\}/\{outcome\}/} automatically.}
 
 \item{netmeta_args}{Named list of extra arguments forwarded to
-\code{netmeta::netmeta()} or \code{netmeta::netmetabin()}, overriding defaults.}
+\code{netmeta::netmeta()} or \code{netmeta::netmetabin()}, overriding defaults.
+Defaults include \code{method.tau = "REML"} for the random-effects models
+(continuous outcomes and binary \code{method = "Inverse"}), matching the
+CINeMA GUI. Because \code{netmetabin()} has no \code{method.tau} argument, it is
+applied there through a temporary
+\code{meta::settings.meta(method.tau.netmeta = )} that is restored afterwards;
+it is not used for \code{method = "MH"} / \code{"NCH"}. Override with e.g.
+\code{netmeta_args = list(method.tau = "DL")}.}
 
 \item{forest_args}{Named list of extra arguments forwarded to all
 \code{forest()} calls, overriding defaults.}

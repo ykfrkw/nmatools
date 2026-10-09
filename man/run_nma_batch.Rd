@@ -21,7 +21,8 @@ Valid keys (all arguments of \code{\link[=netmetawrap]{netmetawrap()}}):
 \code{"MD"}), \code{reference.group}, \code{small.values}.
 \item \strong{Output}: \code{path}, \code{a4_rows_per_page}, \code{trim}, \code{trim_fuzz}.
 \item \strong{Forwarded argument lists}: \code{netmeta_args}, \code{forest_args},
-\code{netpairwise_args}, \code{netsplit_args}.
+\code{netpairwise_args}, \code{netsplit_args}. Tau^2 defaults to REML; set
+e.g. \code{netmeta_args = list(method.tau = "DL")} to override.
 \item \strong{Analysis options}: \code{rare_events}, \code{funnel_min_studies}.
 }}
 
