@@ -123,8 +123,8 @@ also written; see [Chapter 4](04-batch-and-rare-events.md).)
 total N and edge thickness to the number of studies.*
 
 ![Forest plot versus reference](images/pipeline_forest.png)
-*Forest plot versus Pharmacotherapy (random-effects model): CBT-I OR 1.82
-[1.15; 2.87], Combination OR 1.71 [0.88; 3.30].*
+*Forest plot versus Pharmacotherapy (random-effects model): CBT-I OR 1.99
+[1.15; 3.44], Combination OR 1.76 [0.82; 3.78].*
 
 ![Netpairwise forest](images/pipeline_netpairwise.png)
 *Netpairwise forest: every pairwise comparison in the network, pooled across
@@ -160,12 +160,17 @@ Random effects model
 
 Treatment estimate (other treatments vs 'Pharmacotherapy'):
                     OR           95%-CI    z p-value
-CBT-I           1.8176 [1.1494; 2.8743] 2.56  0.0106
-Combination     1.7054 [0.8813; 3.3001] 1.58  0.1130
+CBT-I           1.9915 [1.1521; 3.4427] 2.47  0.0136
+Combination     1.7559 [0.8158; 3.7791] 1.44  0.1500
 Pharmacotherapy      .                .    .       .
 
 Quantifying heterogeneity / inconsistency:
-tau^2 = 0.0206; tau = 0.1435; I^2 = 4.2% [0.0%; 61.9%]
+tau^2 = 0.1021; tau = 0.3196; I^2 = 4.2% [0.0%; 61.9%]
+
+Details of network meta-analysis methods:
+- Frequentist graph-theoretical approach
+- Restricted maximum-likelihood estimator for tau^2
+- Calculation of I^2 based on Q
 ```
 
 The global inconsistency test (`global_test_remission_lt.txt`) is the
@@ -188,10 +193,10 @@ Separate indirect from direct evidence (SIDE) using back-calculation method
 
 Random effects model:
 
-                  comparison k prop    nma direct indir.    RoR    z p-value
-           CBT-I:Combination 5 0.96 1.0658 1.1577 0.1385 8.3595 1.54  0.1230
-       CBT-I:Pharmacotherapy 7 0.98 1.8176 1.9032 0.1642 11.587 1.42  0.1550
- Combination:Pharmacotherapy 3 0.32 1.7054 2.2528 1.4940 1.5079 0.57  0.5688
+                  comparison k prop    nma direct indir.     RoR    z p-value
+           CBT-I:Combination 5 0.95 1.1342 1.2474 0.1644  7.5863 1.37  0.1692
+       CBT-I:Pharmacotherapy 7 0.98 1.9915 2.1064 0.1947 10.8178 1.29  0.1961
+ Combination:Pharmacotherapy 3 0.40 1.7559 2.2199 1.5017  1.4783 0.49  0.6244
 ```
 
 ## Overriding defaults
@@ -199,6 +204,25 @@ Random effects model:
 Every key argument of the underlying `netmeta()`, `forest()`,
 `netpairwise()`, and `netsplit()` calls can be overridden through the matching
 `*_args` list. Values you supply replace the wrapper's defaults for that call.
+
+### Between-study variance estimator (tau^2)
+
+`netmetawrap()` and `run_nma_batch()` estimate tau^2 by **REML** by default,
+matching the `cinema()` GUI. This differs from `netmeta`'s own default
+(DerSimonian-Laird), so results can differ slightly from a bare `netmeta()`
+call or from nmatools versions before 0.2.2. The estimator follows through to
+`netpairwise()` and `netsplit()`, which reuse the fitted model. To use another
+estimator, pass it through `netmeta_args`:
+
+```r
+netmetawrap(..., netmeta_args = list(method.tau = "DL"))
+```
+
+For binary outcomes fitted with `netmetabin(method = "Inverse")`, which has no
+`method.tau` argument, nmatools applies the estimator through a temporary
+`meta::settings.meta(method.tau.netmeta = )` and restores your session setting
+afterwards. Mantel-Haenszel and NCH models (the rare-event workflow) are
+common-effect and estimate no tau^2.
 
 ```r
 library(nmatools)

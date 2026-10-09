@@ -208,7 +208,10 @@ The sensitivity panel stacks four methods for each non-reference treatment:
 **MH** (Mantel-Haenszel, no continuity correction, common-effect — the
 primary), **NCH** (non-central hypergeometric), **IV-FE-CC**
 (inverse-variance, fixed-effect, continuity correction 0.5), and **IV-RE-CC**
-(inverse-variance, random-effects, continuity correction 0.5). Comparing the
+(inverse-variance, random-effects with the DerSimonian-Laird tau^2,
+continuity correction 0.5). IV-RE-CC deliberately keeps DL rather than the
+package-wide REML default: it is a pre-specified comparator that mirrors the
+`pmatools` rare-event panel. Comparing the
 primary MH estimate against the three references shows how sensitive the
 conclusions are to the choice of method.
 

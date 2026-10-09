@@ -190,7 +190,7 @@ single threshold `c(t)`:
 pc_lt <- part_context(
   x            = net_lt,
   reference    = "Pharmacotherapy",
-  thresholds   = c(0.12),         # smallest worthwhile ARD = 12 percentage points
+  thresholds   = c(0.14),         # smallest worthwhile ARD = 14 percentage points
   cer          = 0.28,            # Pharmacotherapy remission rate 28%
   small_values = "undesirable"
 )
@@ -202,12 +202,12 @@ The returned data frame (reference first, then by `abs_effect` descending):
 | treatment | abs_effect | group | cinema | n_total | n_quality |
 |---|---|---|---|---|---|
 | Pharmacotherapy | 0.0000000 | 0 | `<NA>` | 239 | Moderate |
-| CBT-I | 0.1341207 | 1 | Moderate | 335 | Moderate |
-| Combination | 0.1187546 | 0 | Moderate | 186 | Moderate |
+| CBT-I | 0.1506708 | 1 | Moderate | 335 | Moderate |
+| Combination | 0.1240658 | 0 | Moderate | 186 | Moderate |
 
-Here CBT-I raises the absolute remission rate by about 13 percentage points
-over Pharmacotherapy — past the 12-point smallest-worthwhile-difference — so it
-lands in Group +1, while Combination's ~12-point gain falls just short and
+Here CBT-I raises the absolute remission rate by about 15 percentage points
+over Pharmacotherapy — past the 14-point smallest-worthwhile-difference — so it
+lands in Group +1, while Combination's ~12-point gain falls short and
 stays in Group 0.
 
 The result carries useful attributes: `attr(pc_lt, "threshold_labels")` gives
