@@ -630,6 +630,8 @@ vitruvian <- function(outcomes,
   }
 
   # method == "metaprop": pool via GLMM (logit scale)
+  # ML, not the package-wide REML default: GLMM is fitted via
+  # metafor::rma.glmm(), which supports only ML.
   mp <- tryCatch(
     meta::metaprop(event = ref_events, n = ref_n,
                    method = "GLMM", sm = "PLOGIT",

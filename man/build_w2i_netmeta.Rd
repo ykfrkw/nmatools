@@ -21,7 +21,9 @@ A \code{netmeta} object.
 \description{
 Convenience wrapper that loads \code{\link[=load_w2i]{load_w2i()}} and runs \code{meta::pairwise()}
 followed by \code{netmeta::netmeta()} for a chosen outcome. Useful for
-demonstrating the visualization functions on a known dataset.
+demonstrating the visualization functions on a known dataset. The
+random-effects model uses REML for tau^2 (\code{method.tau = "REML"}), matching
+\code{\link[=netmetawrap]{netmetawrap()}} and the CINeMA GUI.
 }
 \details{
 Four outcomes are available:

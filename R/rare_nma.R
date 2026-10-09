@@ -201,10 +201,14 @@ print.nma_rare_diagnostics <- function(x, ...) {
          method = "Inverse", incr = 0.5, cc.pooled = TRUE,
          common = TRUE,      random = FALSE,
          note   = "Reference comparator; suboptimal for rare events."),
+    # Pre-specified comparator mirroring pmatools' REIV_CC, so it stays DL:
+    # a deliberate exception to the package-wide REML default. Pinned here so
+    # it does not depend on the global "method.tau.netmeta" setting.
     list(id     = "IV_RE_CC",
-         label  = "Inverse-variance, random-effects, CC = 0.5",
+         label  = "Inverse-variance, random-effects (DL), CC = 0.5",
          method = "Inverse", incr = 0.5, cc.pooled = TRUE,
          common = FALSE,     random = TRUE,
+         method.tau = "DL",
          note   = "Reference comparator; tau often estimated as 0 with sparse data.")
   )
 }
@@ -212,7 +216,6 @@ print.nma_rare_diagnostics <- function(x, ...) {
 # Fit a single rare-event NMA model. Returns NULL on failure.
 .fit_one_rare_nma <- function(df_pw, spec, sm, reference.group, small.values) {
   args <- list(
-    df_pw,
     sm              = sm,
     reference.group = reference.group,
     small.values    = small.values,
@@ -222,12 +225,13 @@ print.nma_rare_diagnostics <- function(x, ...) {
     cc.pooled       = spec$cc.pooled,
     common          = spec$common,
     random          = spec$random,
+    method.tau      = spec$method.tau,
     warn            = FALSE,
     warn.deprecated = FALSE
   )
   err <- NULL
   obj <- tryCatch(
-    suppressWarnings(do.call(netmeta::netmetabin, args)),
+    suppressWarnings(.call_netmetabin(df_pw, args)),
     error = function(e) {
       err <<- conditionMessage(e)
       NULL
@@ -362,6 +366,8 @@ plot_rare_nma_sensitivity <- function(method_table,
       random     = FALSE,
       backtransf = TRUE,
       warn       = FALSE,
+      # Display-only stack of already-estimated rows (no pooling), so tau is
+      # never used; DL just keeps the unused estimate cheap and stable.
       method.tau = "DL"
     )
   }

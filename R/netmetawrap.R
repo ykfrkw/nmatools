@@ -25,6 +25,13 @@
 #'   The function creates `{path}/{outcome}/` automatically.
 #' @param netmeta_args Named list of extra arguments forwarded to
 #'   `netmeta::netmeta()` or `netmeta::netmetabin()`, overriding defaults.
+#'   Defaults include `method.tau = "REML"` for the random-effects models
+#'   (continuous outcomes and binary `method = "Inverse"`), matching the
+#'   CINeMA GUI. Because `netmetabin()` has no `method.tau` argument, it is
+#'   applied there through a temporary
+#'   `meta::settings.meta(method.tau.netmeta = )` that is restored afterwards;
+#'   it is not used for `method = "MH"` / `"NCH"`. Override with e.g.
+#'   `netmeta_args = list(method.tau = "DL")`.
 #' @param forest_args Named list of extra arguments forwarded to all
 #'   `forest()` calls, overriding defaults.
 #' @param netpairwise_args Named list of extra arguments forwarded to
@@ -322,12 +329,12 @@ netmetawrap <- function(
         common          = FALSE,
         random          = TRUE,
         method          = "Inverse",
-        incr            = 0.001
+        incr            = 0.001,
+        method.tau      = "REML"
       )
     }
-    net_meta <- do.call(
-      netmeta::netmetabin,
-      c(list(df_pw), utils::modifyList(default_nm, netmeta_args))
+    net_meta <- .call_netmetabin(
+      df_pw, utils::modifyList(default_nm, netmeta_args)
     )
   } else {
     default_nm <- list(
@@ -335,7 +342,8 @@ netmetawrap <- function(
       small.values    = small.values,
       sort            = TRUE,
       common          = FALSE,
-      random          = TRUE
+      random          = TRUE,
+      method.tau      = "REML"
     )
     net_meta <- do.call(
       netmeta::netmeta,
@@ -616,6 +624,39 @@ netmetawrap <- function(
 
   message("[ netmetawrap ] Done: ", file_label)
   invisible(net_meta)
+}
+
+# netmetabin() has no `method.tau` formal and silently drops it from `...`;
+# its Inverse path calls netmeta() without it, so tau follows meta's global
+# "method.tau.netmeta" setting. Set that one key only while `expr` runs and
+# restore it even on error, so the user's session settings are untouched.
+.with_netmeta_tau <- function(method_tau, expr) {
+  if (is.null(method_tau)) return(expr)
+  # netmeta registers "method.tau.netmeta" with meta when its namespace loads.
+  loadNamespace("netmeta")
+  old_tau <- meta::gs("method.tau.netmeta")
+  meta::settings.meta(method.tau.netmeta = method_tau, quietly = TRUE)
+  on.exit(
+    meta::settings.meta(method.tau.netmeta = old_tau, quietly = TRUE),
+    add = TRUE
+  )
+  expr
+}
+
+# Call netmetabin() with an argument list that may carry `method.tau`.
+# MH / NCH estimate no tau, so method.tau is dropped and settings are left
+# alone (netmetabin's own default method is "MH").
+.call_netmetabin <- function(df_pw, args) {
+  method_tau <- args$method.tau
+  args$method.tau <- NULL
+  is_inverse <- identical(args$method %||% "MH", "Inverse")
+  if (!is_inverse) {
+    return(do.call(netmeta::netmetabin, c(list(df_pw), args)))
+  }
+  .with_netmeta_tau(
+    method_tau,
+    do.call(netmeta::netmetabin, c(list(df_pw), args))
+  )
 }
 
 # Null-coalescing operator (used internally)
