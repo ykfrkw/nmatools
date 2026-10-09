@@ -55,6 +55,10 @@
 
 # ── Figure dimension helpers ───────────────────────────────────────────────────
 
+# Size HINTS only: forest plots are drawn at their measured size by
+# .save_fitted_plot() / .save_plot_paged(), so these just seed the scratch
+# device and are the fallback when magick is unavailable.
+
 .calc_forest_width <- function(net_meta, base = 6.5, extra_per_char = 1 / 9,
                                 rightpad = 4) {
   longest <- max(nchar(net_meta$trts))
@@ -67,6 +71,15 @@
                                  per_study_pair = 0.20) {
   type <- match.arg(type)
   base + n_trts * per_trt
+}
+
+# Margins (lines) for netgraph(): labels sit outside the nodes and are clipped
+# at the figure region (netgraph sets xpd = TRUE), so long treatment names
+# need wider margins. Excess whitespace is removed by trimming afterwards.
+.netgraph_mar <- function(trts, chars_per_line = 4, min_lines = 4,
+                          max_lines = 12) {
+  longest <- max(nchar(as.character(trts)), 0L)
+  rep(min(max_lines, max(min_lines, ceiling(longest / chars_per_line) + 2)), 4L)
 }
 
 # Estimate A4 page height (inches) given number of comparison panels.
@@ -118,83 +131,6 @@
   extra
 }
 
-# ── Core save helpers ─────────────────────────────────────────────────────────
-
-# Save a base-R plot expression to PDF, optionally trimming whitespace.
-.save_plot <- function(file, width, height, expr, trim = TRUE,
-                       trim_fuzz = 30L) {
-  grDevices::pdf(file, width = width, height = height)
-  tryCatch(force(expr), finally = grDevices::dev.off())
-  if (trim) .trim_pdf(file, fuzz = trim_fuzz)
-  invisible(file)
-}
-
-# Trim a PDF by rasterising with magick and rewriting.
-.trim_pdf <- function(file, fuzz = 30L, density = 150L) {
-  if (!requireNamespace("magick", quietly = TRUE)) {
-    warning("magick package not available; skipping trim.")
-    return(invisible(NULL))
-  }
-  img <- tryCatch(
-    magick::image_read_pdf(file, density = density),
-    error = function(e) { warning("magick could not read ", file); NULL }
-  )
-  if (is.null(img)) return(invisible(NULL))
-  img <- magick::image_trim(img, fuzz = fuzz)
-  magick::image_write(img, path = file, format = "pdf")
-  invisible(file)
-}
-
-# ── Page-splitting helper (pixel-based) ───────────────────────────────────────
-
-# Render a potentially tall plot, then split into A4-height PDF files.
-# If total height fits in one page, saves a single file (no _p1 suffix).
-.save_plot_paged <- function(file_base, plot_fn, full_width, full_height,
-                              a4_height_in = 11.69, density = 150L,
-                              trim = TRUE, trim_fuzz = 30L) {
-  tmp <- tempfile(fileext = ".pdf")
-  grDevices::pdf(tmp, width = full_width, height = full_height)
-  tryCatch(plot_fn(), finally = grDevices::dev.off())
-
-  if (!requireNamespace("magick", quietly = TRUE)) {
-    warning("magick not available; saving unsplit plot.")
-    file.copy(tmp, paste0(file_base, ".pdf"), overwrite = TRUE)
-    return(invisible(NULL))
-  }
-
-  img <- tryCatch(
-    magick::image_read_pdf(tmp, density = density),
-    error = function(e) { warning("magick failed on ", tmp); NULL }
-  )
-  if (is.null(img)) {
-    file.copy(tmp, paste0(file_base, ".pdf"), overwrite = TRUE)
-    return(invisible(NULL))
-  }
-
-  if (trim) img <- magick::image_trim(img, fuzz = trim_fuzz)
-
-  info   <- magick::image_info(img)
-  total_h <- info$height
-  total_w <- info$width
-  page_h  <- round(a4_height_in * density)
-
-  n_pages <- ceiling(total_h / page_h)
-
-  if (n_pages <= 1L) {
-    magick::image_write(img, path = paste0(file_base, ".pdf"), format = "pdf")
-  } else {
-    for (p in seq_len(n_pages)) {
-      y0     <- (p - 1L) * page_h
-      crop_h <- min(page_h, total_h - y0)
-      geo    <- magick::geometry_area(total_w, crop_h, 0L, y0)
-      page_img <- magick::image_crop(img, geometry = geo)
-      out_path <- paste0(file_base, "_p", p, ".pdf")
-      magick::image_write(page_img, path = out_path, format = "pdf")
-    }
-  }
-  invisible(NULL)
-}
-
 # ── Subset helpers for large plot objects ─────────────────────────────────────
 
 # Subset a metalist (netpairwise result) to a subset of comparison indices.
@@ -234,24 +170,29 @@
 }
 
 # Save a metalist forest plot, splitting into pages if large.
+# The heights computed here are only hints for the measuring pass in
+# .save_fitted_plot(); the final device size comes from the drawn layout.
 .save_metalist_paged <- function(obj, forest_args, file_base,
                                   width, row_height_in = 0.22,
                                   base_height_in = 3, a4_rows = 45L,
-                                  trim = TRUE, trim_fuzz = 30L) {
+                                  trim = TRUE, trim_fuzz = 30L,
+                                  trim_margin = 0.2) {
   # netmeta >= 3.x: netpairwise() returns a SINGLE meta object (class
   # "netpairwise") with all comparisons stacked, instead of a per-comparison
-  # list. meta::forest() has a forest.netpairwise method, so draw a single PDF.
+  # list. meta::forest() has a forest.netpairwise method; draw it once at its
+  # measured size and cut it into A4 pages at blank rows (_p1, _p2, ...).
   if (inherits(obj, "netpairwise") && !is.null(obj[["k"]])) {
     n_comp     <- length(obj$bylevs %||% obj$k.w)
     total_rows <- sum(obj$k.w %||% obj$k, na.rm = TRUE) + n_comp * 6L + 4L
     height     <- max(base_height_in, total_rows * row_height_in + base_height_in)
-    .save_plot(
-      file      = paste0(file_base, ".pdf"),
-      width     = width,
-      height    = height,
-      trim      = trim,
-      trim_fuzz = trim_fuzz,
-      expr      = do.call(meta::forest, c(list(obj), forest_args))
+    .save_plot_paged(
+      file_base   = file_base,
+      plot_fn     = function() do.call(meta::forest, c(list(obj), forest_args)),
+      full_width  = width,
+      full_height = height,
+      trim        = trim,
+      trim_fuzz   = trim_fuzz,
+      trim_margin = trim_margin
     )
     return(invisible(NULL))
   }
@@ -278,28 +219,48 @@
     sub_rows <- sum(rows_vec[idx])
     height   <- max(base_height_in, sub_rows * row_height_in + base_height_in)
     suffix   <- if (n_pages > 1L) paste0("_p", p) else ""
-    out_file <- paste0(file_base, suffix, ".pdf")
 
-    .save_plot(
-      file      = out_file,
-      width     = width,
-      height    = height,
-      trim      = trim,
-      trim_fuzz = trim_fuzz,
-      expr      = do.call(meta::forest, c(list(sub_obj), forest_args))
+    .save_fitted_plot(
+      file        = paste0(file_base, suffix, ".pdf"),
+      plot_fn     = function() do.call(meta::forest, c(list(sub_obj), forest_args)),
+      width_hint  = width,
+      height_hint = height,
+      trim        = trim,
+      trim_fuzz   = trim_fuzz,
+      trim_margin = trim_margin
     )
   }
   invisible(NULL)
 }
 
-# Save a netsplit forest plot (pixel-split approach due to complex internals).
+# Number of comparisons in a netsplit object. netmeta >= 3.x stores them in
+# `comparison` (singular); `comparisons` is NULL there, which used to size the
+# netsplit forest for zero comparisons and cut off everything but the bottom.
+.netsplit_n_comparisons <- function(ns_obj) {
+  comps <- ns_obj[["comparison"]] %||% ns_obj[["comparisons"]] %||%
+    ns_obj[["random"]][["comparison"]] %||% ns_obj[["common"]][["comparison"]]
+  length(comps)
+}
+
+# Height hint (inches) for a netsplit forest with show = "all" and a
+# prediction interval: per comparison a header line, direct, indirect, network
+# and prediction rows plus a blank separator, then column headers and axis.
+.netsplit_height_hint <- function(n_comps, rows_per_comp = 6L,
+                                  row_height_in = 0.22, base_height_in = 3) {
+  base_height_in + n_comps * rows_per_comp * row_height_in
+}
+
+# Save a netsplit forest plot. The plot is drawn at its measured size and then
+# cut into A4 pages at blank rows (pixel-based, because forest.netsplit has no
+# per-comparison subsetting).
 .save_netsplit_paged <- function(ns_obj, forest_args, file_base,
                                   width, a4_rows = 45L,
                                   row_height_in = 0.22, base_height_in = 3,
-                                  trim = TRUE, trim_fuzz = 30L) {
-  n_comps   <- length(ns_obj$comparisons)
-  total_rows <- n_comps * 7L + 10L   # ~7 rows per comparison + margin
-  full_h    <- max(base_height_in, total_rows * row_height_in + base_height_in)
+                                  trim = TRUE, trim_fuzz = 30L,
+                                  trim_margin = 0.2) {
+  n_comps <- .netsplit_n_comparisons(ns_obj)
+  full_h  <- .netsplit_height_hint(n_comps, row_height_in = row_height_in,
+                                   base_height_in = base_height_in)
 
   plot_fn <- function() {
     do.call(
@@ -314,10 +275,9 @@
     plot_fn     = plot_fn,
     full_width  = width,
     full_height = full_h,
-    a4_height_in = 11.69,
-    density     = 150L,
     trim        = trim,
-    trim_fuzz   = trim_fuzz
+    trim_fuzz   = trim_fuzz,
+    trim_margin = trim_margin
   )
   invisible(NULL)
 }
@@ -374,8 +334,10 @@
 
 # Render a direct-evidence contribution matrix (comparison x comparison) as a
 # labelled ggplot2 heatmap and save it to a self-contained PDF via ggsave.
-# ggplot already crops the output, so no magick trim is applied.
-.save_netcontrib_heatmap <- function(cm, outcome, file, width, height) {
+# ggplot already crops the output, so no magick trim is applied; the white
+# border comes from plot.margin instead (same width as the trim margin).
+.save_netcontrib_heatmap <- function(cm, outcome, file, width, height,
+                                     margin_in = 0.2) {
   cm_df <- as.data.frame(as.table(as.matrix(cm)))
   names(cm_df) <- c("network_comparison", "direct_comparison", "contribution")
   p <- ggplot2::ggplot(
@@ -397,7 +359,9 @@
     ) +
     ggplot2::theme_minimal(base_size = 12) +
     ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 30, hjust = 1)
+      axis.text.x = ggplot2::element_text(angle = 30, hjust = 1),
+      plot.margin = ggplot2::margin(margin_in, margin_in, margin_in,
+                                    margin_in, unit = "in")
     )
   ggplot2::ggsave(file = file, plot = p, width = width, height = height,
                   bg = "white")

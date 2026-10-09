@@ -13,7 +13,8 @@ plot_transitivity(
   path = "./outputs",
   n_min_pair = 2L,
   trim = TRUE,
-  trim_fuzz = 30L
+  trim_fuzz = 30L,
+  trim_margin = 0.2
 )
 }
 \arguments{
@@ -37,7 +38,11 @@ that comparison in the plot. Default \code{2L}.}
 
 \item{trim}{Trim whitespace from PDFs via magick. Default \code{TRUE}.}
 
-\item{trim_fuzz}{Fuzz parameter for \code{\link[magick:transform]{magick::image_trim()}}. Default \code{30L}.}
+\item{trim_fuzz}{Fuzz (percent) used to decide which near-white pixels
+count as background when trimming. Default \code{30L}.}
+
+\item{trim_margin}{Width of the white border (inches) added on all four
+sides after trimming. Default \code{0.2}.}
 }
 \value{
 Invisibly, a data frame with one row per study × comparison,

@@ -29,7 +29,8 @@
 #'     `event` (binary), `mean_col`, `sd_col` (continuous).
 #'   * **Outcome / measure**: `outcome`, `sm` (`"OR"`, `"RR"`, `"SMD"`,
 #'     `"MD"`), `reference.group`, `small.values`.
-#'   * **Output**: `path`, `a4_rows_per_page`, `trim`, `trim_fuzz`.
+#'   * **Output**: `path`, `a4_rows_per_page`, `trim`, `trim_fuzz`,
+#'     `trim_margin`.
 #'   * **Forwarded argument lists**: `netmeta_args`, `forest_args`,
 #'     `netpairwise_args`, `netsplit_args`. Tau^2 defaults to REML; set
 #'     e.g. `netmeta_args = list(method.tau = "DL")` to override.
