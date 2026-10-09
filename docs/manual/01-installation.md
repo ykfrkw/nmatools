@@ -91,8 +91,8 @@ full contents of this folder are enumerated in
 the total number of participants and edge thickness to the number of studies.*
 
 ![Forest plot versus the reference treatment](images/pipeline_forest.png)
-*Random-effects forest plot versus Pharmacotherapy: CBT-I OR 1.82
-[1.15; 2.87] and Combination OR 1.71 [0.88; 3.30].*
+*Random-effects forest plot versus Pharmacotherapy: CBT-I OR 1.99
+[1.15; 3.44] and Combination OR 1.76 [0.82; 3.78].*
 
 ## Where to go next
 

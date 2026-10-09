@@ -658,7 +658,7 @@ xlsx2png(league_xlsx("context_min_multi.xlsx"),
 pc_lt <- part_context(
   x            = net_lt,
   reference    = "Pharmacotherapy",
-  thresholds   = c(0.12),          # SWD: absolute risk difference of 12 pp
+  thresholds   = c(0.14),          # SWD: absolute risk difference of 14 pp
   cer          = 0.28,             # Pharmacotherapy long-term remission rate
   small_values = "undesirable",
   cinema       = ci_fp

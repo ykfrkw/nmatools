@@ -31,6 +31,19 @@ here, see [Getting help](#158-getting-help) at the end.
 > A recent `netmeta` (≥ 3.x) is required precisely because the pipeline relies
 > on the modern `common =` / `random =` names; see [Chapter 1](01-installation.md).
 
+### Results differ from a plain `netmeta()` call or an older nmatools
+
+> **Symptom.** tau^2, confidence intervals, or P-values from `netmetawrap()`
+> do not match a `netmeta()` call you ran yourself, or outputs from nmatools
+> before 0.2.2.
+>
+> **Cause.** Since 0.2.2 nmatools estimates tau^2 by REML (as the `cinema()`
+> GUI does), whereas `netmeta` defaults to DerSimonian-Laird.
+>
+> **Fix.** Either add `method.tau = "REML"` to your own `netmeta()` call, or
+> reproduce the old behavior with `netmeta_args = list(method.tau = "DL")`
+> (see [Chapter 3](03-nma-pipeline.md#between-study-variance-estimator-tau2)).
+
 ### `run_nma_batch()` rejects unquoted column names
 
 > **Symptom.** A batch run fails with an error such as `object 'id' not found`,
