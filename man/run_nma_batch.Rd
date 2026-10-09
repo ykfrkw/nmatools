@@ -19,7 +19,8 @@ Valid keys (all arguments of \code{\link[=netmetawrap]{netmetawrap()}}):
 \code{event} (binary), \code{mean_col}, \code{sd_col} (continuous).
 \item \strong{Outcome / measure}: \code{outcome}, \code{sm} (\code{"OR"}, \code{"RR"}, \code{"SMD"},
 \code{"MD"}), \code{reference.group}, \code{small.values}.
-\item \strong{Output}: \code{path}, \code{a4_rows_per_page}, \code{trim}, \code{trim_fuzz}.
+\item \strong{Output}: \code{path}, \code{a4_rows_per_page}, \code{trim}, \code{trim_fuzz},
+\code{trim_margin}.
 \item \strong{Forwarded argument lists}: \code{netmeta_args}, \code{forest_args},
 \code{netpairwise_args}, \code{netsplit_args}. Tau^2 defaults to REML; set
 e.g. \code{netmeta_args = list(method.tau = "DL")} to override.

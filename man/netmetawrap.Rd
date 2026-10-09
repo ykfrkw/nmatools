@@ -26,6 +26,7 @@ netmetawrap(
   rare_events = c("auto", "always", "never"),
   trim = TRUE,
   trim_fuzz = 30L,
+  trim_margin = 0.2,
   .subnet_label = NULL
 )
 }
@@ -100,7 +101,14 @@ For continuous outcomes the argument is ignored.
 
 \item{trim}{Trim whitespace from output PDFs via \code{magick}. Default: \code{TRUE}.}
 
-\item{trim_fuzz}{Fuzz parameter for \code{magick::image_trim()}. Default: \code{30L}.}
+\item{trim_fuzz}{Fuzz (percent) used to decide which near-white pixels
+count as background when trimming. Default: \code{30L}.}
+
+\item{trim_margin}{Width of the uniform white border (inches) added on all
+four sides of every trimmed figure and of every page of paged figures.
+Use \code{0} for a tight crop. Ignored when \code{trim = FALSE}, except for the
+contributions heatmap (drawn by ggplot2, never trimmed), which always uses
+it as its plot margin. Default: \code{0.2}.}
 
 \item{.subnet_label}{Internal -- subnetwork label appended to file names.}
 }

@@ -56,7 +56,13 @@
 #'     keep the existing IV default.
 #'   For continuous outcomes the argument is ignored.
 #' @param trim Trim whitespace from output PDFs via `magick`. Default: `TRUE`.
-#' @param trim_fuzz Fuzz parameter for `magick::image_trim()`. Default: `30L`.
+#' @param trim_fuzz Fuzz (percent) used to decide which near-white pixels
+#'   count as background when trimming. Default: `30L`.
+#' @param trim_margin Width of the uniform white border (inches) added on all
+#'   four sides of every trimmed figure and of every page of paged figures.
+#'   Use `0` for a tight crop. Ignored when `trim = FALSE`, except for the
+#'   contributions heatmap (drawn by ggplot2, never trimmed), which always uses
+#'   it as its plot margin. Default: `0.2`.
 #' @param .subnet_label Internal -- subnetwork label appended to file names.
 #'
 #' @return Invisibly, the fitted `netmeta`/`netmetabin` object, or `NULL` when
@@ -126,6 +132,7 @@ netmetawrap <- function(
     rare_events        = c("auto", "always", "never"),
     trim               = TRUE,
     trim_fuzz          = 30L,
+    trim_margin        = 0.2,
     .subnet_label      = NULL
 ) {
 
@@ -252,6 +259,7 @@ netmetawrap <- function(
         rare_events        = rare_events,
         trim               = trim,
         trim_fuzz          = trim_fuzz,
+        trim_margin        = trim_margin,
         .subnet_label      = s
       ))
     })
@@ -472,7 +480,11 @@ netmetawrap <- function(
     height    = 10,
     trim      = trim,
     trim_fuzz = trim_fuzz,
+    trim_margin = trim_margin,
     expr = {
+      # netgraph() draws with xpd = TRUE, so labels are clipped at the figure
+      # region: reserve room for the longest label on every side.
+      graphics::par(mar = .netgraph_mar(net_meta$trts))
       netmeta::netgraph(
         net_meta,
         seq                   = "optimal",
@@ -501,13 +513,14 @@ netmetawrap <- function(
   )
   merged_forest <- utils::modifyList(default_forest, forest_args)
 
-  .save_plot(
-    file      = file.path(output_dir, paste0("forest_", file_label, ".pdf")),
-    width     = forest_w,
-    height    = forest_h_ref,
-    trim      = trim,
-    trim_fuzz = trim_fuzz,
-    expr      = do.call(meta::forest, c(list(net_meta), merged_forest))
+  .save_fitted_plot(
+    file        = file.path(output_dir, paste0("forest_", file_label, ".pdf")),
+    plot_fn     = function() do.call(meta::forest, c(list(net_meta), merged_forest)),
+    width_hint  = forest_w,
+    height_hint = forest_h_ref,
+    trim        = trim,
+    trim_fuzz   = trim_fuzz,
+    trim_margin = trim_margin
   )
 
   # -- 15. Netpairwise forest ---------------------------------------------------
@@ -534,7 +547,8 @@ netmetawrap <- function(
     width       = forest_w + 4,
     a4_rows     = a4_rows_per_page,
     trim        = trim,
-    trim_fuzz   = trim_fuzz
+    trim_fuzz   = trim_fuzz,
+    trim_margin = trim_margin
   )
 
   # -- 16. Netsplit forest ------------------------------------------------------
@@ -546,7 +560,8 @@ netmetawrap <- function(
     width       = forest_w + 2,
     a4_rows     = a4_rows_per_page,
     trim        = trim,
-    trim_fuzz   = trim_fuzz
+    trim_fuzz   = trim_fuzz,
+    trim_margin = trim_margin
   )
 
   # -- 17. Contour-enhanced funnel plots (pairs with >= funnel_min_studies) ------
@@ -576,6 +591,7 @@ netmetawrap <- function(
           height    = 6,
           trim      = trim,
           trim_fuzz = trim_fuzz,
+          trim_margin = trim_margin,
           expr      = {
             meta::funnel(
               m_pw,
@@ -616,7 +632,8 @@ netmetawrap <- function(
       file   = file.path(output_dir,
                          paste0("contributions_", file_label, ".pdf")),
       width  = nc_w,
-      height = nc_h
+      height = nc_h,
+      margin_in = trim_margin
     )
   }, error = function(e) {
     message("[ netmetawrap ] netcontrib skipped: ", conditionMessage(e))

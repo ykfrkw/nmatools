@@ -24,7 +24,10 @@
 #' @param n_min_pair Minimum number of studies per comparison to include
 #'   that comparison in the plot. Default `2L`.
 #' @param trim Trim whitespace from PDFs via magick. Default `TRUE`.
-#' @param trim_fuzz Fuzz parameter for [magick::image_trim()]. Default `30L`.
+#' @param trim_fuzz Fuzz (percent) used to decide which near-white pixels
+#'   count as background when trimming. Default `30L`.
+#' @param trim_margin Width of the white border (inches) added on all four
+#'   sides after trimming. Default `0.2`.
 #'
 #' @return Invisibly, a data frame with one row per study × comparison,
 #'   containing the covariate values used for plotting.
@@ -51,7 +54,8 @@ plot_transitivity <- function(data, studlab, treat,
                                path        = "./outputs",
                                n_min_pair  = 2L,
                                trim        = TRUE,
-                               trim_fuzz   = 30L) {
+                               trim_fuzz   = 30L,
+                               trim_margin = 0.2) {
   studlab <- .nse_col(substitute(studlab))
   treat   <- .nse_col(substitute(treat))
 
@@ -139,6 +143,7 @@ plot_transitivity <- function(data, studlab, treat,
       height    = ph,
       trim      = trim,
       trim_fuzz = trim_fuzz,
+      trim_margin = trim_margin,
       expr      = {
         graphics::par(mar = c(bottom_mar, 4, 3, 1))
         graphics::boxplot(
