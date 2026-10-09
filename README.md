@@ -95,6 +95,10 @@ netmetawrap(
 # → results are written to outputs/remission_lt/
 ```
 
+Random-effects models estimate tau^2 by **REML** by default (as in the GUI);
+pass `netmeta_args = list(method.tau = "DL")` to change it. See
+[NEWS.md](NEWS.md) for recent changes.
+
 ![Forest plot versus the reference treatment](docs/manual/images/pipeline_forest.png)
 
 ![League table colored by CINeMA confidence](docs/manual/images/league_pastel.png)
