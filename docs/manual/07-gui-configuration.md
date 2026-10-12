@@ -93,7 +93,10 @@ Three controls are provided:
 
 A validation banner beneath these panels reports success ("Data loaded
 successfully. *N* pairwise rows | *k* treatments | *m* studies") or the first
-error/warning encountered.
+error/warning encountered. If the sheet contains studies or arms whose outcome
+cells are blank, the banner adds how many were set aside: they are excluded
+from the NMA and used by ROB-MEN as studies identified in the SR that did not
+report this outcome ([Chapter 9](09-gui-robmen.md), Section 9.2).
 
 ---
 

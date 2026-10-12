@@ -54,6 +54,17 @@ for continuous outcomes) as a **quoted string**, for example `studlab = "id"`.
 > found. Quoting everywhere therefore keeps a script portable between the
 > single-outcome and batch interfaces.
 
+> **Studies that did not report the outcome.** In the interactive GUI
+> (`cinema()`), you may keep *every* study identified in your systematic
+> review in the sheet and leave the outcome cells (`event`, or `mean` / `sd`;
+> `y` / `se` in pairwise format) blank for studies — or single arms — that did
+> not report the current outcome. Such rows are excluded from the NMA but are
+> counted by the ROB-MEN assessment as studies identified in the SR that did
+> not report this outcome, which pre-fills the "Total identified in the SR"
+> cells and the Group B classification ([Chapter 9](09-gui-robmen.md)). A
+> blank `n` is tolerated on those rows. The scripting interface
+> (`netmetawrap()`) does not use this information.
+
 ## Pairwise contrast format
 
 For results that are already reduced to study-level treatment contrasts, the

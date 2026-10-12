@@ -150,8 +150,9 @@ table and to every export. The recommended sequence is:
 2. **Run** — click **▶ Run CINeMA + ROB-MEN Analysis**.
 3. **Review Domains ①③④⑤⑥** — inspect each auto-computed rating and override
    where expert judgement differs ([Chapter 8](08-gui-cinema-domains.md)).
-4. **Review Domain ②** — complete the ROB-MEN assessment and confirm the Domain 2
-   final ratings ([Chapter 9](09-gui-robmen.md)).
+4. **Review Domain ②** — the ROB-MEN assessment is pre-filled and synced into
+   Domain 2 automatically; enter the SR study counts and the review-level
+   conditions, then confirm the rows flagged ⚠ ([Chapter 9](09-gui-robmen.md)).
 5. **Report and export** — set the palette and downgrade algorithm, assign
    confidence levels, and download the bundle
    ([Chapter 10](10-gui-report-export.md)).

@@ -899,6 +899,7 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
                    paste(nrow(df), "pairwise rows |",
                          length(unique(c(df$t1, df$t2))), "treatments |",
                          length(unique(df$studlab)), "studies"),
+                   sr_note_tag(res),
                    tags$br(),
                    tags$small(style = "color:#555;",
                      "Upload a file or click 'Load SLEEPI demo data' to replace.")))
@@ -956,7 +957,8 @@ moduleA_server <- function(id, go_to_cinema = NULL, initial_data = NULL) {
           icon("check-circle"), strong(" Data loaded successfully. "),
           paste(nrow(df), "pairwise rows |",
                 length(unique(c(df$t1, df$t2))), "treatments |",
-                length(unique(df$studlab)), "studies"))
+                length(unique(df$studlab)), "studies"),
+          sr_note_tag(res))
     })
 
     # ====================================================================
@@ -1217,6 +1219,68 @@ make_ordered_factors <- function(df) {
 }
 
 # ----------------------------------------------------------------------------
+# build_sr_pairs: the "systematic-review skeleton" of a data sheet.
+#
+# A sheet may list every study identified in the SR and leave the outcome
+# cells blank for studies that did not report the current outcome. Those
+# rows cannot enter the NMA, but they are exactly the information ROB-MEN
+# needs for Component 1 (selective non-reporting) and for Group B
+# classification. So before the outcome filter is applied, every treatment
+# pair present in every study is recorded here together with whether both
+# arms carry outcome data.
+#
+# arms : arm-level data.frame with studlab, treat, n (n may be NA) and a
+#        logical column `has_outcome`
+# Returns data.frame(studlab, t1, t2, n1, n2, reported) with t1 < t2.
+# ----------------------------------------------------------------------------
+build_sr_pairs <- function(arms) {
+  empty <- data.frame(studlab = character(0), t1 = character(0),
+                      t2 = character(0), n1 = integer(0), n2 = integer(0),
+                      reported = logical(0), stringsAsFactors = FALSE)
+  if (is.null(arms) || nrow(arms) == 0) return(empty)
+  arms <- arms[!is.na(arms$studlab) & nzchar(arms$studlab) &
+               !is.na(arms$treat)   & nzchar(arms$treat), , drop = FALSE]
+  if (nrow(arms) == 0) return(empty)
+  if (!"n" %in% names(arms)) arms$n <- NA_integer_
+  if (!"has_outcome" %in% names(arms)) arms$has_outcome <- TRUE
+
+  out <- lapply(split(arms, arms$studlab), function(s) {
+    # one row per treatment within the study (duplicated arms collapse)
+    s <- s[!duplicated(s$treat), , drop = FALSE]
+    if (nrow(s) < 2) return(NULL)
+    s <- s[order(s$treat), , drop = FALSE]
+    idx <- utils::combn(nrow(s), 2)
+    data.frame(
+      studlab  = s$studlab[1],
+      t1       = s$treat[idx[1, ]],
+      t2       = s$treat[idx[2, ]],
+      n1       = as.integer(s$n[idx[1, ]]),
+      n2       = as.integer(s$n[idx[2, ]]),
+      reported = isTRUE_each(s$has_outcome[idx[1, ]]) &
+                 isTRUE_each(s$has_outcome[idx[2, ]]),
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- out[!vapply(out, is.null, logical(1))]
+  if (length(out) == 0) return(empty)
+  res <- do.call(rbind, out)
+  rownames(res) <- NULL
+  res
+}
+
+isTRUE_each <- function(x) { x <- as.logical(x); x[is.na(x)] <- FALSE; x }
+
+# Attach the SR skeleton and a count of unreported studies to a convert_*
+# result so Module C (ROB-MEN) can pre-fill "Total identified in the SR".
+attach_sr_info <- function(result, sr_pairs) {
+  result$sr_pairs <- sr_pairs
+  unrep <- sr_pairs[!sr_pairs$reported, , drop = FALSE]
+  result$n_unreported_studies <- length(unique(unrep$studlab))
+  result$n_unreported_pairs   <- nrow(unrep)
+  result
+}
+
+# ----------------------------------------------------------------------------
 # convert_continuous: arm-level continuous -> pairwise via pairwise()
 # ----------------------------------------------------------------------------
 convert_continuous <- function(df, sm) {
@@ -1231,9 +1295,20 @@ convert_continuous <- function(df, sm) {
   df <- df %>%
     mutate(studlab = as.character(studlab),
            treat   = as.character(treat),
-           n       = as.integer(n),
-           mean    = as.numeric(mean),
-           sd      = as.numeric(sd))
+           n       = suppressWarnings(as.integer(n)),
+           mean    = suppressWarnings(as.numeric(mean)),
+           sd      = suppressWarnings(as.numeric(sd)))
+
+  # SR skeleton from ALL arms; the NMA only sees arms with outcome data.
+  df$has_outcome <- !is.na(df$mean) & !is.na(df$sd) & !is.na(df$n)
+  sr_pairs <- build_sr_pairs(df)
+  df <- df %>% filter(has_outcome) %>% select(-has_outcome)
+  df <- df %>% group_by(studlab) %>% filter(dplyr::n() >= 2) %>% ungroup()
+  if (nrow(df) == 0) {
+    return(list(data = NULL,
+                error = "No study has outcome data (mean / sd / n) for at least two arms.",
+                warning = NULL))
+  }
 
   pw <- tryCatch(
     pairwise(treat   = treat,
@@ -1262,7 +1337,7 @@ convert_continuous <- function(df, sm) {
   result <- left_join(result, rob_map, by = "studlab") %>%
     make_ordered_factors()
 
-  list(data = result, error = NULL, warning = NULL)
+  attach_sr_info(list(data = result, error = NULL, warning = NULL), sr_pairs)
 }
 
 # ----------------------------------------------------------------------------
@@ -1280,8 +1355,19 @@ convert_binary <- function(df, sm) {
   df <- df %>%
     mutate(studlab = as.character(studlab),
            treat   = as.character(treat),
-           n       = as.integer(n),
-           event   = as.integer(event))
+           n       = suppressWarnings(as.integer(n)),
+           event   = suppressWarnings(as.integer(event)))
+
+  # SR skeleton from ALL arms; the NMA only sees arms with outcome data.
+  df$has_outcome <- !is.na(df$event) & !is.na(df$n)
+  sr_pairs <- build_sr_pairs(df)
+  df <- df %>% filter(has_outcome) %>% select(-has_outcome)
+  df <- df %>% group_by(studlab) %>% filter(dplyr::n() >= 2) %>% ungroup()
+  if (nrow(df) == 0) {
+    return(list(data = NULL,
+                error = "No study has outcome data (event / n) for at least two arms.",
+                warning = NULL))
+  }
 
   pw <- tryCatch(
     pairwise(treat   = treat,
@@ -1309,7 +1395,7 @@ convert_binary <- function(df, sm) {
   result <- left_join(result, rob_map, by = "studlab") %>%
     make_ordered_factors()
 
-  list(data = result, error = NULL, warning = NULL)
+  attach_sr_info(list(data = result, error = NULL, warning = NULL), sr_pairs)
 }
 
 # ----------------------------------------------------------------------------
@@ -1331,20 +1417,42 @@ convert_pairwise <- function(df) {
       t2      = as.character(t2),
       y       = suppressWarnings(as.numeric(y)),
       se      = suppressWarnings(as.numeric(se))
-    ) %>%
-    filter(!is.na(y), !is.na(se)) %>%
-    make_ordered_factors()
+    )
 
   if ("n1" %in% names(df) && "n2" %in% names(df)) {
-    df$n1 <- as.integer(df$n1)
-    df$n2 <- as.integer(df$n2)
+    df$n1 <- suppressWarnings(as.integer(df$n1))
+    df$n2 <- suppressWarnings(as.integer(df$n2))
     df$n  <- df$n1 + df$n2
   } else if (!"n" %in% names(df)) {
     df$n <- NA_integer_
   }
 
+  # SR skeleton: every contrast row in the sheet, reported or not.
+  sr_pairs <- {
+    ok <- !is.na(df$studlab) & !is.na(df$t1) & !is.na(df$t2) & df$t1 != df$t2
+    s  <- df[ok, , drop = FALSE]
+    data.frame(
+      studlab  = s$studlab,
+      t1       = pmin(s$t1, s$t2),
+      t2       = pmax(s$t1, s$t2),
+      n1       = if ("n1" %in% names(s)) ifelse(s$t1 <= s$t2, s$n1, s$n2) else NA_integer_,
+      n2       = if ("n2" %in% names(s)) ifelse(s$t1 <= s$t2, s$n2, s$n1) else NA_integer_,
+      reported = !is.na(s$y) & !is.na(s$se),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  df <- df %>%
+    filter(!is.na(y), !is.na(se)) %>%
+    make_ordered_factors()
+  if (nrow(df) == 0) {
+    return(list(data = NULL,
+                error = "No row has outcome data (y / se).",
+                warning = NULL))
+  }
+
   warn <- check_multiarm_pairwise(df)
-  list(data = df, error = NULL, warning = warn)
+  attach_sr_info(list(data = df, error = NULL, warning = warn), sr_pairs)
 }
 
 # ----------------------------------------------------------------------------
@@ -1367,10 +1475,13 @@ convert_wide <- function(df, outcome_type, sm, studlab_col, arm_maps,
       col_sel <- c(col_sel, event = arm$event)
     }
 
+    # Keep arms whose n (or outcome) is blank: they are SR studies that did
+    # not report this outcome and feed ROB-MEN's "Total identified in the
+    # SR"; convert_continuous / convert_binary drop them from the NMA.
     tryCatch({
       df %>%
         select(!!!setNames(col_sel, names(col_sel))) %>%
-        filter(!is.na(.data$treat), !is.na(.data$n))
+        filter(!is.na(.data$treat), nzchar(as.character(.data$treat)))
     }, error = function(e) NULL)
   })
 
@@ -1383,7 +1494,7 @@ convert_wide <- function(df, outcome_type, sm, studlab_col, arm_maps,
 
   long_df <- bind_rows(arm_dfs) %>%
     mutate(studlab = as.character(studlab),
-           n       = as.integer(n),
+           n       = suppressWarnings(as.integer(n)),
            treat   = as.character(treat))
 
   # Attach ROB / indirectness from study-level columns
@@ -1417,12 +1528,33 @@ convert_wide <- function(df, outcome_type, sm, studlab_col, arm_maps,
   }
 
   if (outcome_type == "continuous") {
-    long_df <- long_df %>% mutate(mean = as.numeric(mean), sd = as.numeric(sd))
+    long_df <- long_df %>% mutate(mean = suppressWarnings(as.numeric(mean)),
+                                  sd   = suppressWarnings(as.numeric(sd)))
     convert_continuous(long_df, sm)
   } else {
-    long_df <- long_df %>% mutate(event = as.integer(event))
+    long_df <- long_df %>% mutate(event = suppressWarnings(as.integer(event)))
     convert_binary(long_df, sm)
   }
+}
+
+# ----------------------------------------------------------------------------
+# sr_note_tag: one-line banner addition describing the SR studies without
+# outcome data that were kept aside for ROB-MEN (NULL when there are none).
+# ----------------------------------------------------------------------------
+sr_note_tag <- function(res) {
+  n_st <- res$n_unreported_studies %||% 0L
+  n_pr <- res$n_unreported_pairs   %||% 0L
+  if (is.null(n_st) || n_st == 0) return(NULL)
+  tagList(
+    tags$br(),
+    icon("clipboard-list"),
+    sprintf(" %d stud%s (%d comparison%s) in the sheet ha%s no outcome data:",
+            n_st, if (n_st == 1) "y" else "ies",
+            n_pr, if (n_pr == 1) "" else "s",
+            if (n_st == 1) "s" else "ve"),
+    " excluded from the NMA and used by ROB-MEN as studies identified in the",
+    " SR that did not report this outcome (② Reporting bias tab)."
+  )
 }
 
 # ----------------------------------------------------------------------------
