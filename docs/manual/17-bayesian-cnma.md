@@ -287,6 +287,31 @@ quantile(exp(fit$samps_ssvs[[paste0("gamma[", k, "]")]]), c(0.025, 0.5, 0.975))
 which.place(k, components)
 ```
 
+### Checking additivity
+
+`check_additivity(fit)` fits the **standard (full-interaction) NMA** — one
+effect `dcomb[c]` per combination of components observed in an arm, with the
+same likelihood, priors, heterogeneity prior, multi-arm correction, MCMC
+settings and seed — and compares it with the additive model:
+
+```r
+additivity <- check_additivity(fit)
+additivity                       # model fit table, discrepant combinations, worst arms
+additivity$model_fit             # mean residual deviance, pD, DIC: additive / SSVS / standard
+additivity$combinations          # standard vs additive effect of every combination
+additivity$arm_deviance          # per-arm residual deviance, additive minus standard
+bcnma_model_code(fit, "standard")
+```
+
+The reference combination is the arm with no component (all tokens
+`inactive`) when there is one, otherwise the most frequent combination.
+`is_discrepant` flags combinations whose standard and additive 95% CrIs do not
+overlap. A clearly lower DIC or residual deviance for the standard model, or
+arms whose deviance rises under additivity, point to interactions or to a
+violation of the additivity assumption (the cNMA analogue of incoherence).
+Fits with effect modifiers are not supported (refit without `modifiers`).
+DIC and the per-arm deviance need at least two chains.
+
 ## Component values (doses) and effect modifiers
 
 Two optional arguments extend the linear predictor. With both left at `NULL`

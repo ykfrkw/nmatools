@@ -17,6 +17,7 @@ the model code, invisibly
 \description{
 Shows the exact model text that was compiled (stored in
 \code{fit$model_code}). For \code{model = "standard"} the full-interaction
-(standard NMA) model, one effect per observed combination, is built
+(standard NMA) model of \code{\link[=check_additivity]{check_additivity()}}, one effect per observed
+combination, is built
 from the fit.
 }

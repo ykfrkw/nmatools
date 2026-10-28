@@ -164,7 +164,8 @@
 #'
 #' Shows the exact model text that was compiled (stored in
 #' `fit$model_code`). For `model = "standard"` the full-interaction
-#' (standard NMA) model, one effect per observed combination, is built
+#' (standard NMA) model of [check_additivity()], one effect per observed
+#' combination, is built
 #' from the fit.
 #'
 #' @param fit   a `bcnma_bin` or `bcnma_cont` object

@@ -29,7 +29,8 @@ and MCMCvis. They are not needed for anything else in nmatools.
 \code{\link{print.bcnma_bin}}, \code{\link{print.bcnma_cont}},
 \code{\link{forest.bcnma_bin}}, \code{\link{forest.bcnma_cont}},
 \code{\link{plot_interactions}}, \code{\link{summarise_interactions}},
-\code{\link{compare_combinations}}
+\code{\link{compare_combinations}}, \code{\link{check_additivity}},
+\code{\link{bcnma_model_code}}
 }
 
 \section{Index helpers}{
