@@ -59,6 +59,7 @@ test_that("the CBT-I example has design rank 121 of 153", {
   identifiability <- .classify_identifiability(prep, seq_len(136))
   expect_equal(identifiability$main_rank, 17)
   expect_equal(identifiability$design_rank, 121)
+  expect_equal(identifiability$n_design_columns, 153)
   status_counts <- table(identifiability$interaction_status$status)
   expect_equal(status_counts[[BCNMA_INTERACTION_STATUS[["never_copresent"]]]], 4)
   expect_equal(status_counts[[BCNMA_INTERACTION_STATUS[["aliased"]]]], 28)

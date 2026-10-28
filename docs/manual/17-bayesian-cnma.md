@@ -444,6 +444,44 @@ contrast is zero in every study (for example, the component appears in all
 arms at the same level) is not identifiable; a warning is given and its
 posterior is the prior.
 
+## Coverage and priors
+
+`component_coverage(fit)` counts, for every component and every component
+pair, the studies and arms that contain it and the studies in which it
+differs between arms (the within-study contrasts that inform its effect),
+together with the identifiability status of each pair. `fit$priors` lists
+every prior used (component effects, baselines, heterogeneity, SSVS, effect
+modifiers) with its source; `summary(fit)` prints it.
+
+## Assumptions and checks
+
+| Assumption | What it means | How to check it here |
+|---|---|---|
+| **Additivity** | The effect of a combination is the sum of its components' effects (plus, in the SSVS model, the selected pairwise interactions). | `check_additivity(fit)`: DIC / residual deviance of the additive vs the standard full-interaction NMA, per-combination discrepancies, arms whose deviance rises under additivity; compare the additive and SSVS estimates. |
+| **Common heterogeneity** | One between-study variance tau² for every contrast (as in the standard random-effects NMA of TSD2). | Inspect `tau (SD)`; per-arm residual deviance (`fit$arm_deviance`); refit subsets of the network if tau² is expected to differ (e.g. by control type). |
+| **Transitivity of component effects** | A component has the same effect whatever it is added to and whatever the control (waitlist, placebo, usual care), i.e. effect modifiers are balanced across comparisons. | Compare study characteristics across comparisons; use `inactive` and components (e.g. `w`) to represent control types explicitly; explore suspected modifiers with `modifiers` (between-study, observational). |
+| **Identifiability** | Every component has a within-study contrast; interactions are estimable only where combinations vary within studies. | Automatic check before fitting (`fit$identifiability`); `component_coverage(fit)`. |
+| **Prior sensitivity** | Results do not hinge on the default priors. | Refit with other `tau_prior` (e.g. a Turner / Rhodes category for the outcome), `eta_prior_sd`, `g`, `inclusion_prob` and modifier `prior_sd`; report the defaults from `fit$priors`. |
+| **Convergence** | The MCMC output represents the posterior. | `fit$convergence` (Rhat ≤ 1.05, n.eff ≥ 400 for d, gamma, tau2, beta, eta), at least two chains; MCSE of inclusion probabilities. |
+
+## Reporting checklist
+
+How the outputs map to the PRISMA extension for NMA (PRISMA-NMA) and to the
+CINeMA domains. Report the model code (`bcnma_model_code()`), the priors
+(`fit$priors`), the MCMC settings and seed (`fit$mcmc_settings`, `fit$seed`).
+
+| Item | PRISMA-NMA / CINeMA | Output |
+|---|---|---|
+| Network geometry (components, combinations, contrasts) | PRISMA-NMA network geometry (S3, 21) | `component_coverage(fit)`, `fit$identifiability` |
+| Model description, priors, software | PRISMA-NMA methods: synthesis (14), S1 | `bcnma_model_code(fit, ...)`, `fit$priors`, `fit$mcmc_settings`, `fit$seed` |
+| Assessment of model fit and convergence | PRISMA-NMA methods / results (14, 21) | `fit$model_fit` (resdev, pD, DIC), `fit$convergence` |
+| Inconsistency / incoherence → **additivity** | PRISMA-NMA S2, 23; CINeMA *incoherence* | `check_additivity(fit)`; additive vs SSVS estimates; `summarise_interactions(fit)` |
+| **Heterogeneity** | PRISMA-NMA 23; CINeMA *heterogeneity* | `tau (SD)`, `tau2 (variance)`; predictive intervals from `compare_combinations()` |
+| Imprecision | CINeMA *imprecision* | 95% CrIs from `print()` / `compare_combinations()` |
+| Indirectness / extrapolation | CINeMA *indirectness* | "extrapolated under additivity" and never co-present pairs in `compare_combinations()` |
+| Effect modifiers / subgroup analyses | PRISMA-NMA S4 (additional analyses) | `fit$modifier_effects` (with studies informing each beta and the ecological caveat) |
+| Sensitivity analyses | PRISMA-NMA 16, 24 | Refits with alternative priors (see *Assumptions and checks*) |
+
 ## References
 
 - Furukawa Y, Sakata M, Yamamoto R, et al. Components and delivery formats of

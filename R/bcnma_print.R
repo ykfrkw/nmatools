@@ -183,6 +183,8 @@ summary.bcnma_cont <- function(object, digits = 3, ...) .summary_bcnma(object, d
   cat("\n")
   .print_bcnma(object, digits, model = "both")
   .print_modifier_terms(object$modifier_terms)
+  cat("\nPriors:\n")
+  print(object$priors, row.names = FALSE, right = FALSE)
   if (identical(object$interactions_model, "ssvs_informative")) {
     cat("\nActive components:", paste(object$active_components, collapse = ", "), "\n")
   }

@@ -104,7 +104,8 @@ BCNMA_INTERACTION_STATUS <- c(
       status == BCNMA_INTERACTION_STATUS[["estimable"]],
     stringsAsFactors = FALSE)
   list(main_rank = qr(main_design)$rank, design_rank = qr(full_design)$rank,
-       n_design_columns = ncol(full_design), interaction_status = interaction_status,
+       n_design_columns = ncol(main_design) + length(candidate_pairs),
+       interaction_status = interaction_status,
        ssvs_pairs = interaction_status$index[interaction_status$is_modelled])
 }
 
