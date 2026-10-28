@@ -64,7 +64,28 @@ cross-tabulation helpers.
 | `table_min_context()` | Cross-tabulate `min_context()` groups against a quality column (`.xlsx` / `.docx`). | [Ch. 14](14-evidence-frameworks.md) | `?table_min_context` |
 | `table_min_context_multi()` | Summarize several `min_context()` results in one table, one row per outcome. | [Ch. 14](14-evidence-frameworks.md) | `?table_min_context_multi` |
 
-All 21 exported functions above are listed in `NAMESPACE`. For a live index in
+## Bayesian component NMA
+
+Bayesian random-effects component NMA in JAGS (formerly the `bcnma` package).
+Fitting needs JAGS and the suggested packages rjags and MCMCvis; see
+[Ch. 17](17-bayesian-cnma.md).
+
+| Function | Purpose | Chapter | Help |
+|---|---|---|---|
+| `bcnma_bin()` | Bayesian cNMA for binary outcomes (OR): additive, SSVS-LASSO, or informative SSVS-LASSO interactions, optional component values and effect modifiers. | [Ch. 17](17-bayesian-cnma.md) | `?bcnma_bin` |
+| `bcnma_cont()` | Bayesian cNMA for continuous outcomes (SMD or MD), same models and options. | [Ch. 17](17-bayesian-cnma.md) | `?bcnma_cont` |
+| `compare_combinations()` | Posterior effect of one component combination vs. another (main effects, interactions, modifiers at `at`). | [Ch. 17](17-bayesian-cnma.md) | `?compare_combinations` |
+| `forest()` | Re-exported `meta::forest()`; the `bcnma_bin` / `bcnma_cont` methods draw a component forest plot (ggplot2). | [Ch. 17](17-bayesian-cnma.md) | `?forest.bcnma_bin` |
+| `plot_interactions()` | Median interaction coefficient vs. posterior inclusion probability for all component pairs. | [Ch. 17](17-bayesian-cnma.md) | `?plot_interactions` |
+| `summarise_interactions()` | Data frame of all pairwise interactions sorted by \|gamma\|. | [Ch. 17](17-bayesian-cnma.md) | `?summarise_interactions` |
+| `place()` | Interaction index of a component pair. | [Ch. 17](17-bayesian-cnma.md) | `?place` |
+| `which.place()` | Component pair of an interaction index. | [Ch. 17](17-bayesian-cnma.md) | `?which.place` |
+| `all.interactions()` | All interaction indices within a component combination. | [Ch. 17](17-bayesian-cnma.md) | `?all.interactions` |
+
+The fitted objects also have exported `print()` and `summary()` methods
+(`?print.bcnma_bin`, `?print.bcnma_cont`); `?bcnma` gives an overview.
+
+All 30 exported functions above are listed in `NAMESPACE`. For a live index in
 your session, run `help(package = "nmatools")`.
 
 ---
@@ -104,6 +125,13 @@ your session, run `help(package = "nmatools")`.
 - **Minimally contextualized framework:** Tikkinen KAO, Guyatt GH, Dening SM, et al. Drug effects and natural history of disease in minimally and partially contextualised evidence frameworks. *BMJ*. 2021;372:m3900. https://doi.org/10.1136/bmj.m3900
 - **Partially contextualized framework:** Brignardello-Petersen R, Izcovich A, Rochwerg B, et al. GRADE approach to drawing conclusions from a network meta-analysis using a partially contextualised framework. *BMJ*. 2020;371:m3907. https://doi.org/10.1136/bmj.m3907
 
+## Bayesian component NMA
+
+> Furukawa Y, Sakata M, Yamamoto R, et al. Components and delivery formats of cognitive behavioral therapy for chronic insomnia in adults: a systematic review and component network meta-analysis. *JAMA Psychiatry*. 2024;81(4):357–365. https://doi.org/10.1001/jamapsychiatry.2023.5060
+
+- **Heterogeneity prior:** Turner RM, Jackson D, Wei Y, Thompson SG, Higgins JPT. Predictive distributions for between-study heterogeneity and simple methods for their application in Bayesian meta-analysis. *Stat Med*. 2015;34(6):984–998.
+- **Spike-and-slab variable selection (SSVS):** George EI, McCulloch RE. Variable selection via Gibbs sampling. *J Am Stat Assoc*. 1993;88(423):881–889.
+
 ## Sample data (W2I)
 
 > Furukawa Y, Sakata M, Furukawa TA, Efthimiou O, Perlis M. Initial treatment choices for long-term remission of chronic insomnia disorder in adults: a systematic review and network meta-analysis. *Psychiatry Clin Neurosci*. 2024;78(11):646–653. https://doi.org/10.1111/pcn.13730
@@ -118,4 +146,4 @@ citation("meta")
 
 ---
 
-Prev: [15. Troubleshooting](15-troubleshooting.md) · Next: [Manual home](README.md)
+Prev: [15. Troubleshooting](15-troubleshooting.md) · Next: [17. Bayesian component NMA](17-bayesian-cnma.md)

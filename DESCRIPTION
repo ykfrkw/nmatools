@@ -1,9 +1,12 @@
 Package: nmatools
 Title: Network Meta-Analysis Tools
-Version: 0.2.2
-Authors@R:
+Version: 0.3.0
+Authors@R: c(
     person("Yuki", "Furukawa", email = "furukawa.y.psy@gmail.com",
-           role = c("aut", "cre"))
+           role = c("aut", "cre")),
+    person("Orestis", "Efthimiou",
+        role    = "ths",
+        comment = "Conceptual guidance on Bayesian cNMA and SSVS modelling"))
 Description: Wrapper functions and visualization tools for network
     meta-analysis using the 'netmeta' package. Provides one-stop pipelines
     for running NMA, saving outputs (text, RDS, CSV, league tables), and
@@ -15,7 +18,12 @@ Description: Wrapper functions and visualization tools for network
     forest plots and network graphs colored by CINeMA confidence, Kilim
     plots (multi-outcome summary tables), Vitruvian plots (per-treatment
     polar charts of absolute effects), and minimally / partially
-    contextualized evidence-classification tables.
+    contextualized evidence-classification tables. Bayesian random-effects
+    component network meta-analysis (cNMA) for binary and continuous
+    outcomes is fitted with 'JAGS' (via the suggested 'rjags' package), with
+    additive or spike-and-slab (SSVS) interaction models, optional component
+    values (doses) and arm-level effect modifiers (formerly the 'bcnma'
+    package).
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -54,5 +62,8 @@ Suggests:
     testthat (>= 3.0.0),
     patchwork (>= 1.1.0),
     rstudioapi,
-    withr
+    withr,
+    rjags,
+    MCMCvis,
+    ggrepel
 Config/testthat/edition: 3

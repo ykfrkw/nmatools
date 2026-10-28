@@ -1,4 +1,35 @@
-# nmatools 0.2.2 (development)
+# nmatools 0.3.0 (development)
+
+## Bayesian component NMA (from bcnma)
+
+* The standalone package bcnma (0.2.0, github.com/ykfrkw/bcnma) is merged
+  into nmatools and superseded by it. `bcnma_bin()`, `bcnma_cont()`,
+  `compare_combinations()`, `plot_interactions()`,
+  `summarise_interactions()`, `place()`, `which.place()`,
+  `all.interactions()` and the `print()` / `summary()` / `forest()` methods
+  for `bcnma_bin` and `bcnma_cont` objects keep their names, arguments and
+  results, so existing code works after replacing `library(bcnma)` with
+  `library(nmatools)`.
+* Bayesian random-effects component NMA in JAGS for binary (OR) and
+  continuous (SMD / MD) outcomes, with additive, SSVS-LASSO and informative
+  SSVS-LASSO interaction models; optional `component_values` (doses) and
+  arm-level effect `modifiers` (continuous or ordinal, optionally monotone).
+  `d[k]` of a modified component is its effect at the center / reference
+  level; modifier effects are between-study (ecological) associations.
+* `forest()` is now `meta::forest()`, re-exported by nmatools; the
+  `bcnma_bin` / `bcnma_cont` methods are registered on it (bcnma defined its
+  own `forest()` generic).
+* rjags and MCMCvis (and the optional ggrepel) are Suggests, not Imports:
+  nmatools installs and loads without JAGS. `bcnma_bin()` and `bcnma_cont()`
+  stop with an informative error when rjags or MCMCvis is missing.
+* The CBT-I component NMA example data and worked script are installed under
+  `system.file("extdata", "bcnma", package = "nmatools")`.
+* bcnma's testthat suite is included (`tests/testthat/test-bcnma-*.R`),
+  including the backward-compatibility fixture built from bcnma 0.1.0; JAGS
+  tests are skipped when rjags is not installed.
+* New manual chapter: [17. Bayesian component NMA](docs/manual/17-bayesian-cnma.md).
+* Orestis Efthimiou is credited (role `ths`) for conceptual guidance on
+  Bayesian cNMA and SSVS modelling.
 
 ## Bug fixes: figure sizing and trimming
 

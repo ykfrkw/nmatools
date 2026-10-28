@@ -4,7 +4,8 @@ R package providing one-stop wrappers for network meta-analysis (NMA) using the
 `netmeta` package: a scripted pipeline that fits a network and writes a complete
 set of results and publication-ready figures to disk, a suite of publication
 visualizations, and an interactive CINeMA + ROB-MEN Shiny GUI for rating
-confidence in the results.
+confidence in the results. It also fits Bayesian component network
+meta-analysis (cNMA) in JAGS, formerly the separate `bcnma` package.
 
 ## Documentation
 
@@ -57,6 +58,12 @@ below.
 |---|---|
 | [15. Troubleshooting and FAQ](docs/manual/15-troubleshooting.md) | Common problems by symptom |
 | [16. Function reference](docs/manual/16-function-reference.md) | All exported functions and the literature reference list |
+
+**Bayesian component NMA**
+
+| Chapter | Topic |
+|---|---|
+| [17. Bayesian component NMA](docs/manual/17-bayesian-cnma.md) | `bcnma_bin()` / `bcnma_cont()`, component values, effect modifiers |
 
 ## Install
 
@@ -123,6 +130,65 @@ cinema(load_w2i(), format = "binary", effect_measure = "OR")   # pre-load from R
 ```
 
 ![The CINeMA report summary table](docs/manual/images/gui_13_report_summary.png)
+
+## Bayesian component NMA (formerly bcnma)
+
+`bcnma_bin()` (binary outcomes, OR) and `bcnma_cont()` (continuous outcomes,
+SMD or MD) fit Bayesian random-effects component NMA in JAGS: each treatment
+is split into its components (`"se+sd+cr"`) and the effect of each component
+is estimated. Interactions between components are handled by an additive
+model, spike-and-slab (SSVS) "LASSO" priors on every pair, or SSVS on a chosen
+subset (`interactions = "none"`, `"lasso"`, `"lasso_informative"`).
+`compare_combinations()` gives the posterior effect of any combination against
+another; `forest()`, `plot_interactions()` and `summarise_interactions()`
+summarize the fit.
+
+**Requirement:** fitting needs the [JAGS](https://mcmc-jags.sourceforge.io/)
+system library and the suggested packages `rjags` and `MCMCvis`
+(`install.packages(c("rjags", "MCMCvis"))`; `ggrepel` optional). They are not
+installed with nmatools and nothing else in the package needs them.
+
+```r
+library(nmatools)
+
+dat <- read.csv(system.file("extdata", "bcnma", "data_CBTICNMA.csv",
+                            package = "nmatools"))
+names(dat)[1] <- "study"   # fix the BOM character in the first column name
+
+fit <- bcnma_bin(dat, studlab = study, treat = treatment_component,
+                 event = r, n = n,
+                 components = c("se", "sd", "cr", "th", "cw", "sr", "sc", "re",
+                                "pi", "w", "ns", "he", "tg", "ind", "gp", "ff",
+                                "ae"),
+                 interactions = "lasso", seed = 42)
+print(fit)
+forest(fit)
+compare_combinations(fit, combo1 = c("se", "sd", "cr", "th", "sr", "sc"),
+                     combo2 = "se")
+```
+
+Two optional arguments extend the model:
+
+- **`component_values`** replaces the 0/1 component indicators with values
+  such as the number of sessions, so `d[k]` is the effect per unit of
+  component *k* (linear dose-response).
+- **`modifiers`** adds arm-level effect modifiers of specific components,
+  continuous (centred) or ordinal (cumulative coding, optionally monotone).
+  `d[k]` of a modified component is then its effect **at the center
+  (continuous) or the reference level (ordinal)**, and `beta` is the change
+  per covariate unit or level step; evaluate other values with
+  `compare_combinations(..., at = list(label = value))`.
+
+Modifier effects are identified mainly by **between-study** variation in the
+covariate (for example a provider's proficiency, which is the same in every arm
+of a study). They are observational, ecological associations open to
+confounding by other study characteristics, even though the component effects
+rest on randomised contrasts; the fitting functions print a note saying so.
+
+The standalone [`bcnma`](https://github.com/ykfrkw/bcnma) package is
+superseded by nmatools: function names and arguments are unchanged, so
+existing scripts work after replacing `library(bcnma)` with
+`library(nmatools)`. See [Chapter 17](docs/manual/17-bayesian-cnma.md).
 
 ## Sample data
 
