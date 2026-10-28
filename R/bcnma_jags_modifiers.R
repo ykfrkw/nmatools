@@ -17,6 +17,11 @@
 BCNMA_INDENT_BIN  <- "                      "
 BCNMA_INDENT_CONT <- "                    "
 
+# JAGS RNG used for every chain; the seed is offset by the chain index.
+BCNMA_RNG_NAME <- "base::Mersenne-Twister"
+# Upper bound for a seed drawn when seed = NULL (leaves room for the offsets).
+BCNMA_MAX_SEED <- 1e8
+
 # Optional (Suggests) packages needed to fit a model.
 BCNMA_MCMC_PACKAGES <- c("rjags", "MCMCvis")
 
@@ -105,6 +110,7 @@ BCNMA_MCMC_PACKAGES <- c("rjags", "MCMCvis")
   jags_object <- rjags::jags.model(
     model_connection,
     data     = jags_data,
+    inits    = mcmc$inits,
     n.chains = mcmc$n.chains,
     n.adapt  = mcmc$n.adapt,
     quiet    = quiet
@@ -120,6 +126,36 @@ BCNMA_MCMC_PACKAGES <- c("rjags", "MCMCvis")
     summary = MCMCvis::MCMCsummary(samples_raw),
     samps   = as.data.frame(do.call(rbind, lapply(samples_raw, as.matrix)))
   )
+}
+
+#' Seed for the JAGS random number generators
+#'
+#' A NULL seed is replaced by one draw from R's generator so that every fit
+#' carries the seed needed to reproduce it.
+#' @param seed integer or NULL
+#' @return integer seed
+#' @noRd
+.resolve_seed <- function(seed) {
+  if (is.null(seed)) return(sample.int(BCNMA_MAX_SEED, size = 1))
+  if (!is.numeric(seed) || length(seed) != 1 || is.na(seed)) {
+    stop("'seed' must be a single integer or NULL.")
+  }
+  as.integer(seed)
+}
+
+#' Per-chain initial values that fix the JAGS RNG
+#'
+#' JAGS ignores R's set.seed(); reproducibility needs .RNG.name / .RNG.seed
+#' in the initial values of every chain, with a different seed per chain so
+#' that the chains are not copies of each other.
+#' @param seed     integer from .resolve_seed()
+#' @param n_chains integer number of chains
+#' @return list of n_chains lists
+#' @noRd
+.build_chain_inits <- function(seed, n_chains) {
+  lapply(seq_len(n_chains), function(chain_index) {
+    list(.RNG.name = BCNMA_RNG_NAME, .RNG.seed = seed + chain_index)
+  })
 }
 
 #' Monitored nodes for a model, with beta added when modifiers are present

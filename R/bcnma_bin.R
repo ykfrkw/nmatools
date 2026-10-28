@@ -39,7 +39,11 @@
 #' @param n.burnin            integer: additional burn-in iterations after adaptation (default 5000)
 #' @param n.iter              integer: sampling iterations per chain (default 20000)
 #' @param n.thin              integer: thinning interval (default 1)
-#' @param seed                integer or NULL: random seed for reproducibility
+#' @param seed                integer or NULL: seed of the JAGS random number
+#'   generators. Chain c uses \code{.RNG.name = "base::Mersenne-Twister"} and
+#'   \code{.RNG.seed = seed + c}, so identical seeds give identical samples.
+#'   \code{NULL} draws one seed from R's generator; it is stored in
+#'   \code{fit$seed} (with the per-chain \code{fit$inits}) for re-running.
 #' @param quiet               logical: suppress progress messages (default FALSE)
 #' @param component_values    optional numeric matrix or data.frame with `nrow(data)`
 #'   rows in the same order as `data` and column names exactly equal to
@@ -200,8 +204,8 @@ bcnma_bin <- function(data,
     included <- seq_len(Ninter)
   }
 
-  # ---- Seed ----
-  if (!is.null(seed)) set.seed(seed)
+  # ---- Seed: one JAGS RNG stream per chain, reproducible from `seed` ----
+  seed <- .resolve_seed(seed)
 
   # ---- Common JAGS data ----
   jags_data_base <- list(
@@ -219,7 +223,8 @@ bcnma_bin <- function(data,
   }
   modifier_priors <- modifier_design$priors
   mcmc <- list(n.chains = n.chains, n.adapt = n.adapt,
-               n.burnin = n.burnin, n.iter  = n.iter, n.thin = n.thin)
+               n.burnin = n.burnin, n.iter  = n.iter, n.thin = n.thin,
+               seed = seed, inits = .build_chain_inits(seed, n.chains))
 
   # ---- Results containers ----
   samps_lasso      <- NULL
@@ -300,7 +305,9 @@ bcnma_bin <- function(data,
       interaction_inclusion_prob = inter_incl_prob,
       interaction_effects        = inter_effects,
       jags_data                  = jags_data_base,
-      mcmc_settings              = mcmc
+      mcmc_settings              = mcmc,
+      seed                       = seed,
+      inits                      = mcmc$inits
     ),
     .modifier_results(component_values, modifier_specs, modifier_design,
                       samps_additive, samps_lasso, exponentiate = TRUE)

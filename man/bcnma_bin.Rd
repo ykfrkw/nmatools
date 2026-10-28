@@ -68,7 +68,11 @@ c(-1.67, 1/1.472^2) following Turner et al. 2015)}
 
 \item{n.thin}{integer: thinning interval (default 1)}
 
-\item{seed}{integer or NULL: random seed for reproducibility}
+\item{seed}{integer or NULL: seed of the JAGS random number
+generators. Chain c uses \code{.RNG.name = "base::Mersenne-Twister"} and
+\code{.RNG.seed = seed + c}, so identical seeds give identical samples.
+\code{NULL} draws one seed from R's generator; it is stored in
+\code{fit$seed} (with the per-chain \code{fit$inits}) for re-running.}
 
 \item{quiet}{logical: suppress progress messages (default FALSE)}
 

@@ -42,7 +42,8 @@
 #' @param n.burnin            integer: burn-in iterations (default 5000)
 #' @param n.iter              integer: sampling iterations per chain (default 20000)
 #' @param n.thin              integer: thinning interval (default 1)
-#' @param seed                integer or NULL: random seed
+#' @param seed                integer or NULL: seed of the JAGS random number
+#'   generators (see \code{\link{bcnma_bin}}); stored in \code{fit$seed}.
 #' @param quiet               logical: suppress progress messages (default FALSE)
 #' @param component_values    optional numeric matrix or data.frame of component
 #'   values (e.g. doses); \code{d[k]} becomes the SMD (or MD) per unit of
@@ -172,8 +173,8 @@ bcnma_cont <- function(data,
     included <- seq_len(Ninter)
   }
 
-  # ---- Seed ----
-  if (!is.null(seed)) set.seed(seed)
+  # ---- Seed: one JAGS RNG stream per chain, reproducible from `seed` ----
+  seed <- .resolve_seed(seed)
 
   # ---- Common JAGS data ----
   jags_data_base <- list(
@@ -192,7 +193,8 @@ bcnma_cont <- function(data,
   }
   modifier_priors <- modifier_design$priors
   mcmc <- list(n.chains = n.chains, n.adapt = n.adapt,
-               n.burnin = n.burnin, n.iter  = n.iter, n.thin = n.thin)
+               n.burnin = n.burnin, n.iter  = n.iter, n.thin = n.thin,
+               seed = seed, inits = .build_chain_inits(seed, n.chains))
 
   # ---- Results containers ----
   samps_lasso      <- NULL
@@ -271,7 +273,9 @@ bcnma_cont <- function(data,
       interaction_inclusion_prob = inter_incl_prob,
       interaction_effects        = inter_effects,
       jags_data                  = jags_data_base,
-      mcmc_settings              = mcmc
+      mcmc_settings              = mcmc,
+      seed                       = seed,
+      inits                      = mcmc$inits
     ),
     .modifier_results(component_values, modifier_specs, modifier_design,
                       samps_additive, samps_lasso, exponentiate = FALSE)

@@ -81,7 +81,8 @@ SMD heterogeneity in psychological intervention trials.}
 
 \item{n.thin}{integer: thinning interval (default 1)}
 
-\item{seed}{integer or NULL: random seed}
+\item{seed}{integer or NULL: seed of the JAGS random number
+generators (see \code{\link{bcnma_bin}}); stored in \code{fit$seed}.}
 
 \item{quiet}{logical: suppress progress messages (default FALSE)}
 
