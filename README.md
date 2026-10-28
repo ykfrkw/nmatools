@@ -169,6 +169,7 @@ fit <- bcnma_bin(dat, studlab = study, treat = treatment_component,
                  components = c("se", "sd", "cr", "th", "cw", "sr", "sc", "re",
                                 "pi", "w", "ns", "he", "tg", "ind", "gp", "ff",
                                 "ae"),
+                 inactive = "dt",   # token in the data that is not a component
                  interactions = "lasso", seed = 42)
 print(fit)
 forest(fit)

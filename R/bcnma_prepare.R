@@ -23,12 +23,14 @@
 #' @param treat_col           character: treatment (component string) column
 #' @param components          character vector of component names
 #' @param component_separator character separating components in `treat`
+#' @param inactive            character tokens of `treat` that are not
+#'   components (e.g. "placebo"); any other unknown token is an error
 #' @return list(arm_table, x_arm, n_arms, max_arms, studies, n_studies,
 #'   components, n_components); `arm_table` keeps `row_id` (row of `data`)
 #'   so that row-aligned inputs (component values, modifiers) can be matched.
 #' @noRd
 .parse_arm_structure <- function(data, studlab_col, treat_col, components,
-                                 component_separator = "+") {
+                                 component_separator = "+", inactive = character(0)) {
   arm_table <- data.frame(
     study  = as.character(data[[studlab_col]]),
     treat  = as.character(data[[treat_col]]),
@@ -42,6 +44,7 @@
   n_arms <- as.integer(tabulate(arm_table$study_index, nbins = length(studies)))
 
   tokens <- lapply(strsplit(arm_table$treat, component_separator, fixed = TRUE), trimws)
+  .check_treatment_tokens(tokens, components, inactive)
   x_arm  <- array(0, dim = c(length(studies), max(n_arms), length(components)))
   for (row in seq_len(nrow(arm_table))) {
     is_present <- components %in% tokens[[row]]
@@ -52,6 +55,21 @@
   list(arm_table = arm_table, x_arm = x_arm, n_arms = n_arms, max_arms = max(n_arms),
        studies = studies, n_studies = length(studies),
        components = components, n_components = length(components))
+}
+
+.check_treatment_tokens <- function(tokens, components, inactive) {
+  overlap <- intersect(components, inactive)
+  if (length(overlap) > 0) {
+    stop("Tokens cannot be both 'components' and 'inactive': ", paste(overlap, collapse = ", "),
+         call. = FALSE)
+  }
+  all_tokens <- unique(unlist(tokens))
+  unknown <- setdiff(all_tokens[all_tokens != ""], c(components, inactive))
+  if (length(unknown) == 0) return(invisible(NULL))
+  stop("Treatment tokens that are neither 'components' nor 'inactive': ",
+       paste(unknown, collapse = ", "),
+       ". Add them to 'components', or to 'inactive' if they mean no active component ",
+       "(e.g. placebo, waitlist) or are deliberately not modelled.", call. = FALSE)
 }
 
 .warn_unused_components <- function(x_arm, components) {
@@ -72,17 +90,18 @@
 
 #' Prepare arm-level binary data for Bayesian cNMA
 #'
-#' @param data,studlab_col,treat_col,components,component_separator see
-#'   .parse_arm_structure()
+#' @param data,studlab_col,treat_col,components,component_separator,inactive
+#'   see .parse_arm_structure()
 #' @param event_col character: event count column
 #' @param n_col     character: sample size column
 #' @return `prep` list: .parse_arm_structure() plus `likelihood = "binomial"`
 #'   and `outcome = list(r, n)` (the JAGS outcome data)
 #' @noRd
 .bcnma_bin_prepare_data <- function(data, studlab_col, treat_col, event_col, n_col,
-                                    components, component_separator = "+") {
+                                    components, component_separator = "+",
+                                    inactive = character(0)) {
   prep <- .parse_arm_structure(data, studlab_col, treat_col, components,
-                               component_separator)
+                               component_separator, inactive)
   events      <- floor(as.numeric(data[[event_col]]))
   sample_size <- floor(as.numeric(data[[n_col]]))
   prep$likelihood <- "binomial"

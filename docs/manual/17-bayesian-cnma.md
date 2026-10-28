@@ -56,7 +56,12 @@ without JAGS.
 Long format, **one row per arm per study**. The `treat` column lists the
 components of each arm joined by `component_separator` (default `"+"`), and
 `components` is the character vector of all component abbreviations (any
-number; their order defines `d[1]`, `d[2]`, ...).
+number; their order defines `d[1]`, `d[2]`, ...). Tokens of `treat` that are
+not components — a placebo, waitlist or other label meaning "no active
+component", or a label you deliberately do not model — go in `inactive`; any
+token in neither `components` nor `inactive` is an error (earlier versions
+silently ignored it). Arm 1 of each study (its first row in `data`) is the
+within-study comparator.
 
 | study | treatment_component | r | n |
 |---|---|---|---|
@@ -87,6 +92,7 @@ dat <- dat_raw |>
 
 components <- c("se", "sd", "cr", "th", "cw", "sr", "sc", "re", "pi",
                 "w",  "ns", "he", "tg", "ind", "gp", "ff", "ae")
+inactive <- "dt"   # coded in the data but not a component of the original analysis
 ```
 
 A complete worked script is installed with the package:
@@ -102,6 +108,7 @@ fit <- bcnma_bin(
   event        = r,
   n            = n,
   components   = components,
+  inactive     = inactive,
   interactions = "lasso",
   seed         = 42
 )
@@ -119,6 +126,7 @@ fit_cont <- bcnma_cont(
   sd           = sd_change,     # arm SD
   n            = n,
   components   = components,
+  inactive     = inactive,
   sm           = "SMD",         # "SMD" (default) or "MD"
   pooled_sd    = "within",      # pool the SD over all arms (default) or "control"
   interactions = "lasso",
@@ -321,6 +329,7 @@ arms where the modified component is absent.
 fit_mod <- bcnma_bin(
   data = dat, studlab = study, treat = treatment_component, event = r, n = n,
   components   = components,
+  inactive     = inactive,
   interactions = "none",
   modifiers    = list(
     list(column = "therapist_level", components = "th", type = "ordinal",

@@ -23,6 +23,10 @@ dat <- dat_raw |>
 # 17 components used in the original analysis
 components <- c("se", "sd", "cr", "th", "cw", "sr", "sc", "re", "pi",
                 "w",  "ns", "he", "tg", "ind", "gp", "ff", "ae")
+# The data also code "dt", which was not a component of the original
+# analysis. Tokens that are not components must be declared in `inactive`
+# (nmatools >= 0.3.0 stops on unknown tokens instead of ignoring them).
+inactive <- "dt"
 
 # ---- 2a. Additive model (no interactions) -----------------------------------
 fit_add <- bcnma_bin(
@@ -32,6 +36,7 @@ fit_add <- bcnma_bin(
   event        = r,
   n            = n,
   components   = components,
+  inactive     = inactive,
   interactions = "none",
   n.chains     = 3,
   n.adapt      = 2000,
@@ -49,6 +54,7 @@ fit_lasso <- bcnma_bin(
   event        = r,
   n            = n,
   components   = components,
+  inactive     = inactive,
   interactions = "lasso",
   lasso_prob   = 0.5,
   g            = 100,
@@ -70,6 +76,7 @@ fit_inform <- bcnma_bin(
   event             = r,
   n                 = n,
   components        = components,
+  inactive          = inactive,
   interactions      = "lasso_informative",
   active_components = active,
   lasso_prob        = 0.8,
@@ -148,6 +155,7 @@ fit_dur <- bcnma_bin(
   event        = r,
   n            = n,
   components   = components,
+  inactive     = inactive,
   interactions = "none",
   modifiers    = list(list(column = "duration_weeks", components = "sr",
                            type = "continuous", center = 6, label = "weeks")),

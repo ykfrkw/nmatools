@@ -24,8 +24,8 @@
 #' baseline prior does not need to cover the outcome's absolute level (e.g. a
 #' mean of 360 minutes).
 #'
-#' @param data,studlab_col,treat_col,components,component_separator see
-#'   .parse_arm_structure()
+#' @param data,studlab_col,treat_col,components,component_separator,inactive
+#'   see .parse_arm_structure()
 #' @param mean_col,sd_col,n_col character: arm mean, SD and sample size columns
 #' @param sm        character: "SMD" or "MD"
 #' @param pooled_sd character: "within" (pool all arms) or "control" (the SD
@@ -37,9 +37,9 @@
 .bcnma_cont_prepare_data <- function(data, studlab_col, treat_col,
                                      mean_col, sd_col, n_col,
                                      components, component_separator,
-                                     sm, pooled_sd) {
+                                     sm, pooled_sd, inactive = character(0)) {
   prep <- .parse_arm_structure(data, studlab_col, treat_col, components,
-                               component_separator)
+                               component_separator, inactive)
   arm_mean <- .arm_matrix(as.numeric(data[[mean_col]]), prep)
   arm_sd   <- .arm_matrix(as.numeric(data[[sd_col]]), prep)
   arm_size <- .arm_matrix(floor(as.numeric(data[[n_col]])), prep)

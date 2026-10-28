@@ -55,7 +55,7 @@ test_that("the CBT-I example has design rank 121 of 153", {
   components <- c("se", "sd", "cr", "th", "cw", "sr", "sc", "re", "pi",
                   "w", "ns", "he", "tg", "ind", "gp", "ff", "ae")
   prep <- suppressWarnings(.bcnma_bin_prepare_data(
-    raw_data, "study", "treatment_component", "r", "n", components))
+    raw_data, "study", "treatment_component", "r", "n", components, inactive = "dt"))
   identifiability <- .classify_identifiability(prep, seq_len(136))
   expect_equal(identifiability$main_rank, 17)
   expect_equal(identifiability$design_rank, 121)

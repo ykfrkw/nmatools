@@ -12,6 +12,7 @@ bcnma_bin(
   n,
   components,
   component_separator = "+",
+  inactive = NULL,
   reference.group = NULL,
   interactions = c("lasso", "none", "lasso_informative"),
   active_components = NULL,
@@ -43,6 +44,12 @@ bcnma_bin(
 \item{components}{character vector of component abbreviations (must match substrings in \code{treat})}
 
 \item{component_separator}{character separating components in the \code{treat} column (default \code{"+"})}
+
+\item{inactive}{character vector of \code{treat} tokens that are not
+components: tokens meaning "no active component" (e.g. \code{"placebo"},
+\code{"waitlist"}) or labels deliberately not modelled. An arm made only of
+such tokens is the reference (all components absent). Any token of
+\code{treat} in neither \code{components} nor \code{inactive} is an error. Default \code{NULL}.}
 
 \item{reference.group}{character: reference component/combination for printing (optional)}
 

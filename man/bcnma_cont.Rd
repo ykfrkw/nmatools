@@ -13,6 +13,7 @@ bcnma_cont(
   n,
   components,
   component_separator = "+",
+  inactive = NULL,
   reference.group = NULL,
   sm = c("SMD", "MD"),
   pooled_sd = c("within", "control"),
@@ -48,6 +49,9 @@ bcnma_cont(
 \item{components}{character vector of component abbreviations}
 
 \item{component_separator}{character separating components in \code{treat} (default \code{"+"})}
+
+\item{inactive}{character vector of \code{treat} tokens that are
+not components (see \code{\link{bcnma_bin}}). Default \code{NULL}.}
 
 \item{reference.group}{character: reference component for display (optional)}
 

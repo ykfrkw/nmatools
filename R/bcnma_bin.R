@@ -26,6 +26,11 @@
 #' @param n                   unquoted column name for arm sample size (integer)
 #' @param components          character vector of component abbreviations (must match substrings in `treat`)
 #' @param component_separator character separating components in the `treat` column (default `"+"`)
+#' @param inactive            character vector of `treat` tokens that are not
+#'   components: tokens meaning "no active component" (e.g. `"placebo"`,
+#'   `"waitlist"`) or labels deliberately not modelled. An arm made only of
+#'   such tokens is the reference (all components absent). Any token of
+#'   `treat` in neither `components` nor `inactive` is an error. Default `NULL`.
 #' @param reference.group     character: reference component/combination for printing (optional)
 #' @param interactions        character: `"none"`, `"lasso"` (default), or `"lasso_informative"`
 #' @param active_components   character vector of components whose pairwise interactions
@@ -134,6 +139,7 @@ bcnma_bin <- function(data,
                       n,
                       components,
                       component_separator = "+",
+                      inactive            = NULL,
                       reference.group     = NULL,
                       interactions        = c("lasso", "none", "lasso_informative"),
                       active_components   = NULL,
@@ -163,7 +169,7 @@ bcnma_bin <- function(data,
 
   if (!quiet) message("Preparing data...")
   prep <- .bcnma_bin_prepare_data(data, studlab_col, treat_col, event_col, n_col,
-                                  components, component_separator)
+                                  components, component_separator, as.character(inactive))
   prep <- .apply_component_values(prep, component_values)
   identifiability <- .check_identifiability(prep, ssvs_pairs, interactions)
 

@@ -23,6 +23,8 @@
 #' @param n                   unquoted column name for arm sample size (integer)
 #' @param components          character vector of component abbreviations
 #' @param component_separator character separating components in \code{treat} (default \code{"+"})
+#' @param inactive            character vector of \code{treat} tokens that are
+#'   not components (see \code{\link{bcnma_bin}}). Default \code{NULL}.
 #' @param reference.group     character: reference component for display (optional)
 #' @param sm                  character: \code{"SMD"} (default) or \code{"MD"}.
 #'   With \code{"MD"}, each study's means are centred on its arm 1 (an exact
@@ -113,6 +115,7 @@ bcnma_cont <- function(data,
                        n,
                        components,
                        component_separator = "+",
+                       inactive            = NULL,
                        reference.group     = NULL,
                        sm                  = c("SMD", "MD"),
                        pooled_sd           = c("within", "control"),
@@ -147,7 +150,8 @@ bcnma_cont <- function(data,
 
   if (!quiet) message("Preparing data...")
   prep <- .bcnma_cont_prepare_data(data, studlab_col, treat_col, mean_col, sd_col, n_col,
-                                   components, component_separator, sm, pooled_sd)
+                                   components, component_separator, sm, pooled_sd,
+                                   as.character(inactive))
   prep <- .apply_component_values(prep, component_values)
   identifiability <- .check_identifiability(prep, ssvs_pairs, interactions)
 
