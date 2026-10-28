@@ -146,8 +146,9 @@ cinema(load_w2i(), format = "binary", effect_measure = "OR")   # pre-load from R
 SMD or MD) fit Bayesian random-effects component NMA in JAGS: each treatment
 is split into its components (`"se+sd+cr"`) and the effect of each component
 is estimated. Interactions between components are handled by an additive
-model, spike-and-slab (SSVS) "LASSO" priors on every pair, or SSVS on a chosen
-subset (`interactions = "none"`, `"lasso"`, `"lasso_informative"`).
+model, spike-and-slab (SSVS) priors on every estimable pair, or SSVS on a
+chosen subset (`interactions = "none"`, `"ssvs"`, `"ssvs_informative"`; the
+old names `"lasso"` / `"lasso_informative"` are deprecated aliases).
 `compare_combinations()` gives the posterior effect of any combination against
 another; `forest()`, `plot_interactions()` and `summarise_interactions()`
 summarize the fit.
@@ -170,7 +171,7 @@ fit <- bcnma_bin(dat, studlab = study, treat = treatment_component,
                                 "pi", "w", "ns", "he", "tg", "ind", "gp", "ff",
                                 "ae"),
                  inactive = "dt",   # token in the data that is not a component
-                 interactions = "lasso", seed = 42)
+                 interactions = "ssvs", seed = 42)
 print(fit)
 forest(fit)
 compare_combinations(fit, combo1 = c("se", "sd", "cr", "th", "sr", "sc"),

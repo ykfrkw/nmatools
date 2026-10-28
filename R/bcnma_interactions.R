@@ -121,8 +121,8 @@ all.interactions <- function(combination, Nc, components = NULL) {
 #' @export
 summarise_interactions <- function(x, threshold = 0.5, top_n = NULL) {
   if (is.null(x$interaction_inclusion_prob)) {
-    stop("No interaction results found. Fit with interactions = 'lasso' or ",
-         "'lasso_informative'.")
+    stop("No interaction results found. Fit with interactions = 'ssvs' or ",
+         "'ssvs_informative'.")
   }
   pair_count <- x$n_components * (x$n_components - 1L) / 2L
   summary_table <- data.frame(

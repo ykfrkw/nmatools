@@ -15,7 +15,7 @@
 #'
 #' Computes the posterior distribution of combination A vs. combination B,
 #' accounting for main effects, (optionally) pairwise interaction terms
-#' estimated by the LASSO/SSVS model, and effect modifiers. For
+#' estimated by the SSVS model, and effect modifiers. For
 #' \code{bcnma_bin} objects the result is an OR (or log-OR); for
 #' \code{bcnma_cont} objects it is on the SMD (or MD) scale.
 #'
@@ -27,7 +27,8 @@
 #' @param combo2       combination B, same forms as \code{combo1}. Use
 #'   \code{character(0)} or \code{integer(0)} to compare against "no
 #'   components" (baseline).
-#' @param model        character: \code{"lasso"} (default) or \code{"additive"}
+#' @param model        character: \code{"ssvs"} (default) or \code{"additive"}
+#'   (\code{"lasso"} is a deprecated alias of \code{"ssvs"})
 #' @param exponentiate logical (\code{bcnma_bin} only): return OR (\code{TRUE},
 #'   default) or log-OR (\code{FALSE})
 #' @param probs        numeric vector: quantiles to return (default 95% CrI + median)
@@ -73,12 +74,12 @@ compare_combinations <- function(x, ...) UseMethod("compare_combinations")
 compare_combinations.bcnma_bin <- function(x,
                                         combo1,
                                         combo2       = character(0),
-                                        model        = c("lasso", "additive"),
+                                        model        = c("ssvs", "additive", "lasso"),
                                         exponentiate = TRUE,
                                         probs        = c(0.025, 0.5, 0.975),
                                         at           = NULL,
                                         ...) {
-  model <- match.arg(model)
+  model <- .normalise_model_name(match.arg(model))
   if (!inherits(x, "bcnma_bin")) stop("'x' must be a bcnma_bin object.")
 
   core   <- .combination_effect_samples(x, combo1, combo2, model, at)
@@ -107,11 +108,11 @@ compare_combinations.bcnma_bin <- function(x,
 compare_combinations.bcnma_cont <- function(x,
                                              combo1,
                                              combo2 = character(0),
-                                             model  = c("lasso", "additive"),
+                                             model  = c("ssvs", "additive", "lasso"),
                                              probs  = c(0.025, 0.5, 0.975),
                                              at     = NULL,
                                              ...) {
-  model <- match.arg(model)
+  model <- .normalise_model_name(match.arg(model))
   if (!inherits(x, "bcnma_cont")) stop("'x' must be a bcnma_cont object.")
 
   core   <- .combination_effect_samples(x, combo1, combo2, model, at)
@@ -145,11 +146,11 @@ compare_combinations.bcnma_cont <- function(x,
   values2 <- .combo_to_values(combo2, comps)
   if (all(values1 == 0)) stop("'combo1' must contain at least one component.")
 
-  if (model == "lasso" && is.null(x$samps_lasso)) {
-    warning("LASSO samples not available; falling back to additive model.")
+  if (model == "ssvs" && is.null(x$samps_ssvs)) {
+    warning("SSVS samples not available; falling back to additive model.")
     model <- "additive"
   }
-  samps <- if (model == "lasso") x$samps_lasso else x$samps_additive
+  samps <- if (model == "ssvs") x$samps_ssvs else x$samps_additive
   if (is.null(samps)) stop("No MCMC samples available for model = '", model, "'.")
 
   effect   <- numeric(nrow(samps))
@@ -162,8 +163,8 @@ compare_combinations.bcnma_cont <- function(x,
   for (j in present1) effect <- effect + .sample_column(samps, "d", j) * values1[[j]]
   for (j in present2) effect <- effect - .sample_column(samps, "d", j) * values2[[j]]
 
-  # ---- Interaction effects (LASSO model only; defined on presence) ----
-  if (model == "lasso") {
+  # ---- Interaction effects (SSVS model only; defined on presence) ----
+  if (model == "ssvs") {
     for (k in all.interactions(present1, Nc)) {
       col <- paste0("gamma[", k, "]")
       if (col %in% colnames(samps)) effect <- effect + samps[[col]]

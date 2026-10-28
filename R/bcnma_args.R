@@ -39,9 +39,9 @@
 .candidate_interaction_pairs <- function(interactions, active_components, components) {
   pair_count <- length(components) * (length(components) - 1L) / 2L
   if (interactions == "none") return(integer(0))
-  if (interactions != "lasso_informative") return(seq_len(pair_count))
+  if (interactions != "ssvs_informative") return(seq_len(pair_count))
   if (is.null(active_components)) {
-    stop("'active_components' must be specified when interactions = 'lasso_informative'.")
+    stop("'active_components' must be specified when interactions = 'ssvs_informative'.")
   }
   unknown <- setdiff(active_components, components)
   if (length(unknown) > 0) {
@@ -54,6 +54,51 @@
          "Need at least 2 active components.")
   }
   pairs
+}
+
+# Deprecation messages already shown in this session (one per key).
+.bcnma_deprecations_shown <- new.env(parent = emptyenv())
+
+.deprecate_once <- function(key, text) {
+  if (isTRUE(.bcnma_deprecations_shown[[key]])) return(invisible(NULL))
+  assign(key, TRUE, envir = .bcnma_deprecations_shown)
+  message(text)
+}
+
+#' Interaction model name, mapping the deprecated "lasso" aliases
+#'
+#' The models are spike-and-slab (SSVS), not a lasso penalty, hence the
+#' rename; old names keep working with a one-time message.
+#' @noRd
+.normalise_interactions <- function(interactions) {
+  deprecated_aliases <- c(lasso = "ssvs", lasso_informative = "ssvs_informative")
+  if (!interactions %in% names(deprecated_aliases)) return(interactions)
+  new_name <- deprecated_aliases[[interactions]]
+  .deprecate_once(interactions, sprintf(
+    "interactions = \"%s\" is deprecated; use \"%s\" (the model is SSVS, not a lasso).",
+    interactions, new_name))
+  new_name
+}
+
+#' Model name for print / forest / compare, mapping deprecated "lasso"
+#' @noRd
+.normalise_model_name <- function(model) {
+  if (!identical(model, "lasso")) return(model)
+  .deprecate_once("model_lasso", "model = \"lasso\" is deprecated; use model = \"ssvs\".")
+  "ssvs"
+}
+
+#' Prior inclusion probability, accepting the deprecated `lasso_prob`
+#' @noRd
+.resolve_inclusion_prob <- function(inclusion_prob, lasso_prob) {
+  if (!is.null(lasso_prob)) {
+    .deprecate_once("lasso_prob", "'lasso_prob' is deprecated; use 'inclusion_prob'.")
+    inclusion_prob <- lasso_prob
+  }
+  is_probability <- is.numeric(inclusion_prob) && length(inclusion_prob) == 1 &&
+    inclusion_prob > 0 && inclusion_prob < 1
+  if (!is_probability) stop("'inclusion_prob' must be one number strictly between 0 and 1.")
+  inclusion_prob
 }
 
 #' Heterogeneity prior as a self-describing list

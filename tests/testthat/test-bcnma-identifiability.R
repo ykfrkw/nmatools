@@ -34,7 +34,7 @@ test_that("interaction statuses on the toy network", {
   expect_equal(identifiability$ssvs_pairs, 1L)
   expect_equal(identifiability$main_rank, 4)
   expect_equal(identifiability$design_rank, 5)
-  expect_warning(.check_identifiability(prep, 1:6, "lasso"), "5 of 6 candidate interactions")
+  expect_warning(.check_identifiability(prep, 1:6, "ssvs"), "5 of 6 candidate interactions")
   expect_silent(.check_identifiability(prep, 1:6, "none"))
 })
 
@@ -68,12 +68,12 @@ test_that("fixed interactions are stored, absent from SSVS and never selected", 
   skip_if_not_installed("rjags")
   skip_if_not_installed("MCMCvis")
   expect_warning(fit <- suppressMessages(bcnma_bin(
-    toy_network, study, treat, r, n, components = TOY_COMPONENTS, interactions = "lasso",
+    toy_network, study, treat, r, n, components = TOY_COMPONENTS, interactions = "ssvs",
     n.chains = 2, n.adapt = 100, n.burnin = 0, n.iter = 20, seed = 1, quiet = TRUE)),
     "fixed to gamma = 0")
   expect_equal(fit$identifiability$ssvs_pairs, 1L)
-  expect_true("gamma[1]" %in% names(fit$samps_lasso))
-  expect_false("gamma[2]" %in% names(fit$samps_lasso))
+  expect_true("gamma[1]" %in% names(fit$samps_ssvs))
+  expect_false("gamma[2]" %in% names(fit$samps_ssvs))
   interaction_table <- summarise_interactions(fit, threshold = 0)
   expect_equal(sum(interaction_table$selected), 1)
   expect_true("status" %in% names(interaction_table))

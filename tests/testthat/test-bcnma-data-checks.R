@@ -32,3 +32,16 @@ test_that("inactive tokens are accepted and mean no active component", {
                                        SIM_COMPONENTS, inactive = c("placebo", "A")),
                "both 'components' and 'inactive': A")
 })
+
+test_that("deprecated lasso names map to SSVS with a one-time message (R9)", {
+  rm(list = ls(.bcnma_deprecations_shown), envir = .bcnma_deprecations_shown)
+  expect_message(expect_equal(.normalise_interactions("lasso"), "ssvs"), "deprecated")
+  expect_silent(.normalise_interactions("lasso"))
+  expect_message(expect_equal(.normalise_interactions("lasso_informative"),
+                              "ssvs_informative"), "deprecated")
+  expect_equal(.normalise_interactions("none"), "none")
+  expect_message(expect_equal(.resolve_inclusion_prob(0.5, lasso_prob = 0.8), 0.8),
+                 "inclusion_prob")
+  expect_error(.resolve_inclusion_prob(1.5, NULL), "strictly between 0 and 1")
+  expect_message(expect_equal(.normalise_model_name("lasso"), "ssvs"), "deprecated")
+})

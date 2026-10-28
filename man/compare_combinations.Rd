@@ -12,7 +12,7 @@ compare_combinations(x, ...)
   x,
   combo1,
   combo2 = character(0),
-  model = c("lasso", "additive"),
+  model = c("ssvs", "additive", "lasso"),
   exponentiate = TRUE,
   probs = c(0.025, 0.5, 0.975),
   at = NULL,
@@ -23,7 +23,7 @@ compare_combinations(x, ...)
   x,
   combo1,
   combo2 = character(0),
-  model = c("lasso", "additive"),
+  model = c("ssvs", "additive", "lasso"),
   probs = c(0.025, 0.5, 0.975),
   at = NULL,
   ...
@@ -43,7 +43,8 @@ components, values = component values, e.g. doses, as in
 \code{character(0)} or \code{integer(0)} to compare against "no
 components" (baseline).}
 
-\item{model}{character: \code{"lasso"} (default) or \code{"additive"}}
+\item{model}{character: \code{"ssvs"} (default) or \code{"additive"}
+(\code{"lasso"} is a deprecated alias of \code{"ssvs"})}
 
 \item{exponentiate}{logical (\code{bcnma_bin} only): return OR (\code{TRUE},
 default) or log-OR (\code{FALSE})}
@@ -73,7 +74,7 @@ named list (invisible):
 \description{
 Computes the posterior distribution of combination A vs. combination B,
 accounting for main effects, (optionally) pairwise interaction terms
-estimated by the LASSO/SSVS model, and effect modifiers. For
+estimated by the SSVS model, and effect modifiers. For
 \code{bcnma_bin} objects the result is an OR (or log-OR); for
 \code{bcnma_cont} objects it is on the SMD (or MD) scale.
 }

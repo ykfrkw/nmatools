@@ -75,12 +75,12 @@
 #' @param component_values validated matrix or NULL
 #' @param modifier_specs   normalised specs (possibly empty list)
 #' @param modifier_design  output of .build_modifier_design() or NULL
-#' @param samps_additive,samps_lasso combined MCMC samples (lasso may be NULL)
+#' @param samps_additive,samps_ssvs combined MCMC samples (ssvs may be NULL)
 #' @param exponentiate     logical: add OR columns (binary outcomes)
 #' @return named list appended to the bcnma_bin / bcnma_cont object
 #' @noRd
 .modifier_results <- function(component_values, modifier_specs, modifier_design,
-                              samps_additive, samps_lasso, exponentiate) {
+                              samps_additive, samps_ssvs, exponentiate) {
   modifier_terms <- modifier_design$terms
   list(
     component_values = component_values,
@@ -88,7 +88,7 @@
     modifier_terms   = modifier_terms,
     modifier_effects = if (is.null(modifier_terms)) NULL else list(
       additive = .summarise_modifier_effects(samps_additive, modifier_terms, exponentiate),
-      lasso    = .summarise_modifier_effects(samps_lasso, modifier_terms, exponentiate)
+      ssvs     = .summarise_modifier_effects(samps_ssvs, modifier_terms, exponentiate)
     )
   )
 }

@@ -109,7 +109,7 @@ fit <- bcnma_bin(
   n            = n,
   components   = components,
   inactive     = inactive,
-  interactions = "lasso",
+  interactions = "ssvs",
   seed         = 42
 )
 print(fit)
@@ -129,7 +129,7 @@ fit_cont <- bcnma_cont(
   inactive     = inactive,
   sm           = "SMD",         # "SMD" (default) or "MD"
   pooled_sd    = "within",      # pool the SD over all arms (default) or "control"
-  interactions = "lasso",
+  interactions = "ssvs",
   seed         = 42
 )
 ```
@@ -157,11 +157,25 @@ sd = ...)` or `list(family = "lognormal_tau2", meanlog = ..., precision =
 | `interactions` | Model |
 |---|---|
 | `"none"` | Fully additive: a combination's effect is the sum of its components' effects. |
-| `"lasso"` (default) | Every pairwise interaction gets a spike-and-slab (SSVS) prior with equal inclusion probability `lasso_prob` (default 0.5); the data decide which interactions matter. |
-| `"lasso_informative"` | Only interactions among `active_components` get SSVS priors; all others are fixed to zero. |
+| `"ssvs"` (default) | Every estimable pairwise interaction gets a spike-and-slab (stochastic search variable selection, SSVS; George & McCulloch 1993) prior with prior inclusion probability `inclusion_prob` (default 0.5); the data decide which interactions matter. |
+| `"ssvs_informative"` | Only interactions among `active_components` get SSVS priors; all others are fixed to zero. |
+
+`"lasso"` and `"lasso_informative"` (and the argument `lasso_prob`) are
+deprecated aliases kept for old scripts: the model is a spike-and-slab
+mixture, not a lasso penalty. The fitted object stores the SSVS results as
+`summary_ssvs`, `samps_ssvs` and `modifier_effects$ssvs` (formerly
+`*_lasso`).
+
+**Spike and slab scale.** `gamma[m] ~ N(0, eta^2)` in the spike and
+`N(0, g eta^2)` in the slab, with `eta ~ half-normal(eta_prior_sd)`. At the
+defaults (`eta_prior_sd = 1/sqrt(1000)`, `g = 100`) the prior slab SD
+`eta * sqrt(g)` has median about 0.21 and 97.5th percentile about 0.71 on
+the log-OR (or SMD) scale. These values decide what counts as a "large"
+interaction: report a sensitivity analysis over `eta_prior_sd` and `g`.
+`print()` shows the posterior slab SD.
 
 The additive model is always fitted as well, so `print(fit)` shows the
-additive and the LASSO estimates side by side.
+additive and the SSVS estimates side by side.
 
 ### Identifiability check
 
@@ -189,11 +203,13 @@ For the CBT-I example (17 components, 136 pairs) the design has rank 121 of
 | Argument | Default | Description |
 |---|---|---|
 | `component_separator` | `"+"` | Separator in the `treat` column. |
-| `active_components` | `NULL` | Required for `"lasso_informative"`. |
-| `lasso_prob` | `0.5` | Prior probability that an interaction is included. |
+| `inactive` | `NULL` | Tokens of `treat` that are not components. |
+| `active_components` | `NULL` | Required for `"ssvs_informative"`. |
+| `inclusion_prob` | `0.5` | Prior probability that an interaction is in the slab. |
+| `eta_prior_sd` | `1/sqrt(1000)` | SD of the half-normal prior on the spike SD `eta`. |
 | `g` | `100` | Spike-slab variance ratio (slab variance = `g` × spike variance). |
 | `tau_prior` | `NULL`: log-normal `c(-1.67, 1/1.472^2)` on τ² (binary), `c(-1.0, 1/0.8^2)` on τ² (SMD), half-normal on τ with SD = median pooled SD (MD) | Prior on the between-study heterogeneity; log-normal priors are on the **variance** τ² (JAGS node `tau2`) and `tau = sqrt(tau2)` is reported as the SD. The binary and SMD defaults are package defaults labelled *not from a (verified) published category*: prefer a published, outcome-specific prior (Turner et al. 2015 for log-OR; Rhodes et al. 2015 for SMD). |
-| `n.chains`, `n.adapt`, `n.burnin`, `n.iter`, `n.thin` | `3`, `2000`, `5000`, `20000`, `1` | MCMC settings (4 chains are advisable for LASSO models). |
+| `n.chains`, `n.adapt`, `n.burnin`, `n.iter`, `n.thin` | `3`, `2000`, `5000`, `20000`, `1` | MCMC settings (4 chains are advisable for SSVS models). |
 | `seed` | `NULL` | Random seed for reproducibility. |
 | `component_values` | `NULL` | Optional component values (doses); see below. |
 | `modifiers` | `NULL` | Optional arm-level effect modifiers; see below. |
@@ -201,8 +217,8 @@ For the CBT-I example (17 components, 136 pairs) the design has rank 121 of
 ## Results
 
 ```r
-print(fit)                       # component effects, additive and LASSO models
-print(fit, model = "lasso")      # one model only
+print(fit)                       # component effects, additive and SSVS models
+print(fit, model = "ssvs")       # one model only
 summary(fit)                     # adds the call, MCMC settings, modifier terms
 forest(fit)                      # component OR (or SMD / MD) forest plot (ggplot2)
 plot_interactions(fit)           # median gamma vs. inclusion probability
@@ -220,14 +236,14 @@ is placed on `tau2`). For interactions, `inclusion_prob` is the posterior
 probability that the interaction is non-negligible (values ≥ 0.5 are
 conventionally "selected"), and `median_gamma` its size and direction:
 negative means the combination works less well than the sum of its parts,
-positive means better. If the additive and LASSO component estimates are
-similar, interactions add little; if they diverge, prefer the LASSO model for
+positive means better. If the additive and SSVS component estimates are
+similar, interactions add little; if they diverge, prefer the SSVS model for
 comparing combinations.
 
 ### Comparing combinations
 
 `compare_combinations()` gives the posterior effect of combination A against
-combination B, including the main effects, the interaction terms of the LASSO
+combination B, including the main effects, the interaction terms of the SSVS
 model, and any effect modifiers:
 
 ```r
@@ -245,13 +261,13 @@ compare_combinations(fit, combo1 = c("se", "sd", "cr", "th"), combo2 = "se",
 ```
 
 The full posterior draws are returned in `$effect_samples`; the raw samples
-are in `fit$samps_additive` and `fit$samps_lasso` (columns `d[k]`, `ORd[k]`,
+are in `fit$samps_additive` and `fit$samps_ssvs` (columns `d[k]`, `ORd[k]`,
 `gamma[k]`, `Ind[k]`, `tau`, `tau2`, ...). `place()`, `which.place()` and
 `all.interactions()` map component pairs to interaction indices:
 
 ```r
 k <- place("cr", "th", Nc = length(components), components = components)
-quantile(exp(fit$samps_lasso[[paste0("gamma[", k, "]")]]), c(0.025, 0.5, 0.975))
+quantile(exp(fit$samps_ssvs[[paste0("gamma[", k, "]")]]), c(0.025, 0.5, 0.975))
 which.place(k, components)
 ```
 
@@ -318,7 +334,7 @@ arms where the modified component is absent.
 - `beta` is on the log-OR scale for `bcnma_bin()` (an OR column is also
   printed) and on the SMD / MD scale for `bcnma_cont()`.
 - Results are in `fit$modifier_terms` (term definitions) and
-  `fit$modifier_effects$additive` / `$lasso` (posterior median and 95% CrI);
+  `fit$modifier_effects$additive` / `$ssvs` (posterior median and 95% CrI);
   `print()` and `summary()` show both.
 - `compare_combinations()` accepts named numeric combinations (component
   values, e.g. `c(th = 2, se = 1)`) and evaluates modified components at

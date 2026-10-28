@@ -46,12 +46,15 @@ test_that("compare_combinations reproduces bcnma 0.1.0 arithmetic on fixed draws
   cases <- BACKWARD_COMPAT$compare_cases
   for (outcome in c("bin", "cont")) {
     fit <- BACKWARD_COMPAT[[paste0("compare_fit_", outcome)]]
+    # R9 renamed the SSVS fields and model name (lasso -> ssvs)
+    fit$samps_ssvs <- fit$samps_lasso
     old_results <- BACKWARD_COMPAT[[paste0("compare_results_", outcome)]]
     for (case_index in seq_len(nrow(cases))) {
       case <- cases[case_index, ]
+      new_model <- if (case$model == "lasso") "ssvs" else case$model
       capture.output(new_result <- compare_combinations(
         fit, BACKWARD_COMPAT$compare_combos[[case$combo]],
-        BACKWARD_COMPAT$compare_against[[case$against]], model = case$model))
+        BACKWARD_COMPAT$compare_against[[case$against]], model = new_model))
       old_result <- old_results[[case_index]]
       expect_identical(new_result$effect_samples, old_result$effect_samples)
       expect_identical(new_result$estimate, old_result$estimate)

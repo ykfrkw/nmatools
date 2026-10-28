@@ -40,7 +40,7 @@ test_that("monotone increasing ordinal modifier yields non-negative increments",
   skip_if_not_installed("MCMCvis")
   sim_data <- simulate_proficiency_studies("binary")
   fit <- quietly_fit(bcnma_bin(
-    sim_data, study, treat, r, n, components = SIM_COMPONENTS, interactions = "lasso",
+    sim_data, study, treat, r, n, components = SIM_COMPONENTS, interactions = "ssvs",
     modifiers = list(list(column = "proficiency_level", components = "C", type = "ordinal",
                           levels = c("low", "mid", "high"), monotone = "increasing",
                           label = "skill")),
@@ -48,9 +48,9 @@ test_that("monotone increasing ordinal modifier yields non-negative increments",
     n.burnin = SHORT_MCMC$n.burnin, n.iter = SHORT_MCMC$n.iter, seed = SIM_SEED, quiet = TRUE))
   increment_columns <- c("beta[1]", "beta[2]")
   expect_true(all(as.matrix(fit$samps_additive[, increment_columns]) >= 0))
-  expect_true(all(as.matrix(fit$samps_lasso[, increment_columns]) >= 0))
+  expect_true(all(as.matrix(fit$samps_ssvs[, increment_columns]) >= 0))
   expect_equal(fit$modifier_terms$level_to, c("mid", "high"))
-  expect_false(is.null(fit$modifier_effects$lasso))
+  expect_false(is.null(fit$modifier_effects$ssvs))
 })
 
 test_that("simulated proficiency effect is recovered (continuous outcome, SSVS fitted too)", {
@@ -59,7 +59,7 @@ test_that("simulated proficiency effect is recovered (continuous outcome, SSVS f
   sim_data <- simulate_proficiency_studies("continuous")
   fit <- quietly_fit(bcnma_cont(
     sim_data, study, treat, mean, sd, n, components = SIM_COMPONENTS, sm = "MD",
-    interactions = "lasso", modifiers = proficiency_modifier,
+    interactions = "ssvs", modifiers = proficiency_modifier,
     n.chains = SHORT_MCMC$n.chains, n.adapt = SHORT_MCMC$n.adapt,
     n.burnin = SHORT_MCMC$n.burnin, n.iter = SHORT_MCMC$n.iter, seed = SIM_SEED, quiet = TRUE))
   for (effect in fit$modifier_effects) {
@@ -70,8 +70,8 @@ test_that("simulated proficiency effect is recovered (continuous outcome, SSVS f
   expect_output(print(fit), "change in component MD per code unit")
   expect_output(summary(fit), "Modifier terms")
   capture.output(result <- compare_combinations(
-    fit, combo1 = "C", model = "lasso", at = list(proficiency = PROFICIENCY_CENTER - 1)))
-  expected <- fit$samps_lasso[["d[3]"]] - fit$samps_lasso[["beta[1]"]]
+    fit, combo1 = "C", model = "ssvs", at = list(proficiency = PROFICIENCY_CENTER - 1)))
+  expected <- fit$samps_ssvs[["d[3]"]] - fit$samps_ssvs[["beta[1]"]]
   expect_equal(result$effect_samples, expected)
   expect_equal(result$sm, "MD")
 })
@@ -81,7 +81,7 @@ test_that("component values (doses) enter a continuous fit as data", {
   skip_if_not_installed("MCMCvis")
   fit <- quietly_fit(bcnma_cont(
     small_cont_data, study, treat, mean, sd, n, components = SIM_COMPONENTS,
-    interactions = "lasso", component_values = dose_values,
+    interactions = "ssvs", component_values = dose_values,
     n.chains = TINY_MCMC$n.chains, n.adapt = TINY_MCMC$n.adapt,
     n.burnin = TINY_MCMC$n.burnin, n.iter = TINY_MCMC$n.iter, quiet = TRUE))
   expect_equal(fit$prep$x_arm[, 2, 3], c(4, 2.5, 7, 0))

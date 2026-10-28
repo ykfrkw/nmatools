@@ -2,7 +2,7 @@
 % Please edit documentation in R/bcnma_bin.R
 \name{bcnma_bin}
 \alias{bcnma_bin}
-\title{Bayesian Component Network Meta-Analysis with LASSO Interactions}
+\title{Bayesian component network meta-analysis for binary outcomes}
 \usage{
 bcnma_bin(
   data,
@@ -14,10 +14,11 @@ bcnma_bin(
   component_separator = "+",
   inactive = NULL,
   reference.group = NULL,
-  interactions = c("lasso", "none", "lasso_informative"),
+  interactions = c("ssvs", "none", "ssvs_informative", "lasso", "lasso_informative"),
   active_components = NULL,
-  lasso_prob = BCNMA_DEFAULT_INCLUSION_PROB,
+  inclusion_prob = BCNMA_DEFAULT_INCLUSION_PROB,
   g = BCNMA_DEFAULT_SLAB_RATIO,
+  eta_prior_sd = BCNMA_DEFAULT_ETA_PRIOR_SD,
   tau_prior = NULL,
   n.chains = 3,
   n.adapt = 2000,
@@ -27,7 +28,8 @@ bcnma_bin(
   seed = NULL,
   quiet = FALSE,
   component_values = NULL,
-  modifiers = NULL
+  modifiers = NULL,
+  lasso_prob = NULL
 )
 }
 \arguments{
@@ -35,15 +37,18 @@ bcnma_bin(
 
 \item{studlab}{unquoted column name for study identifier}
 
-\item{treat}{unquoted column name for treatment/component combination string}
+\item{treat}{unquoted column name for the treatment string
+(components joined by \code{component_separator})}
 
 \item{event}{unquoted column name for event count (integer)}
 
 \item{n}{unquoted column name for arm sample size (integer)}
 
-\item{components}{character vector of component abbreviations (must match substrings in \code{treat})}
+\item{components}{character vector of component abbreviations;
+their order defines \code{d[1]}, \code{d[2]}, ...}
 
-\item{component_separator}{character separating components in the \code{treat} column (default \code{"+"})}
+\item{component_separator}{character separating components in \code{treat}
+(default \code{"+"})}
 
 \item{inactive}{character vector of \code{treat} tokens that are not
 components: tokens meaning "no active component" (e.g. \code{"placebo"},
@@ -51,31 +56,45 @@ components: tokens meaning "no active component" (e.g. \code{"placebo"},
 such tokens is the reference (all components absent). Any token of
 \code{treat} in neither \code{components} nor \code{inactive} is an error. Default \code{NULL}.}
 
-\item{reference.group}{character: reference component/combination for printing (optional)}
+\item{reference.group}{character: reference label for printing (optional)}
 
-\item{interactions}{character: \code{"none"}, \code{"lasso"} (default), or \code{"lasso_informative"}}
+\item{interactions}{character: \code{"ssvs"} (default), \code{"none"} or
+\code{"ssvs_informative"}. \code{"lasso"} and \code{"lasso_informative"} are deprecated
+aliases of the SSVS options (one message per session).}
 
-\item{active_components}{character vector of components whose pairwise interactions
-are modelled (only used when \code{interactions = "lasso_informative"})}
+\item{active_components}{character vector of components whose pairwise
+interactions get SSVS priors (\code{interactions = "ssvs_informative"} only)}
 
-\item{lasso_prob}{numeric: prior inclusion probability for active interactions (default 0.5)}
+\item{inclusion_prob}{numeric in (0, 1): prior probability that an
+interaction is in the slab (default 0.5)}
 
-\item{g}{numeric: spike-slab variance ratio; slab variance = g * spike variance (default 100)}
+\item{g}{numeric: slab variance / spike variance
+(default 100)}
+
+\item{eta_prior_sd}{numeric: SD of the half-normal prior on the spike
+SD \code{eta} (default \code{1/sqrt(1000)}, i.e. precision 1000). The slab SD is
+\code{eta * sqrt(g)}; at the defaults its prior median is about 0.21 and its
+97.5th percentile about 0.71 (log-OR). These defaults decide what counts
+as a "large" interaction, so a sensitivity analysis over \code{eta_prior_sd}
+and \code{g} is recommended.}
 
 \item{tau_prior}{heterogeneity prior. \code{NULL} (default): a
 log-normal prior \code{c(meanlog = -1.67, precision = 1/1.472^2)} on the
 between-study variance tau^2 (JAGS node \code{tau2}; \code{tau = sqrt(tau2)} is the
 SD). It has the form of the Turner et al. (2015) predictive
 distributions, but its exact category has not been verified, so it is
-labelled "default, not from a verified published category" in the
-output; choose a Turner category that matches your outcome and
-comparison type where possible. Otherwise numeric \code{c(meanlog, precision)} (log-normal on tau^2), \code{list(family = "lognormal_tau2", meanlog, precision)} or \code{list(family = "half_normal_tau", sd)}.}
+labelled "not from a verified published category" in the output; choose
+a Turner category that matches your outcome and comparison type where
+possible. Otherwise numeric \code{c(meanlog, precision)} (log-normal on
+tau^2), \code{list(family = "lognormal_tau2", meanlog, precision)} or
+\code{list(family = "half_normal_tau", sd)}.}
 
 \item{n.chains}{integer: number of MCMC chains (default 3)}
 
 \item{n.adapt}{integer: JAGS adaptation iterations (default 2000)}
 
-\item{n.burnin}{integer: additional burn-in iterations after adaptation (default 5000)}
+\item{n.burnin}{integer: burn-in iterations after adaptation
+(default 5000)}
 
 \item{n.iter}{integer: sampling iterations per chain (default 20000)}
 
@@ -83,22 +102,72 @@ comparison type where possible. Otherwise numeric \code{c(meanlog, precision)} (
 
 \item{seed}{integer or NULL: seed of the JAGS random number
 generators. Chain c uses \code{.RNG.name = "base::Mersenne-Twister"} and
-\code{.RNG.seed = seed + c}, so identical seeds give identical samples.
-\code{NULL} draws one seed from R's generator; it is stored in
-\code{fit$seed} (with the per-chain \code{fit$inits}) for re-running.}
+\code{.RNG.seed = seed + c}, so identical seeds give identical samples. \code{NULL}
+draws one seed from R's generator; it is stored in \code{fit$seed} (with the
+per-chain \code{fit$inits}) for re-running.}
 
 \item{quiet}{logical: suppress progress messages (default FALSE)}
 
-\item{component_values}{optional numeric matrix or data.frame with \code{nrow(data)}
-rows in the same order as \code{data} and column names exactly equal to
-\code{components}. Replaces the 0/1 indicators parsed from \code{treat} (e.g. number of
-sessions), so \code{d[k]} becomes the log-OR per unit of component k (linear
-dose-response). SSVS interactions still use presence (value != 0). Default
-\code{NULL} keeps the 0/1 indicators.}
+\item{component_values}{optional numeric matrix or data.frame with
+\code{nrow(data)} rows in the order of \code{data} and column names exactly equal to
+\code{components}. Replaces the 0/1 indicators parsed from \code{treat} (e.g. number
+of sessions), so \code{d[k]} becomes the log-OR per unit of component k (linear
+dose-response through zero). SSVS interactions and modifiers act on
+presence (value != 0). Default \code{NULL} keeps the 0/1 indicators.}
 
 \item{modifiers}{optional list of arm-level effect-modifier
 specifications (a single specification may be passed without the outer
-list). Each is a list with \code{column} (arm-level column of \code{data}),
+list); see the "Effect modifiers" section.}
+
+\item{lasso_prob}{deprecated alias of \code{inclusion_prob}}
+}
+\value{
+object of class \code{bcnma_bin} (a list) with elements including:
+\describe{
+\item{components, n_components, Ns, Ninter}{components, their number,
+the number of studies and of component pairs}
+\item{interactions_model}{\code{"none"}, \code{"ssvs"} or \code{"ssvs_informative"}}
+\item{summary_additive, summary_ssvs}{MCMCsummary data.frames}
+\item{samps_additive, samps_ssvs}{combined-chain MCMC samples (\code{d[k]},
+\code{ORd[k]}, \code{tau}, \code{tau2}; SSVS also \code{gamma[m]}, \code{Ind[m]}, \code{eta}, indexed
+by \code{\link[=place]{place()}})}
+\item{interaction_inclusion_prob, interaction_effects}{named numeric:
+\code{mean(Ind[m])} and \code{median(gamma[m])} per pair (0 when fixed)}
+\item{identifiability}{design ranks and \code{interaction_status} per pair}
+\item{model_code, model_settings}{exact JAGS code and the settings
+(priors) that produced it}
+\item{seed, inits, mcmc_settings}{reproducibility information}
+\item{component_values, modifier_terms, modifier_effects}{doses and
+effect-modifier output (NULL when unused)}
+\item{jags_data, prep, call}{data passed to JAGS (additive model),
+prepared arm-level data and the matched call}
+}
+}
+\description{
+Fits a Bayesian random-effects component NMA (cNMA) with a binomial
+likelihood in JAGS. Three interaction models are available:
+\itemize{
+\item \code{"none"}: fully additive (no interactions);
+\item \code{"ssvs"} (default): every estimable pairwise interaction gets a
+spike-and-slab (stochastic search variable selection, SSVS) prior with
+prior inclusion probability \code{inclusion_prob};
+\item \code{"ssvs_informative"}: SSVS priors only for interactions among
+\code{active_components}; all other interactions are fixed to zero.
+}
+}
+\details{
+The additive model is always fitted too. Before fitting, the within-study
+contrasts are checked for identifiability: non-identifiable main effects
+are an error, and interactions that are not estimable or are aliased are
+fixed to zero (see \code{fit$identifiability}). Use \code{\link[=bcnma_model_code]{bcnma_model_code()}} to
+print the exact JAGS code.
+
+Requires the JAGS system library and the suggested packages rjags and
+MCMCvis; an informative error is raised when they are missing.
+}
+\section{Effect modifiers}{
+
+Each specification is a list with \code{column} (arm-level column of \code{data}),
 \code{components} (components whose effect is modified; one term per component
 and level step), \code{type} (\code{"continuous"} or \code{"ordinal"}) and optionally
 \code{label} (default \code{column}) and \code{prior_sd} (default 10; \code{beta ~ N(0, prior_sd^2)}). Continuous: \code{center} (default: mean over arms where the
@@ -107,46 +176,12 @@ component is present); the code is \code{value - center}. Ordinal: \code{levels}
 \code{"decreasing"}); cumulative coding, so \code{beta_l} is the increment from level
 l to l+1. \code{NA} is allowed only in arms where the modified component is
 absent. The term \code{beta_q * (z[i,k,q] - z[i,1,q])} is added to the
-consistency equation, so \code{d[k]} of a modified component is its effect at
-the center (continuous) or reference level (ordinal). Modifier effects are
+consistency equation, so \code{d[k]} of a modified component is its effect at the
+center (continuous) or reference level (ordinal). Modifier effects are
 identified mainly by between-study variation and are observational
-(ecological) associations. Default \code{NULL}: no modifiers.}
+(ecological) associations.
 }
-\value{
-object of class \code{bcnma_bin} (a list) with elements:
-\describe{
-\item{components}{character vector of component names}
-\item{n_components}{integer Nc}
-\item{Ns}{integer number of studies}
-\item{interactions_model}{character: which interaction model was fitted}
-\item{summary_additive}{MCMCsummary data.frame for additive model (if fitted)}
-\item{summary_lasso}{MCMCsummary data.frame for LASSO model (if fitted)}
-\item{samps_additive}{data.frame of combined MCMC samples, additive model}
-\item{samps_lasso}{data.frame of combined MCMC samples, LASSO model}
-\item{interaction_inclusion_prob}{named numeric: \code{mean(Ind[k])} per interaction}
-\item{interaction_effects}{named numeric: \code{median(gamma[k])} per interaction}
-\item{component_values}{validated component value matrix (NULL if not supplied)}
-\item{modifier_terms}{data.frame of modifier (beta) terms (NULL without modifiers)}
-\item{modifier_effects}{list(additive, lasso) of beta posterior summaries
-(NULL without modifiers)}
-\item{jags_data}{list passed to JAGS}
-\item{call}{matched call}
-}
-}
-\description{
-Fits a Bayesian random-effects component NMA (cNMA) using JAGS. Supports
-three interaction models:
-\itemize{
-\item \code{"none"}: fully additive (no interactions)
-\item \code{"lasso"}: all pairwise interactions with equiprobable SSVS priors
-\item \code{"lasso_informative"}: SSVS priors for \code{active_components} interactions only;
-all other interactions forced to zero
-}
-}
-\details{
-Requires the JAGS system library and the suggested packages rjags and
-MCMCvis; an informative error is raised when they are missing.
-}
+
 \examples{
 \dontrun{
 library(nmatools)
@@ -154,6 +189,7 @@ library(nmatools)
 # Load the bundled CBTICNMA example data
 dat <- read.csv(system.file("extdata", "bcnma", "data_CBTICNMA.csv",
                             package = "nmatools"))
+names(dat)[1] <- "study"   # BOM in the first column name
 
 components <- c("se", "sd", "cr", "th", "cw", "sr", "sc", "re", "pi",
                 "w",  "ns", "he", "tg", "ind", "gp", "ff", "ae")
@@ -165,11 +201,13 @@ fit <- bcnma_bin(
   event        = r,
   n            = n,
   components   = components,
-  interactions = "lasso",
+  inactive     = "dt",
+  interactions = "ssvs",
   seed         = 42
 )
 print(fit)
 forest(fit)
+bcnma_model_code(fit, "ssvs")
 
 # Compare full CBT-I vs. sleep hygiene only
 compare_combinations(fit,
