@@ -163,7 +163,7 @@ additive and the LASSO estimates side by side.
 | `active_components` | `NULL` | Required for `"lasso_informative"`. |
 | `lasso_prob` | `0.5` | Prior probability that an interaction is included. |
 | `g` | `100` | Spike-slab variance ratio (slab variance = `g` × spike variance). |
-| `tau_prior` | `c(-1.67, 1/1.472^2)` (binary), `c(-1.0, 1/0.8^2)` (continuous) | Log-normal prior `c(meanlog, precision)` on the between-study **variance** τ² (JAGS node `tau2`); `tau = sqrt(tau2)` is reported as the SD. |
+| `tau_prior` | `NULL`: log-normal `c(-1.67, 1/1.472^2)` on τ² (binary), `c(-1.0, 1/0.8^2)` on τ² (SMD), half-normal on τ with SD = median pooled SD (MD) | Prior on the between-study heterogeneity; log-normal priors are on the **variance** τ² (JAGS node `tau2`) and `tau = sqrt(tau2)` is reported as the SD. The binary and SMD defaults are package defaults labelled *not from a (verified) published category*: prefer a published, outcome-specific prior (Turner et al. 2015 for log-OR; Rhodes et al. 2015 for SMD). |
 | `n.chains`, `n.adapt`, `n.burnin`, `n.iter`, `n.thin` | `3`, `2000`, `5000`, `20000`, `1` | MCMC settings (4 chains are advisable for LASSO models). |
 | `seed` | `NULL` | Random seed for reproducibility. |
 | `component_values` | `NULL` | Optional component values (doses); see below. |
@@ -338,6 +338,9 @@ posterior is the prior.
 - Turner RM, Jackson D, Wei Y, Thompson SG, Higgins JPT. Predictive
   distributions for between-study heterogeneity and simple methods for their
   application in Bayesian meta-analysis. *Stat Med*. 2015;34(6):984–998.
+- Rhodes KM, Turner RM, Higgins JPT. Predictive distributions were developed
+  for the extent of heterogeneity in meta-analyses of continuous outcome data.
+  *J Clin Epidemiol*. 2015;68(1):52–60.
 - George EI, McCulloch RE. Variable selection via Gibbs sampling. *J Am Stat
   Assoc*. 1993;88(423):881–889.
 

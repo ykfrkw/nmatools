@@ -47,4 +47,6 @@ test_that("the heterogeneity node is the variance tau2 and tau is its root (R2)"
   expect_equal(fit$samps_additive$tau, sqrt(fit$samps_additive$tau2))
   expect_output(print(fit), "tau \\(SD\\)")
   expect_output(print(fit), "tau2 \\(variance\\)")
+  # R6: the default prior is labelled, not attributed to a published category
+  expect_output(print(fit), "binary default, not from a verified published category")
 })

@@ -34,6 +34,7 @@ print.bcnma_cont <- function(x, digits = 2,
   cat("Studies       :", x$Ns, "\n")
   cat("Effect measure:", x$sm, "\n")
   cat("Interactions  :", x$interactions_model, "\n")
+  cat("Tau prior     :", x$model_settings$tau_prior$label, "\n")
   if (!is.null(x$reference.group)) cat("Reference     :", x$reference.group, "\n")
   if (!is.null(x$component_values)) {
     cat("Component values: user-supplied (d[k] = ", x$sm, " per unit)\n", sep = "")

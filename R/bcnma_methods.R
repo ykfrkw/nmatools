@@ -37,6 +37,7 @@ print.bcnma_bin <- function(x, digits = 2, model = c("both", "additive", "lasso"
   cat("Studies       :", x$Ns, "\n")
   cat("Effect measure: OR (log-OR scale in d[k])\n")
   cat("Interactions  :", x$interactions_model, "\n")
+  cat("Tau prior     :", x$model_settings$tau_prior$label, "\n")
   if (!is.null(x$reference.group)) cat("Reference     :", x$reference.group, "\n")
   if (!is.null(x$component_values)) cat("Component values: user-supplied (d[k] = log-OR per unit)\n")
   if (!is.null(x$modifier_terms)) cat("Modifier terms:", nrow(x$modifier_terms), "\n")

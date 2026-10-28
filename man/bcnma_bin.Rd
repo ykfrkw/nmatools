@@ -55,11 +55,14 @@ are modelled (only used when \code{interactions = "lasso_informative"})}
 
 \item{g}{numeric: spike-slab variance ratio; slab variance = g * spike variance (default 100)}
 
-\item{tau_prior}{numeric c(meanlog, precision): log-normal prior on the
+\item{tau_prior}{heterogeneity prior. \code{NULL} (default): a
+log-normal prior \code{c(meanlog = -1.67, precision = 1/1.472^2)} on the
 between-study variance tau^2 (JAGS node \code{tau2}; \code{tau = sqrt(tau2)} is the
-SD). Default c(-1.67, 1/1.472^2), a log-normal predictive distribution
-of the Turner et al. (2015) type (see the review guide for the open
-question on its exact category).}
+SD). It has the form of the Turner et al. (2015) predictive
+distributions, but its exact category has not been verified, so it is
+labelled "default, not from a verified published category" in the
+output; choose a Turner category that matches your outcome and
+comparison type where possible. Otherwise numeric \code{c(meanlog, precision)} (log-normal on tau^2), \code{list(family = "lognormal_tau2", meanlog, precision)} or \code{list(family = "half_normal_tau", sd)}.}
 
 \item{n.chains}{integer: number of MCMC chains (default 3)}
 

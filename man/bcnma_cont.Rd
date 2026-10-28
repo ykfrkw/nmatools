@@ -79,7 +79,9 @@ interactions are modelled (only used when \code{interactions = "lasso_informativ
 
 \item{tau_prior}{heterogeneity prior. \code{NULL} (default) uses
 the outcome default: for \code{sm = "SMD"} a log-normal prior
-\code{c(meanlog = -1.0, precision = 1/0.8^2)} on the variance tau^2; for
+\code{c(meanlog = -1.0, precision = 1/0.8^2)} on the variance tau^2
+(a package default, not from a published category; prefer an
+outcome-specific published prior, e.g. Rhodes et al. 2015); for
 \code{sm = "MD"} a half-normal prior on the SD tau whose SD equals the
 median within-study pooled SD (the MD prior must follow the outcome's
 scale). Otherwise numeric \code{c(meanlog, precision)} (log-normal on

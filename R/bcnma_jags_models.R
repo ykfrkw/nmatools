@@ -87,7 +87,7 @@
 }
 
 # The stochastic node is the parameter the prior is defined on: tau2 for
-# log-normal (Turner-type) priors, tau for half-normal priors.
+# log-normal priors (the form of Turner et al. 2015), tau for half-normal priors.
 .jags_heterogeneity_block <- function(tau_prior) {
   prior_lines <- if (tau_prior$family == "half_normal_tau") {
     paste0(sprintf("  tau  ~ dnorm(0, %s) T(0,)\n", .format_precision(tau_prior$sd)),

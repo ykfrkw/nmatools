@@ -18,7 +18,7 @@
 #' @noRd
 .default_tau_prior_bin <- function() {
   .lognormal_tau2_prior(BCNMA_TAU2_PRIOR_BIN[1], BCNMA_TAU2_PRIOR_BIN[2],
-                        source = "binary default")
+                        source = "binary default, not from a verified published category")
 }
 
 #' Default heterogeneity prior for continuous outcomes
@@ -29,7 +29,7 @@
 .default_tau_prior_cont <- function(prep) {
   if (prep$sm == "SMD") {
     return(.lognormal_tau2_prior(BCNMA_TAU2_PRIOR_SMD[1], BCNMA_TAU2_PRIOR_SMD[2],
-                                 source = "SMD default"))
+                                 source = "SMD default, not from a published category"))
   }
   .half_normal_tau_prior(BCNMA_TAU_PRIOR_SD_PER_SD_MD * prep$median_pooled_sd,
                          source = "MD default: SD = median pooled SD")

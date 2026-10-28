@@ -32,11 +32,16 @@
 #'                            are modelled (only used when `interactions = "lasso_informative"`)
 #' @param lasso_prob          numeric: prior inclusion probability for active interactions (default 0.5)
 #' @param g                   numeric: spike-slab variance ratio; slab variance = g * spike variance (default 100)
-#' @param tau_prior           numeric c(meanlog, precision): log-normal prior on the
+#' @param tau_prior           heterogeneity prior. `NULL` (default): a
+#'   log-normal prior `c(meanlog = -1.67, precision = 1/1.472^2)` on the
 #'   between-study variance tau^2 (JAGS node `tau2`; `tau = sqrt(tau2)` is the
-#'   SD). Default c(-1.67, 1/1.472^2), a log-normal predictive distribution
-#'   of the Turner et al. (2015) type (see the review guide for the open
-#'   question on its exact category).
+#'   SD). It has the form of the Turner et al. (2015) predictive
+#'   distributions, but its exact category has not been verified, so it is
+#'   labelled "default, not from a verified published category" in the
+#'   output; choose a Turner category that matches your outcome and
+#'   comparison type where possible. Otherwise numeric `c(meanlog,
+#'   precision)` (log-normal on tau^2), `list(family = "lognormal_tau2",
+#'   meanlog, precision)` or `list(family = "half_normal_tau", sd)`.
 #' @param n.chains            integer: number of MCMC chains (default 3)
 #' @param n.adapt             integer: JAGS adaptation iterations (default 2000)
 #' @param n.burnin            integer: additional burn-in iterations after adaptation (default 5000)
