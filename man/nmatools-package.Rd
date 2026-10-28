@@ -19,9 +19,18 @@ league table (XLSX)
 \item Trimmed, A4-ready PDF plots: netgraph, forest, netpairwise, netsplit
 \item Large plots automatically split into multi-page PDFs
 }
+
+Bayesian component NMA (\code{bcnma_bin()}, \code{bcnma_cont()}; formerly the bcnma
+package) is documented in \link{bcnma}. It needs JAGS and the suggested
+packages rjags and MCMCvis.
 }
 \author{
 \strong{Maintainer}: Yuki Furukawa \email{furukawa.y.psy@gmail.com}
+
+Other contributors:
+\itemize{
+  \item Orestis Efthimiou (Conceptual guidance on Bayesian cNMA and SSVS modelling) [thesis advisor]
+}
 
 }
 \keyword{internal}

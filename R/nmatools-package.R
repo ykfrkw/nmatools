@@ -11,7 +11,13 @@
 #' * Trimmed, A4-ready PDF plots: netgraph, forest, netpairwise, netsplit
 #' * Large plots automatically split into multi-page PDFs
 #'
+#' Bayesian component NMA (`bcnma_bin()`, `bcnma_cont()`; formerly the bcnma
+#' package) is documented in [bcnma]. It needs JAGS and the suggested
+#' packages rjags and MCMCvis.
+#'
 #' @keywords internal
+#' @importFrom stats median quantile update
+#' @importFrom utils head
 "_PACKAGE"
 
 # Silence R CMD check NOTEs about NSE-bound column names used by dplyr,
@@ -33,5 +39,8 @@ utils::globalVariables(c(
   # pval_legend_ggplot() aes()
   "color",
   # contribution / context table NSE columns (dplyr + ggplot2 pipelines)
-  ".TE_h", "contribution", "direct_comparison", "network_comparison"
+  ".TE_h", "contribution", "direct_comparison", "network_comparison",
+  # bcnma forest() methods and plot_interactions() aes()
+  "component", "lo", "hi", "median_gamma", "inclusion_prob",
+  "component_pair", "selected"
 ))

@@ -7,11 +7,13 @@ results — model, consistency tests, league table, and publication-ready plots 
 to disk with a single call; a suite of publication visualizations (colored
 league tables, forest and network graphs, Kilim and Vitruvian plots, and
 minimally / partially contextualized evidence tables); and an interactive
-CINeMA + ROB-MEN Shiny GUI for rating confidence in the results.
+CINeMA + ROB-MEN Shiny GUI for rating confidence in the results. It also
+fits Bayesian component network meta-analysis in JAGS (formerly the separate
+`bcnma` package).
 
 ## How this manual is organized
 
-The manual is 16 chapters in six groups. Read straight through, or jump to the
+The manual is 17 chapters in seven groups. Read straight through, or jump to the
 chapter you need.
 
 ### Getting started
@@ -60,6 +62,12 @@ chapter you need.
 | [15. Troubleshooting and FAQ](15-troubleshooting.md) | Common problems by symptom, with cause and fix. |
 | [16. Function reference](16-function-reference.md) | Every exported function in one grouped table, plus the full literature reference list. |
 
+### Bayesian component NMA
+
+| Chapter | What it covers |
+|---|---|
+| [17. Bayesian component NMA](17-bayesian-cnma.md) | `bcnma_bin()` / `bcnma_cont()`: JAGS requirement, interaction models, results, component values (doses), and arm-level effect modifiers. |
+
 ## Suggested reading paths
 
 - **Run a full NMA from a CSV.** Install and try the quick start, learn the
@@ -74,6 +82,8 @@ chapter you need.
   plots, then summarize across outcomes:
   [11](11-league-tables.md) → [12](12-colored-forest-netgraph.md) →
   [13](13-kilim-vitruvian.md) → [14](14-evidence-frameworks.md).
+- **Estimate the effects of treatment components.** Fit a Bayesian component
+  NMA (requires JAGS): [17](17-bayesian-cnma.md).
 
 ---
 
