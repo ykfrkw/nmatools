@@ -2,6 +2,14 @@
 
 # 17. Bayesian component NMA — `bcnma_bin()` and `bcnma_cont()`
 
+> [!WARNING]
+> **The Bayesian component NMA functions (`bcnma_bin()`, `bcnma_cont()` and
+> related helpers) are under active development.** A methodological review is
+> in progress; defaults (priors, labelling of the heterogeneity parameter,
+> handling of mean differences, reproducibility of `seed`) and outputs may
+> change without notice. Do not use them for published analyses yet. The
+> frequentist NMA tools in this package are not affected.
+
 A component network meta-analysis (cNMA) splits each treatment into the
 components it is made of — for example the elements of a CBT-I package — and
 estimates the effect of each component rather than of each whole treatment.
