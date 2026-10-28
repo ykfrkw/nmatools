@@ -50,6 +50,7 @@
     "    for (k in 1:na[i]) {\n",
     .jags_likelihood_lines(model_settings$likelihood),
     "    }\n",
+    "    resdev_study[i] <- sum(dev[i,1:na[i]])\n",
     "    for (k in 2:na[i]) {\n",
     "      delta[i,k] ~ dnorm(md[i,k], precd[i,k])    # trial-specific effect\n",
     "      md[i,k]    <- mean[i,k] + sw[i,k]\n",
@@ -58,20 +59,26 @@
     "      precd[i,k] <- prec * 2 * (k-1) / k\n",
     .jags_consistency_line(model, model_settings),
     "    }\n",
-    "  }\n"
+    "  }\n",
+    "  resdev <- sum(resdev_study[])    # total residual deviance\n"
   )
 }
 
+# Residual deviance (TSD2): the binomial form uses the saturated
+# log-likelihood (data loglik_sat) because 0 * log(0) is NaN in JAGS when an
+# arm has 0 or n events; it equals TSD2's 2 * (r log(r / rhat) + ...).
 .jags_likelihood_lines <- function(likelihood) {
   if (likelihood == "binomial") {
     return(paste0(
       "      r[i,k] ~ dbin(p[i,k], n[i,k])\n",
-      "      logit(p[i,k]) <- u[i] + delta[i,k]\n"
+      "      logit(p[i,k]) <- u[i] + delta[i,k]\n",
+      "      dev[i,k] <- -2 * (logdensity.bin(r[i,k], p[i,k], n[i,k]) - loglik_sat[i,k])\n"
     ))
   }
   paste0(
     "      y[i,k] ~ dnorm(theta[i,k], pow(se[i,k], -2))\n",
-    "      theta[i,k] <- u[i] + delta[i,k]\n"
+    "      theta[i,k] <- u[i] + delta[i,k]\n",
+    "      dev[i,k] <- pow(y[i,k] - theta[i,k], 2) / pow(se[i,k], 2)\n"
   )
 }
 

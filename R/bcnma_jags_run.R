@@ -97,9 +97,24 @@
                                      n.iter = mcmc$n.iter, thin = mcmc$n.thin)
   posterior <- list(
     summary = MCMCvis::MCMCsummary(raw_samples),
-    samples = as.data.frame(do.call(rbind, lapply(raw_samples, as.matrix)))
+    samples = as.data.frame(do.call(rbind, lapply(raw_samples, as.matrix))),
+    dic     = .sample_dic(jags_object, mcmc, quiet)
   )
   .index_length_one_vectors(posterior, jags_data)
+}
+
+#' Posterior mean deviance and pD per observed node (Plummer's pD)
+#'
+#' rjags::dic.samples() runs n.iter further iterations and needs at least two
+#' chains; with one chain DIC is not available (NULL).
+#' @return list(deviance, penalty), named by node (e.g. "r[3,2]"), or NULL
+#' @noRd
+.sample_dic <- function(jags_object, mcmc, quiet) {
+  if (mcmc$n.chains < 2) return(NULL)
+  if (!quiet) message("  DIC: ", mcmc$n.iter, " further iterations...")
+  dic <- rjags::dic.samples(jags_object, n.iter = mcmc$n.iter, thin = mcmc$n.thin,
+                            type = "pD", progress.bar = if (quiet) "none" else "text")
+  list(deviance = dic$deviance, penalty = dic$penalty)
 }
 
 #' Restore the index of length-1 vector nodes

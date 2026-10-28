@@ -64,6 +64,7 @@
     list(Ns = prep$n_studies, na = prep$n_arms, Nc = prep$n_components,
          x = .within_study_contrast(prep$x_arm, prep$n_arms))
   )
+  if (prep$likelihood == "binomial") jags_data$loglik_sat <- .saturated_loglik(prep)
   if (!is.null(modifier_design)) {
     jags_data$z <- .within_study_contrast(modifier_design$code_arm, prep$n_arms)
   }
@@ -79,7 +80,7 @@
 #' Monitored nodes of a model
 #' @noRd
 .monitored_nodes <- function(model, likelihood, has_modifiers) {
-  nodes <- c("d", if (likelihood == "binomial") "ORd", "tau", "tau2")
+  nodes <- c("d", if (likelihood == "binomial") "ORd", "tau", "tau2", "resdev")
   if (model == "ssvs") nodes <- c(nodes, "gamma", "Ind", "eta")
   if (has_modifiers) nodes <- c(nodes, "beta")
   nodes
@@ -96,6 +97,7 @@
   posterior  <- .bcnma_run_jags(model_code, jags_data, monitored, options$mcmc, options$quiet)
   if (model == "ssvs") posterior <- .rename_interaction_nodes(posterior, options$ssvs_pairs)
   posterior$convergence <- .convergence_by_group(posterior$summary)
+  posterior$arm_deviance <- .arm_residual_deviance(posterior$dic, prep)
   .warn_convergence(posterior$convergence, if (model == "ssvs") "SSVS" else "Additive")
   c(list(model_code = model_code, jags_data = jags_data), posterior)
 }
@@ -160,6 +162,10 @@
       interaction_inclusion_mcse = inclusion_mcse,
       convergence                = list(additive = fitted$additive$convergence,
                                         ssvs     = fitted$ssvs$convergence),
+      model_fit                  = rbind(.model_fit_row("additive", fitted$additive, prep),
+                                         .model_fit_row("ssvs", fitted$ssvs, prep)),
+      arm_deviance               = list(additive = fitted$additive$arm_deviance,
+                                        ssvs     = fitted$ssvs$arm_deviance),
       jags_data                  = fitted$additive$jags_data,
       model_code                 = list(additive = fitted$additive$model_code,
                                         ssvs     = fitted$ssvs$model_code),

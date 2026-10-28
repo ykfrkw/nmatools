@@ -232,6 +232,15 @@ Rhat > 1.05 or n.eff < 400. Rhat needs at least two chains. The posterior
 inclusion probabilities of `summarise_interactions()` come with their Monte
 Carlo standard error (`inclusion_prob_mcse` = sqrt(p(1 − p) / n.eff)).
 
+**Model fit.** Every model monitors the total residual deviance `resdev`
+(sum of the arm contributions of NICE DSU TSD2: binomial
+`-2 (log L - log L_saturated)`, normal `(y - theta)^2 / se^2`); its posterior
+mean should be close to the number of data points (arms) for a model that
+fits. With at least two chains, pD (Plummer's) and DIC are computed with
+`rjags::dic.samples()` (`n.iter` further iterations). `fit$model_fit` holds one
+row per model and `fit$arm_deviance` the posterior mean residual deviance of
+every arm; `print()` shows the summary line.
+
 `forest()` is the `meta::forest()` generic, re-exported by nmatools; the
 `bcnma_bin` and `bcnma_cont` methods return a `ggplot` object invisibly.
 

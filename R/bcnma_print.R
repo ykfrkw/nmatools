@@ -98,6 +98,7 @@ summary.bcnma_cont <- function(object, digits = 3, ...) .summary_bcnma(object, d
   .print_effect_table(x[[paste0("summary_", model)]], x$components, x$sm, digits)
   .print_modifier_table(x$modifier_effects[[model]], digits, x$sm)
   .print_convergence(x$convergence[[model]])
+  .print_model_fit(x$model_fit, model)
   cat("\n")
 }
 
