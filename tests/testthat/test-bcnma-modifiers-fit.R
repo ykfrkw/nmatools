@@ -84,7 +84,7 @@ test_that("component values (doses) enter a continuous fit as data", {
     interactions = "lasso", component_values = dose_values,
     n.chains = TINY_MCMC$n.chains, n.adapt = TINY_MCMC$n.adapt,
     n.burnin = TINY_MCMC$n.burnin, n.iter = TINY_MCMC$n.iter, quiet = TRUE))
-  expect_equal(fit$prep$x_arm[, 2, 3], c(4, 2.5, 7))
+  expect_equal(fit$prep$x_arm[, 2, 3], c(4, 2.5, 7, 0))
   expect_output(print(fit), "Component values: user-supplied")
   capture.output(result <- compare_combinations(fit, c(C = 2), model = "additive"))
   expect_equal(result$effect_samples, 2 * fit$samps_additive[["d[3]"]])

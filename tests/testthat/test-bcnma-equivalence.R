@@ -62,7 +62,7 @@ test_that("compare_combinations reproduces bcnma 0.1.0 arithmetic on fixed draws
 test_that("within-study contrasts are arm k minus arm 1", {
   prep <- prepare_small_bin()
   contrast <- .within_study_contrast(prep$x_arm, prep$n_arms)
-  expect_equal(contrast[, 1, ], matrix(0, 3, 3))
+  expect_equal(contrast[, 1, ], matrix(0, 4, 3))
   expect_equal(contrast[1, 2, ], c(-1, 1, 1))   # S1: A vs B+C
   expect_equal(contrast[2, 2, ], c(0, 0, 1))    # S2: A vs A+C
 })

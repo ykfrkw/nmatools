@@ -14,20 +14,22 @@ ordinal_spec <- list(list(column = "level", components = "C", type = "ordinal",
 
 test_that("component_values stay aligned with their rows after study re-ordering", {
   for (prepare in list(prepare_small_bin, prepare_small_cont)) {
-    prep <- prepare(values = .validate_component_values(dose_values, 6, SIM_COMPONENTS))
-    expect_equal(prep$studies, c("S1", "S2", "S3"))
+    prep <- prepare(values = .validate_component_values(dose_values, SMALL_ROW_COUNT,
+                                                         SIM_COMPONENTS))
+    expect_equal(prep$studies, c("S1", "S2", "S3", "S4"))
     expect_equal(prep$x_arm[1, , 3], c(0, 4))     # S1: rows 2 (A) then 5 (B+C)
     expect_equal(prep$x_arm[2, , 3], c(0, 2.5))   # S2: rows 1 then 3
     expect_equal(prep$x_arm[3, , 3], c(0, 7))     # S3: rows 4 then 6
-    expect_equal(prep$x_arm[, 1, 2], c(0, 0, 1))
+    expect_equal(prep$x_arm[, 1, 2], c(0, 0, 1, 1))
   }
-  expect_error(.validate_component_values(dose_values[, 3:1], 6, SIM_COMPONENTS), "exactly")
-  expect_error(.validate_component_values(dose_values[1:5, ], 6, SIM_COMPONENTS), "rows")
-  expect_error(.validate_component_values(replace(dose_values, 1, NA), 6, SIM_COMPONENTS), "NA")
+  expect_error(.validate_component_values(dose_values[, 3:1], SMALL_ROW_COUNT, SIM_COMPONENTS), "exactly")
+  expect_error(.validate_component_values(dose_values[1:5, ], SMALL_ROW_COUNT, SIM_COMPONENTS), "rows")
+  expect_error(.validate_component_values(replace(dose_values, 1, NA), SMALL_ROW_COUNT,
+                                          SIM_COMPONENTS), "NA")
   expect_warning(
     expect_warning(prepare_small_bin(values = cbind(dose_values[, 1:2], C = 0)), "zero in every arm"),
     "disagree on presence")
-  expect_warning(prepare_small_cont(values = cbind(dose_values[, 1:2], C = c(1, 0, 0, 0, 0, 0))),
+  expect_warning(prepare_small_cont(values = cbind(dose_values[, 1:2], C = c(1, rep(0, SMALL_ROW_COUNT - 1)))),
                  "disagree on presence")
 })
 
@@ -38,11 +40,11 @@ test_that("ordinal modifiers use cumulative (incremental) coding for both outcom
     design <- suppressMessages(.build_modifier_design(specs, case$data, case$prepare(case$data)))
     expect_equal(design$Q, 2)
     expect_equal(design$terms$term, c("skill(low->mid):C", "skill(mid->high):C"))
-    expect_equal(design$code_arm[, 2, 1], c(1, 1, 0))  # S1 mid, S2 high, S3 low
-    expect_equal(design$code_arm[, 2, 2], c(0, 1, 0))
-    expect_equal(design$code_arm[, 1, ], matrix(0, 3, 2))
+    expect_equal(design$code_arm[, 2, 1], c(1, 1, 0, 0))  # S1 mid, S2 high, S3 low
+    expect_equal(design$code_arm[, 2, 2], c(0, 1, 0, 0))
+    expect_equal(design$code_arm[, 1, ], matrix(0, 4, 2))
   }
-  bad_data <- transform(small_bin_data, level = c(NA, NA, "expert", NA, "mid", "low"))
+  bad_data <- transform(small_bin_data, level = c(NA, NA, "expert", NA, "mid", "low", NA, NA))
   expect_error(.build_modifier_design(.normalise_modifier_specs(ordinal_spec, bad_data, SIM_COMPONENTS),
                                       bad_data, prepare_small_bin(bad_data)), "not in 'levels'")
 })
@@ -61,7 +63,7 @@ test_that("modifier specs are validated", {
 })
 
 test_that("NA covariate is an error only where the component is present", {
-  bad_data <- transform(small_cont_data, level = c(NA, NA, NA, NA, "mid", "low"))
+  bad_data <- transform(small_cont_data, level = c(NA, NA, NA, NA, "mid", "low", NA, NA))
   spec <- list(column = "level", components = "C", type = "ordinal", levels = ORDINAL_LEVELS)
   expect_error(.build_modifier_design(.normalise_modifier_specs(spec, bad_data, SIM_COMPONENTS),
                                       bad_data, prepare_small_cont(bad_data)), "S2 \\(arm 2\\)")

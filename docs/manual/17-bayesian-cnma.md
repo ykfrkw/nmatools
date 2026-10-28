@@ -155,6 +155,27 @@ sd = ...)` or `list(family = "lognormal_tau2", meanlog = ..., precision =
 The additive model is always fitted as well, so `print(fit)` shows the
 additive and the LASSO estimates side by side.
 
+### Identifiability check
+
+Before fitting, the within-study contrasts (arm *k* vs arm 1 of every study)
+are stacked into a design matrix — component main effects first, then the
+pairwise interactions — and its rank is computed by QR decomposition:
+
+- A **main effect** with no within-study contrast, or aliased with other main
+  effects, stops the fit with an error naming the components (its effect
+  would be identified by the prior alone). Merge components that always occur
+  together.
+- An **interaction** whose components never occur together in an arm, or
+  whose co-presence never varies within a study, is *not estimable*; one that
+  is a linear combination of the main effects and earlier interactions
+  (place() order) is *not separately estimable (aliased)*. Both are fixed to
+  `gamma = 0`, left out of the SSVS model, never listed as selected, and
+  summarised in one warning. The full classification is in
+  `fit$identifiability$interaction_status`.
+
+For the CBT-I example (17 components, 136 pairs) the design has rank 121 of
+153: 4 pairs are never co-present and 28 are aliased.
+
 ### Key arguments
 
 | Argument | Default | Description |

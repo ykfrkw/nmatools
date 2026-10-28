@@ -51,7 +51,7 @@ test_that("SMD construction: Hedges' J, control SD of arm 1, error on bad SD (R5
   # S1 rows in data order: arm 1 = "A" (SD 3.5, n 50) -> df 49
   expect_equal(prep_control$sigma_pooled[1], 3.5)
   expect_equal(prep_control$hedges_j[1], 1 - 3 / (4 * 49 - 1))
-  bad_data <- transform(small_cont_data, sd = c(4, NA, 4.2, 3.9, 0, 4.1))
+  bad_data <- transform(small_cont_data, sd = c(4, NA, 4.2, 3.9, 0, 4.1, 4, 4.3))
   expect_error(.bcnma_cont_prepare_data(bad_data, "study", "treat", "mean", "sd", "n",
                                         SIM_COMPONENTS, "+", "SMD", "within"),
                "S1 \\(arm 1\\), S1 \\(arm 2\\)")

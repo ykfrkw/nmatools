@@ -59,7 +59,8 @@ print.bcnma_cont <- function(x, digits = 2,
     .print_modifier_table(x$modifier_effects$lasso, digits, x$sm)
 
     n_selected <- sum(x$interaction_inclusion_prob >= 0.5, na.rm = TRUE)
-    cat(sprintf("\nInteractions with inclusion prob >= 0.5: %d / %d\n",
+    .print_identifiability_note(x)
+    cat(sprintf("Interactions with inclusion prob >= 0.5: %d / %d\n",
                 n_selected, x$Ninter))
     if (n_selected > 0) {
       top <- summarise_interactions(x, threshold = 0.5, top_n = 10)

@@ -165,11 +165,13 @@ bcnma_bin <- function(data,
   prep <- .bcnma_bin_prepare_data(data, studlab_col, treat_col, event_col, n_col,
                                   components, component_separator)
   prep <- .apply_component_values(prep, component_values)
+  identifiability <- .check_identifiability(prep, ssvs_pairs, interactions)
 
   options <- list(
     interactions      = interactions,
     active_components = if (interactions == "lasso_informative") active_components,
-    ssvs_pairs        = ssvs_pairs,
+    ssvs_pairs        = identifiability$ssvs_pairs,
+    identifiability   = identifiability,
     inclusion_prob    = lasso_prob,
     slab_ratio        = g,
     eta_prior_sd      = BCNMA_DEFAULT_ETA_PRIOR_SD,

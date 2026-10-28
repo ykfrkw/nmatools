@@ -16,31 +16,37 @@ TRUE_BETA_BIN  <- 0.5
 TRUE_BETA_CONT <- 0.3
 PROFICIENCY_CENTER <- 3
 SHORT_MCMC <- list(n.chains = 1, n.adapt = 500, n.burnin = 1000, n.iter = 3000)
-# Two-arm designs whose within-study contrasts (C; A; B + C - A) identify
-# all three main effects.
-SIM_DESIGNS <- list(c("A", "A+C"), c("B", "A+B"), c("A", "B+C"))
+# Two-arm designs whose within-study contrasts (C; A + AB; B + C - A + BC;
+# B + AB) identify all three main effects and the A-B interaction (A-C and
+# B-C are aliased and fixed to 0 in SSVS fits).
+SIM_DESIGNS <- list(c("A", "A+C"), c("B", "A+B"), c("A", "B+C"), c("A", "A+B"))
 SIM_COMPONENT_EFFECTS <- c(A = 0.2, B = 0.3, C = 0.4)
 TINY_MCMC  <- list(n.chains = 1, n.adapt = 100, n.burnin = 0, n.iter = 10)
 
+# Four small studies. S4 (B vs A+B) gives A its own within-study contrast;
+# without it A and B would be identified only through B - A (rows 1-6 are
+# the network of the bcnma 0.1.0 fixture).
 small_bin_data <- data.frame(
-  study = c("S2", "S1", "S2", "S3", "S1", "S3"),
-  treat = c("A", "A", "A+C", "B", "B+C", "B+C"),
-  r = c(10, 12, 15, 9, 14, 18), n = 50,
-  level = c(NA, NA, "high", NA, "mid", "low"),
+  study = c("S2", "S1", "S2", "S3", "S1", "S3", "S4", "S4"),
+  treat = c("A", "A", "A+C", "B", "B+C", "B+C", "B", "A+B"),
+  r = c(10, 12, 15, 9, 14, 18, 11, 16), n = 50,
+  level = c(NA, NA, "high", NA, "mid", "low", NA, NA),
   stringsAsFactors = FALSE
 )
 
 small_cont_data <- data.frame(
-  study = c("S2", "S1", "S2", "S3", "S1", "S3"),
-  treat = c("A", "A", "A+C", "B", "B+C", "B+C"),
-  mean  = c(-2.0, -1.5, -4.1, -2.2, -3.9, -5.0),
-  sd    = c(4.0, 3.5, 4.2, 3.9, 4.4, 4.1), n = 50,
-  level = c(NA, NA, "high", NA, "mid", "low"),
+  study = c("S2", "S1", "S2", "S3", "S1", "S3", "S4", "S4"),
+  treat = c("A", "A", "A+C", "B", "B+C", "B+C", "B", "A+B"),
+  mean  = c(-2.0, -1.5, -4.1, -2.2, -3.9, -5.0, -2.1, -3.0),
+  sd    = c(4.0, 3.5, 4.2, 3.9, 4.4, 4.1, 4.0, 4.3), n = 50,
+  level = c(NA, NA, "high", NA, "mid", "low", NA, NA),
   stringsAsFactors = FALSE
 )
+SMALL_ROW_COUNT <- nrow(small_bin_data)
 
 # Component values (e.g. sessions) aligned with the rows of the small data
-dose_values <- cbind(A = c(1, 1, 1, 0, 0, 0), B = c(0, 0, 0, 1, 1, 1), C = c(0, 0, 2.5, 0, 4, 7))
+dose_values <- cbind(A = c(1, 1, 1, 0, 0, 0, 0, 1), B = c(0, 0, 0, 1, 1, 1, 1, 1),
+                     C = c(0, 0, 2.5, 0, 4, 7, 0, 0))
 
 prepare_small_bin <- function(data = small_bin_data, values = NULL) {
   prep <- .bcnma_bin_prepare_data(data, "study", "treat", "r", "n", SIM_COMPONENTS, "+")
@@ -96,13 +102,15 @@ simulate_identifiable_network <- function() {
   simulate_proficiency_studies("binary", arm_size = 300, true_beta = 0)
 }
 
-# One-chain test runs make MCMCsummary warn that Rhat is unavailable; muffle
-# only that warning so any other warning still surfaces.
+# Warnings expected in short test fits: one-chain runs have no Rhat, and the
+# small networks have aliased interactions (tested explicitly in
+# test-bcnma-identifiability.R). Any other warning still surfaces.
+EXPECTED_TEST_WARNINGS <- "Rhat|fixed to gamma = 0"
 quietly_fit <- function(expr) {
   withCallingHandlers(
     suppressMessages(expr),
     warning = function(w) {
-      if (grepl("Rhat", conditionMessage(w))) invokeRestart("muffleWarning")
+      if (grepl(EXPECTED_TEST_WARNINGS, conditionMessage(w))) invokeRestart("muffleWarning")
     }
   )
 }

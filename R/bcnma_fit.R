@@ -157,6 +157,7 @@
       model_code                 = list(additive = fitted$additive$model_code,
                                         ssvs     = fitted$ssvs$model_code),
       model_settings             = fitted$model_settings,
+      identifiability            = options$identifiability,
       prep                       = prep,
       mcmc_settings              = options$mcmc[c("n.chains", "n.adapt", "n.burnin",
                                                   "n.iter", "n.thin")],

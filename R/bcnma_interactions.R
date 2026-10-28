@@ -133,7 +133,11 @@ summarise_interactions <- function(x, threshold = 0.5, top_n = NULL) {
     inclusion_prob = unname(x$interaction_inclusion_prob),
     stringsAsFactors = FALSE
   )
-  summary_table$selected <- summary_table$inclusion_prob >= threshold
+  status <- x$identifiability$interaction_status$status
+  summary_table$status <- if (is.null(status)) BCNMA_INTERACTION_STATUS[["estimable"]] else status
+  # Pairs fixed to 0 (not estimable / aliased) are never "selected".
+  is_estimable <- summary_table$status == BCNMA_INTERACTION_STATUS[["estimable"]]
+  summary_table$selected <- is_estimable & summary_table$inclusion_prob >= threshold
   summary_table <- summary_table[order(abs(summary_table$median_gamma), decreasing = TRUE), ]
   rownames(summary_table) <- NULL
   if (!is.null(top_n)) summary_table <- utils::head(summary_table, top_n)

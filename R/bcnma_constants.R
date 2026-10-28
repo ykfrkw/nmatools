@@ -50,3 +50,5 @@ BCNMA_MCMC_PACKAGES <- c("rjags", "MCMCvis")
 
 # ---- Numerical tolerances --------------------------------------------------
 BCNMA_ZERO_TOLERANCE <- 1e-12
+# Tolerance of qr() when ranking the within-study contrast design.
+BCNMA_RANK_TOLERANCE <- 1e-7
