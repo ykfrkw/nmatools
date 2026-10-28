@@ -460,6 +460,45 @@ compare_combinations(fit_mod, combo1 = "th", model = "additive",
 Section 6 of the bundled `example_CBTICNMA.R` uses programme duration as a
 continuous modifier of sleep restriction.
 
+### Testing for no effect modification
+
+To show that a component works about equally well across a covariate (e.g.
+provider proficiency), estimate how large the modification could be and
+compare it with a margin fixed **before** looking at the results:
+
+- **Primary analysis: linear score + ROPE.** Code the covariate as a
+  continuous (or equally spaced numeric) modifier and run
+  `modifier_equivalence(fit, label, margin = ...)` (or `margin_ratio = 1.25`
+  for binary outcomes). It summarises the difference in the component's
+  effect between the highest and lowest modifier value — `beta_unit × (max −
+  min)` over the observed range (or `from` / `to`), or for an ordinal
+  modifier the sum of the increments (the largest difference between any two
+  levels is also reported) — as P(|difference| < margin), P(difference >
+  margin), P(difference < −margin), the posterior median and 95% CrI, and a
+  verdict: "equivalent" when P(inside) > `threshold` (default 0.9),
+  "modification (higher / lower at top)" when a tail exceeds it, otherwise
+  "inconclusive".
+- **Sensitivity analyses:** an unconstrained ordinal coding (one increment
+  per step, `monotone = "none"`) and modifier selection (`selection =
+  "ssvs"`, reporting P(modification present) and the Bayes factor over a range
+  of `slab_sd`).
+- **Do not use `monotone` constraints when the hypothesis is "no
+  modification".** A half-normal prior on each increment has no mass on the
+  other sign, so every increment's posterior is pushed away from 0 and the sum
+  of increments can never be centred at 0: the constraint manufactures a
+  modification. (For the same reason `selection = "ssvs"` refuses
+  `monotone`.)
+
+Both summaries rest on between-study variation in the covariate and are
+observational.
+
+```r
+fit_prof <- bcnma_bin(..., interactions = "none",
+                      modifiers = list(list(column = "proficiency", components = "th",
+                                            type = "continuous")))
+modifier_equivalence(fit_prof, "proficiency", margin_ratio = 1.25)
+```
+
 ### Caveat: between-study (ecological) information
 
 When the covariate takes the same value in every arm of a study — typical of

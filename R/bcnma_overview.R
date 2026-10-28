@@ -35,7 +35,8 @@
 #' \code{\link{forest.bcnma_bin}}, \code{\link{forest.bcnma_cont}},
 #' \code{\link{plot_interactions}}, \code{\link{summarise_interactions}},
 #' \code{\link{compare_combinations}}, \code{\link{check_additivity}},
-#' \code{\link{component_coverage}}, \code{\link{bcnma_model_code}}
+#' \code{\link{component_coverage}}, \code{\link{modifier_equivalence}},
+#' \code{\link{bcnma_model_code}}
 #'
 #' @section Index helpers:
 #' \code{\link{place}}, \code{\link{which.place}},

@@ -55,6 +55,9 @@
   "ssvs"`, `inclusion_prob`, `slab_sd`, `spike_sd`): one indicator per
   modifier x component, with P(modification present), MCSE and Bayes factor
   in `fit$modifier_selection`.
+* `modifier_equivalence(fit, label, margin)`: region-of-practical-equivalence
+  summary of an effect modifier (difference between the highest and lowest
+  modifier value vs a pre-specified margin, with a verdict).
 * Review guide for methodologists: `docs/review/bcnma-review-guide.md`.
 
 ### Breaking changes / results change

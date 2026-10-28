@@ -77,9 +77,10 @@
 }
 
 .modifier_term_row <- function(spec, component, term, level_from = NA, level_to = NA,
-                               center = NA, scale = 1) {
+                               center = NA, scale = 1, value_range = c(NA, NA)) {
   data.frame(term = term, label = spec$label, component = component, type = spec$type,
              level_from = level_from, level_to = level_to, center = center, scale = scale,
+             value_min = value_range[1], value_max = value_range[2],
              monotone = spec$monotone, prior_sd = spec$prior_sd, selection = spec$selection,
              inclusion_prob = if (is.null(spec$inclusion_prob)) NA else spec$inclusion_prob,
              spike_sd = if (is.null(spec$spike_sd)) NA else spec$spike_sd,
@@ -100,7 +101,8 @@
   codes <- ifelse(is_present, (raw_values - center) / scale, 0)
   list(codes = list(codes),
        terms = .modifier_term_row(spec, component, paste0(spec$label, ":", component),
-                                  center = center, scale = scale))
+                                  center = center, scale = scale,
+                                  value_range = range(raw_values[is_present])))
 }
 
 .code_ordinal <- function(raw_values, is_present, spec, component) {
