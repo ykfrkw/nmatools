@@ -88,11 +88,17 @@ component_coverage <- function(fit) {
   )
   if (!is.null(modifier_terms)) {
     rows <- c(rows, lapply(modifier_terms$q, function(q) {
-      c(sprintf("beta[%d] (%s)", q, modifier_terms$term[q]),
-        sprintf("normal(0, SD %s) per %s%s", .format_number(modifier_terms$prior_sd[q]),
-                if (modifier_terms$type[q] == "continuous") "covariate SD" else "level step",
-                if (modifier_terms$monotone[q] == "none") "" else ", truncated (monotone)"),
-        "modifier specification")
+      unit <- if (modifier_terms$type[q] == "continuous") "covariate SD" else "level step"
+      prior <- if (identical(modifier_terms$selection[q], "ssvs")) {
+        sprintf("spike-and-slab per %s: slab normal(0, SD %s), spike normal(0, SD %s), P(slab) %s",
+                unit, .format_number(modifier_terms$prior_sd[q]),
+                .format_number(modifier_terms$spike_sd[q]),
+                .format_number(modifier_terms$inclusion_prob[q]))
+      } else {
+        sprintf("normal(0, SD %s) per %s%s", .format_number(modifier_terms$prior_sd[q]), unit,
+                if (modifier_terms$monotone[q] == "none") "" else ", truncated (monotone)")
+      }
+      c(sprintf("beta[%d] (%s)", q, modifier_terms$term[q]), prior, "modifier specification")
     }))
   }
   table <- as.data.frame(do.call(rbind, rows), stringsAsFactors = FALSE)

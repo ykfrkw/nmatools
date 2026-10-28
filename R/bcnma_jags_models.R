@@ -127,13 +127,34 @@
 
 # beta[q]: change in the effect of a modified component per code unit. One
 # line per term because priors (and monotone truncation) differ by term.
+# Selected modifiers (SSVS) share one indicator IndM[g] per (modifier,
+# component): IndM = 1 gives all its betas the slab precision, 0 the spike.
 .jags_modifier_block <- function(modifier_priors, model) {
   if (is.null(modifier_priors) || model == "standard") return("")
   truncation <- ifelse(modifier_priors$truncation == "", "",
                        paste0(" ", modifier_priors$truncation))
+  is_selected <- !is.na(modifier_priors$selection_group)
+  precision <- ifelse(is_selected, paste0("prec_mod[", modifier_priors$selection_group, "]"),
+                      .format_number(modifier_priors$precision))
   prior_lines <- sprintf("  beta[%d] ~ dnorm(0, %s)%s\n", seq_len(nrow(modifier_priors)),
-                         .format_number(modifier_priors$precision), truncation)
-  paste0("\n  # Effect modifiers\n", paste(prior_lines, collapse = ""))
+                         precision, truncation)
+  paste0("\n  # Effect modifiers\n", paste(prior_lines, collapse = ""),
+         .jags_modifier_selection_lines(modifier_priors[is_selected, , drop = FALSE]))
+}
+
+.jags_modifier_selection_lines <- function(selected_priors) {
+  if (nrow(selected_priors) == 0) return("")
+  groups <- selected_priors[!duplicated(selected_priors$selection_group), ]
+  lines <- sprintf(paste0("  IndM[%d] ~ dbern(%s)\n",
+                          "  prec_mod[%d] <- IndM[%d] * %s + (1 - IndM[%d]) * %s",
+                          "    # slab SD %s, spike SD %s\n"),
+                   groups$selection_group, .format_number(groups$inclusion_prob),
+                   groups$selection_group, groups$selection_group,
+                   .format_precision(groups$slab_sd), groups$selection_group,
+                   .format_precision(groups$spike_sd),
+                   .format_number(groups$slab_sd), .format_number(groups$spike_sd))
+  paste0("  # Modifier selection (SSVS): IndM[g] = 1 means modification present\n",
+         paste(lines, collapse = ""))
 }
 
 # Spike-and-slab (George & McCulloch 1993): Ind[m] = 1 puts gamma[m] in the

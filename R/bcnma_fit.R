@@ -79,10 +79,11 @@
 
 #' Monitored nodes of a model
 #' @noRd
-.monitored_nodes <- function(model, likelihood, has_modifiers) {
+.monitored_nodes <- function(model, likelihood, modifier_design) {
   nodes <- c("d", if (likelihood == "binomial") "ORd", "tau", "tau2", "resdev")
   if (model == "ssvs") nodes <- c(nodes, "gamma", "Ind", "eta")
-  if (has_modifiers) nodes <- c(nodes, "beta")
+  if (!is.null(modifier_design)) nodes <- c(nodes, "beta")
+  if (any(!is.na(modifier_design$terms$selection_group))) nodes <- c(nodes, "IndM")
   nodes
 }
 
@@ -93,7 +94,7 @@
 .fit_one_model <- function(model, prep, options, model_settings) {
   model_code <- .build_jags_model_code(model, model_settings)
   jags_data  <- .build_jags_data(prep, model, options$modifier_design, options$ssvs_pairs)
-  monitored  <- .monitored_nodes(model, prep$likelihood, !is.null(options$modifier_design))
+  monitored  <- .monitored_nodes(model, prep$likelihood, options$modifier_design)
   posterior  <- .bcnma_run_jags(model_code, jags_data, monitored, options$mcmc, options$quiet)
   if (model == "ssvs") posterior <- .rename_interaction_nodes(posterior, options$ssvs_pairs)
   posterior$convergence <- .convergence_by_group(posterior$summary)
@@ -182,6 +183,8 @@
     ),
     .modifier_results(options$component_values, options$modifier_specs,
                       options$modifier_design, fitted$additive$samples,
-                      fitted$ssvs$samples, exponentiate = sm == "OR")
+                      fitted$ssvs$samples, exponentiate = sm == "OR"),
+    list(modifier_selection = .modifier_selection_results(options$modifier_design$terms,
+                                                          fitted))
   )
 }

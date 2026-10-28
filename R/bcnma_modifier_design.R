@@ -44,6 +44,12 @@
   }
   terms   <- do.call(rbind, term_rows)
   terms$q <- seq_len(nrow(terms))
+  # One SSVS indicator per (modifier, component), shared by its ordinal steps
+  group_key <- paste(terms$label, terms$component, sep = ":")
+  is_selected <- terms$selection == "ssvs"
+  terms$selection_group <- NA_integer_
+  terms$selection_group[is_selected] <- match(group_key[is_selected],
+                                              unique(group_key[is_selected]))
   terms   <- terms[, c("q", setdiff(names(terms), "q"))]
   code_arm <- array(0, dim = c(prep$n_studies, prep$max_arms, nrow(terms)))
   for (q in terms$q) {
@@ -54,7 +60,10 @@
           "in the covariate; interpret them as observational (ecological) associations.")
   truncation <- ifelse(terms$monotone == "increasing", "T(0,)",
                        ifelse(terms$monotone == "decreasing", "T(,0)", ""))
-  priors <- data.frame(precision = 1 / terms$prior_sd^2, truncation = truncation)
+  priors <- data.frame(precision = 1 / terms$prior_sd^2, truncation = truncation,
+                       selection_group = terms$selection_group,
+                       inclusion_prob = terms$inclusion_prob,
+                       slab_sd = terms$prior_sd, spike_sd = terms$spike_sd)
   list(code_arm = code_arm, Q = nrow(terms), terms = terms, priors = priors)
 }
 
@@ -71,7 +80,10 @@
                                center = NA, scale = 1) {
   data.frame(term = term, label = spec$label, component = component, type = spec$type,
              level_from = level_from, level_to = level_to, center = center, scale = scale,
-             monotone = spec$monotone, prior_sd = spec$prior_sd, stringsAsFactors = FALSE)
+             monotone = spec$monotone, prior_sd = spec$prior_sd, selection = spec$selection,
+             inclusion_prob = if (is.null(spec$inclusion_prob)) NA else spec$inclusion_prob,
+             spike_sd = if (is.null(spec$spike_sd)) NA else spec$spike_sd,
+             stringsAsFactors = FALSE)
 }
 
 # Code = (value - center) / scale, with scale = SD of the covariate over arms

@@ -91,7 +91,8 @@ test_that("model text adds beta terms only with modifiers", {
   settings <- list(likelihood = "normal", effect_prior_sd = 10, baseline_prior_sd = 10,
                    tau_prior = .tau_prior_spec(c(-1, 1), "test"),
                    modifier_priors = data.frame(precision = c(0.01, 0.04),
-                                                truncation = c("T(0,)", "")))
+                                                truncation = c("T(0,)", ""),
+                                                selection_group = NA))
   model_code <- .build_jags_model_code("additive", settings)
   expect_match(model_code, "inprod(beta[], z[i,k,])", fixed = TRUE)
   expect_match(model_code, "beta[1] ~ dnorm(0, 0.01) T(0,)", fixed = TRUE)

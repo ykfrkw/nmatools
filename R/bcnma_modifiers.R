@@ -20,6 +20,12 @@ BCNMA_MONOTONE_OPTIONS <- c("none", "increasing", "decreasing")
 # beta ~ N(0, 1): per covariate SD (continuous, standardised internally) or
 # per ordinal step, on the log-OR / SMD scale.
 BCNMA_MODIFIER_PRIOR_SD <- 1
+# Spike-and-slab selection of modifiers (selection = "ssvs"): slab and spike
+# SD of beta on the code scale (per covariate SD / per ordinal step).
+BCNMA_MODIFIER_SELECTIONS     <- c("none", "ssvs")
+BCNMA_MODIFIER_SLAB_SD        <- 0.5
+BCNMA_MODIFIER_SPIKE_SD       <- 0.01
+BCNMA_MODIFIER_INCLUSION_PROB <- 0.5
 
 # ---- Component values (doses) ----
 
@@ -117,6 +123,7 @@ BCNMA_MODIFIER_PRIOR_SD <- 1
   spec$label    <- if (is.null(spec$label)) spec$column else as.character(spec$label)
   spec$monotone <- if (is.null(spec$monotone)) "none" else
     match.arg(spec$monotone, BCNMA_MONOTONE_OPTIONS)
+  spec <- .normalise_modifier_selection(spec)
   spec$prior_sd <- if (is.null(spec$prior_sd)) BCNMA_MODIFIER_PRIOR_SD else spec$prior_sd
   is_valid_prior_sd <- is.numeric(spec$prior_sd) && length(spec$prior_sd) == 1 &&
     spec$prior_sd > 0
@@ -141,5 +148,42 @@ BCNMA_MODIFIER_PRIOR_SD <- 1
   }
   is_valid_center <- is.null(spec$center) || (is.numeric(spec$center) && length(spec$center) == 1)
   if (!is_valid_center) stop(sprintf("Modifier '%s': 'center' must be a single number.", spec$label))
+  spec
+}
+
+#' Fill and check the spike-and-slab selection fields of a modifier spec
+#'
+#' With `selection = "ssvs"` one indicator per (modifier, component) chooses
+#' between a spike N(0, spike_sd^2) and a slab N(0, slab_sd^2) for all its
+#' beta terms; the slab SD then replaces `prior_sd`.
+#' @noRd
+.normalise_modifier_selection <- function(spec) {
+  spec$selection <- if (is.null(spec$selection)) "none" else
+    match.arg(spec$selection, BCNMA_MODIFIER_SELECTIONS)
+  if (spec$selection == "none") return(spec)
+  if (!is.null(spec$prior_sd)) {
+    stop(sprintf("Modifier '%s': with selection = \"ssvs\" set 'slab_sd' (and 'spike_sd'), ",
+                 spec$label), "not 'prior_sd'.", call. = FALSE)
+  }
+  if (spec$monotone != "none") {
+    stop(sprintf("Modifier '%s': selection = \"ssvs\" cannot be combined with monotone = ",
+                 spec$label),
+         "\"", spec$monotone, "\". A truncated (half-normal) prior puts no mass on the ",
+         "other sign and pushes the posterior away from 0, so the spike-vs-slab comparison ",
+         "would no longer test 'no modification'. Use monotone = \"none\".", call. = FALSE)
+  }
+  spec$inclusion_prob <- if (is.null(spec$inclusion_prob)) BCNMA_MODIFIER_INCLUSION_PROB else
+    spec$inclusion_prob
+  spec$slab_sd  <- if (is.null(spec$slab_sd)) BCNMA_MODIFIER_SLAB_SD else spec$slab_sd
+  spec$spike_sd <- if (is.null(spec$spike_sd)) BCNMA_MODIFIER_SPIKE_SD else spec$spike_sd
+  is_valid <- is.numeric(spec$inclusion_prob) && length(spec$inclusion_prob) == 1 &&
+    spec$inclusion_prob > 0 && spec$inclusion_prob < 1 &&
+    is.numeric(spec$slab_sd) && is.numeric(spec$spike_sd) && spec$spike_sd > 0 &&
+    spec$slab_sd > spec$spike_sd
+  if (!is_valid) {
+    stop(sprintf("Modifier '%s': need 0 < inclusion_prob < 1 and 0 < spike_sd < slab_sd.",
+                 spec$label), call. = FALSE)
+  }
+  spec$prior_sd <- spec$slab_sd
   spec
 }

@@ -120,6 +120,22 @@
 #' prior SD (prior-dominated). For binary outcomes `exp(beta)` is a ratio of
 #' ORs per unit.
 #'
+#' Spike-and-slab selection of a modifier: `selection = "ssvs"` (default
+#' `"none"`) adds one indicator per (modifier, component), shared by all
+#' ordinal steps of that modifier for that component, so that it answers "is
+#' there any modification?". All its betas get a slab prior N(0, `slab_sd`^2)
+#' (default 0.5) when the indicator is 1 and a spike N(0, `spike_sd`^2)
+#' (default 0.01) when it is 0, on the code scale: per covariate SD for
+#' continuous modifiers (standardised internally), per level step for ordinal
+#' ones, in log-OR (or SMD / MD) units. `inclusion_prob` (default 0.5) is the
+#' prior probability of the slab. `slab_sd` replaces `prior_sd`, and
+#' `selection = "ssvs"` cannot be combined with `monotone` (a truncated prior
+#' pushes the posterior away from 0). `fit$modifier_selection` reports
+#' P(modification present), its Monte Carlo SE and the Bayes factor
+#' (posterior / prior odds, as a bound when all draws are in one component);
+#' these depend on `slab_sd` (Lindley's paradox), so report a sensitivity
+#' analysis.
+#'
 #' @return object of class `bcnma_bin` (a list) with elements including:
 #' \describe{
 #'   \item{components, n_components, Ns, Ninter}{components, their number,

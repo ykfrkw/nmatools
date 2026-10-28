@@ -123,11 +123,8 @@
 #' `beta[1]`); renaming keeps downstream code able to address `node[1]`.
 #' @noRd
 .index_length_one_vectors <- function(posterior, jags_data) {
-  node_length <- c(beta  = if (is.null(jags_data$z)) 0 else dim(jags_data$z)[3],
-                   gamma = if (is.null(jags_data$Nint)) 0 else jags_data$Nint,
-                   Ind   = if (is.null(jags_data$Nint)) 0 else jags_data$Nint)
-  for (node in names(node_length)) {
-    if (node_length[[node]] != 1) next
+  # These nodes are always vectors, so a bare name can only be a length-1 one.
+  for (node in c("beta", "gamma", "Ind", "IndM")) {
     colnames(posterior$samples)[colnames(posterior$samples) == node] <- paste0(node, "[1]")
     rownames(posterior$summary)[rownames(posterior$summary) == node] <- paste0(node, "[1]")
   }

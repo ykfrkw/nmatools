@@ -51,6 +51,10 @@
   flags combinations / component pairs that no arm contains.
 * `component_coverage(fit)` and `fit$priors` for reporting; manual sections
   on assumptions and a PRISMA-NMA / CINeMA reporting checklist.
+* Spike-and-slab selection of effect modifiers (modifier `selection =
+  "ssvs"`, `inclusion_prob`, `slab_sd`, `spike_sd`): one indicator per
+  modifier x component, with P(modification present), MCSE and Bayes factor
+  in `fit$modifier_selection`.
 * Review guide for methodologists: `docs/review/bcnma-review-guide.md`.
 
 ### Breaking changes / results change

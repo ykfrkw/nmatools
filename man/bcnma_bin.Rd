@@ -186,6 +186,22 @@ identified mainly by between-study variation and are observational
 informing each \code{beta} and warns when its posterior SD exceeds half its
 prior SD (prior-dominated). For binary outcomes \code{exp(beta)} is a ratio of
 ORs per unit.
+
+Spike-and-slab selection of a modifier: \code{selection = "ssvs"} (default
+\code{"none"}) adds one indicator per (modifier, component), shared by all
+ordinal steps of that modifier for that component, so that it answers "is
+there any modification?". All its betas get a slab prior N(0, \code{slab_sd}^2)
+(default 0.5) when the indicator is 1 and a spike N(0, \code{spike_sd}^2)
+(default 0.01) when it is 0, on the code scale: per covariate SD for
+continuous modifiers (standardised internally), per level step for ordinal
+ones, in log-OR (or SMD / MD) units. \code{inclusion_prob} (default 0.5) is the
+prior probability of the slab. \code{slab_sd} replaces \code{prior_sd}, and
+\code{selection = "ssvs"} cannot be combined with \code{monotone} (a truncated prior
+pushes the posterior away from 0). \code{fit$modifier_selection} reports
+P(modification present), its Monte Carlo SE and the Bayes factor
+(posterior / prior odds, as a bound when all draws are in one component);
+these depend on \code{slab_sd} (Lindley's paradox), so report a sensitivity
+analysis.
 }
 
 \examples{

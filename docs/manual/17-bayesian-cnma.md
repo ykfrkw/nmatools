@@ -390,6 +390,35 @@ contrast informs `beta` (`studies`), and a warning is given when the
 posterior SD of `beta` exceeds half its prior SD (the result is then mostly
 prior; it is also marked "prior-dominated" in the table).
 
+### Selecting modifiers (spike and slab)
+
+`selection = "ssvs"` in a modifier specification adds **one** inclusion
+indicator `IndM[g]` per (modifier, component) — shared by all ordinal steps of
+that modifier for that component — so it answers "is there any modification
+of this component's effect?":
+
+```r
+list(column = "therapist_level", components = "th", type = "ordinal",
+     levels = c("trainee", "certified", "expert"),
+     selection      = "ssvs",
+     inclusion_prob = 0.5,    # prior P(modification present)
+     slab_sd        = 0.5,    # beta ~ N(0, 0.5^2) per level step (or per covariate SD)
+     spike_sd       = 0.01)   # beta ~ N(0, 0.01^2): "practically no modification"
+```
+
+In JAGS, `IndM[g] ~ dbern(inclusion_prob)` and every beta of the group has
+precision `IndM[g] / slab_sd^2 + (1 - IndM[g]) / spike_sd^2` (see
+`bcnma_model_code()`). `slab_sd` and `spike_sd` are on the code scale: log-OR
+(or SMD / MD) **per covariate SD** for continuous modifiers (standardised
+internally) and **per level step** for ordinal ones. `fit$modifier_selection`
+and `print()` give the posterior probability that a modification is present,
+its Monte Carlo SE and the Bayes factor (posterior odds / prior odds; reported
+as a bound, `<` or `>`, when every draw is in the spike or in the slab). The
+Bayes factor depends on `slab_sd` (Lindley's paradox: a wider slab favours
+"no modification"), so report a sensitivity analysis over `slab_sd`.
+Selection cannot be combined with `monotone` (error): a truncated prior has no
+mass on the other sign and pushes the posterior away from 0.
+
 ### Interpretation
 
 - **`d[c]` of a modified component is its effect at the center** (continuous)
