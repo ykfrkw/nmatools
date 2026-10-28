@@ -2,7 +2,7 @@
 % Please edit documentation in R/bcnma_cont.R
 \name{bcnma_cont}
 \alias{bcnma_cont}
-\title{Bayesian Component Network Meta-Analysis for Continuous Outcomes}
+\title{Bayesian component network meta-analysis for continuous outcomes}
 \usage{
 bcnma_cont(
   data,
@@ -13,14 +13,16 @@ bcnma_cont(
   n,
   components,
   component_separator = "+",
+  inactive = NULL,
   reference.group = NULL,
   sm = c("SMD", "MD"),
   pooled_sd = c("within", "control"),
-  interactions = c("lasso", "none", "lasso_informative"),
+  interactions = c("ssvs", "none", "ssvs_informative", "lasso", "lasso_informative"),
   active_components = NULL,
-  lasso_prob = 0.5,
-  g = 100,
-  tau_prior = c(-1, 1/0.8^2),
+  inclusion_prob = BCNMA_DEFAULT_INCLUSION_PROB,
+  g = BCNMA_DEFAULT_SLAB_RATIO,
+  eta_prior_sd = BCNMA_DEFAULT_ETA_PRIOR_SD,
+  tau_prior = NULL,
   n.chains = 3,
   n.adapt = 2000,
   n.burnin = 5000,
@@ -29,7 +31,8 @@ bcnma_cont(
   seed = NULL,
   quiet = FALSE,
   component_values = NULL,
-  modifiers = NULL
+  modifiers = NULL,
+  lasso_prob = NULL
 )
 }
 \arguments{
@@ -37,7 +40,8 @@ bcnma_cont(
 
 \item{studlab}{unquoted column name for study identifier}
 
-\item{treat}{unquoted column name for treatment/component combination string}
+\item{treat}{unquoted column name for the treatment string
+(components joined by \code{component_separator})}
 
 \item{mean}{unquoted column name for arm mean}
 
@@ -45,69 +49,103 @@ bcnma_cont(
 
 \item{n}{unquoted column name for arm sample size (integer)}
 
-\item{components}{character vector of component abbreviations}
+\item{components}{character vector of component abbreviations;
+their order defines \code{d[1]}, \code{d[2]}, ...}
 
-\item{component_separator}{character separating components in \code{treat} (default \code{"+"})}
+\item{component_separator}{character separating components in \code{treat}
+(default \code{"+"})}
 
-\item{reference.group}{character: reference component for display (optional)}
+\item{inactive}{character vector of \code{treat} tokens that are not
+components: tokens meaning "no active component" (e.g. \code{"placebo"},
+\code{"waitlist"}) or labels deliberately not modelled. An arm made only of
+such tokens is the reference (all components absent). Any token of
+\code{treat} in neither \code{components} nor \code{inactive} is an error. Default \code{NULL}.}
 
-\item{sm}{character: \code{"SMD"} (default) or \code{"MD"}}
+\item{reference.group}{character: reference label for printing (optional)}
+
+\item{sm}{character: \code{"SMD"} (default) or \code{"MD"}. With
+\code{"MD"}, each study's means are centred on its arm 1 (an exact location
+shift absorbed by the study baseline) and the default priors scale with
+the median within-study pooled SD s: \verb{d[k] ~ N(0, (10 s)^2)} and a
+half-normal prior on tau with SD s.}
 
 \item{pooled_sd}{character: how to compute the within-study SD for
-standardisation when \code{sm = "SMD"}. \code{"within"} (default) pools all
-arms; \code{"control"} uses the reference arm SD only.}
+standardisation when \code{sm = "SMD"}. \code{"within"} (default) pools all arms
+(df-weighted); \code{"control"} uses the SD of arm 1, i.e. the first row of the
+study in \code{data} (the data order defines the comparator). Arm means and
+SEs are divided by this SD and multiplied by Hedges' correction
+\eqn{J = 1 - 3/(4 df - 1)}, so contrasts are Hedges' g; the pooled SD is
+treated as known. Every arm needs a positive SD and n (otherwise an
+error). Mixing change scores and final values on the SMD scale is not
+handled and is left to the analyst.}
 
-\item{interactions}{character: \code{"none"}, \code{"lasso"} (default),
-or \code{"lasso_informative"}}
+\item{interactions}{character: \code{"ssvs"} (default), \code{"none"} or
+\code{"ssvs_informative"}. \code{"lasso"} and \code{"lasso_informative"} are deprecated
+aliases of the SSVS options (one message per session).}
 
 \item{active_components}{character vector of components whose pairwise
-interactions are modelled (only used when \code{interactions = "lasso_informative"})}
+interactions get SSVS priors (\code{interactions = "ssvs_informative"} only)}
 
-\item{lasso_prob}{numeric: prior inclusion probability (default 0.5)}
+\item{inclusion_prob}{numeric in (0, 1): prior probability that an
+interaction is in the slab (default 0.5)}
 
-\item{g}{numeric: spike-slab variance ratio (default 100)}
+\item{g}{numeric: slab variance / spike variance
+(default 100)}
 
-\item{tau_prior}{numeric \code{c(mean, precision)}: parameters of the
-lognormal prior on tau. Default \code{c(-1.0, 1/0.8^2)} is appropriate for
-SMD heterogeneity in psychological intervention trials.}
+\item{eta_prior_sd}{numeric: SD of the half-normal prior on the
+spike SD \code{eta} (default \code{1/sqrt(1000)}); see \code{\link[=bcnma_bin]{bcnma_bin()}}. The implied
+slab SD (median about 0.21, 97.5th percentile about 0.71 at the
+defaults) is on the SMD scale, or on the MD scale for \code{sm = "MD"}, where
+it should be rescaled to the outcome.}
 
-\item{n.chains}{integer: MCMC chains (default 3)}
+\item{tau_prior}{heterogeneity prior. \code{NULL} (default) uses the
+outcome default: for \code{sm = "SMD"} a log-normal prior \code{c(meanlog = -1.0, precision = 1/0.8^2)} on the variance tau^2 (a package default, not from
+a published category; prefer an outcome-specific published prior, e.g.
+Rhodes et al. 2015); for \code{sm = "MD"} a half-normal prior on the SD tau
+whose SD equals the median within-study pooled SD. Otherwise numeric
+\code{c(meanlog, precision)} (log-normal on tau^2), \code{list(family = "lognormal_tau2", meanlog, precision)} or \code{list(family = "half_normal_tau", sd)}. The prior used is stored in
+\code{fit$model_settings$tau_prior}.}
+
+\item{n.chains}{integer: number of MCMC chains (default 3)}
 
 \item{n.adapt}{integer: JAGS adaptation iterations (default 2000)}
 
-\item{n.burnin}{integer: burn-in iterations (default 5000)}
+\item{n.burnin}{integer: burn-in iterations after adaptation
+(default 5000)}
 
 \item{n.iter}{integer: sampling iterations per chain (default 20000)}
 
 \item{n.thin}{integer: thinning interval (default 1)}
 
-\item{seed}{integer or NULL: random seed}
+\item{seed}{integer or NULL: seed of the JAGS random number
+generators. Chain c uses \code{.RNG.name = "base::Mersenne-Twister"} and
+\code{.RNG.seed = seed + c}, so identical seeds give identical samples. \code{NULL}
+draws one seed from R's generator; it is stored in \code{fit$seed} (with the
+per-chain \code{fit$inits}) for re-running.}
 
 \item{quiet}{logical: suppress progress messages (default FALSE)}
 
-\item{component_values}{optional numeric matrix or data.frame of component
-values (e.g. doses); \code{d[k]} becomes the SMD (or MD) per unit of
-component k. See \code{\link{bcnma_bin}} for the full specification.
-Default \code{NULL} keeps the 0/1 indicators parsed from \code{treat}.}
+\item{component_values}{optional numeric matrix or data.frame of
+component values (e.g. doses); \code{d[k]} becomes the SMD (or MD) per unit of
+component k. See \code{\link[=bcnma_bin]{bcnma_bin()}} for the full specification.}
 
 \item{modifiers}{optional list of arm-level effect-modifier
-specifications, exactly as in \code{\link{bcnma_bin}}; \code{beta} is then
-the change in the component SMD (or MD) per code unit and \code{d[k]} of a
-modified component is its effect at the center / reference level.
-Modifier effects are identified mainly by between-study variation and are
-observational (ecological) associations. Default \code{NULL}: no modifiers.}
+specifications, exactly as in \code{\link[=bcnma_bin]{bcnma_bin()}}; \code{beta} is then the change in
+the component SMD (or MD) per code unit.}
+
+\item{lasso_prob}{deprecated alias of \code{inclusion_prob}}
 }
 \value{
-object of class \code{bcnma_cont} (a list) with the same elements as
-\code{\link{bcnma_bin}} except that \code{sm} is \code{"SMD"} or \code{"MD"}
-(no \code{ORd} column in summaries) and an additional element
-\code{sigma_pooled} (numeric vector of per-study pooled SDs).
+object of class \code{bcnma_cont} with the same elements as
+\code{\link[=bcnma_bin]{bcnma_bin()}} except that \code{sm} is \code{"SMD"} or \code{"MD"} (no \code{ORd} columns),
+plus \code{pooled_sd} and \code{sigma_pooled} (per-study pooled SDs).
 }
 \description{
 Fits a Bayesian random-effects component NMA (cNMA) for continuous outcomes
-using a normal arm-level likelihood in JAGS. Component effects are estimated
-on the standardised mean difference (SMD) or raw mean difference (MD) scale.
-Supports the same three interaction models as \code{\link{bcnma_bin}}.
+with a normal arm-level likelihood (arm standard errors treated as known)
+in JAGS. Component effects are on the standardised mean difference (SMD,
+Hedges' g) or raw mean difference (MD) scale. Interaction models,
+identifiability checks and outputs are as in \code{\link[=bcnma_bin]{bcnma_bin()}}.
 Requires the JAGS system library and the suggested packages rjags and
 MCMCvis; an informative error is raised when they are missing.
 }
@@ -125,7 +163,7 @@ fit <- bcnma_cont(
   n            = n,
   components   = c("se", "sd", "cr", "th", "sr", "sc"),
   sm           = "SMD",
-  interactions = "lasso",
+  interactions = "ssvs",
   seed         = 42
 )
 print(fit)
@@ -137,5 +175,5 @@ compare_combinations(fit,
 
 }
 \seealso{
-\code{\link{bcnma_bin}} for binary outcomes
+\code{\link[=bcnma_bin]{bcnma_bin()}} for binary outcomes
 }

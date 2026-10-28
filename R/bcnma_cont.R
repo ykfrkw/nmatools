@@ -1,64 +1,71 @@
 # © 2026 Yuki Furukawa. All rights reserved.
 # Author: Yuki Furukawa
-# Date: 2026-03-11
+# Date: 2026-03-11 (rewritten 2026-10-28)
+# Contact: furukawa.y.psy@gmail.com
 #
 # File description:
-# Main bcnma_cont() function — Bayesian component NMA for continuous outcomes
-# (SMD or MD) with LASSO/SSVS interactions.
+# Purpose: bcnma_cont(), the user-facing fit of a Bayesian random-effects
+#          component NMA for continuous outcomes (normal arm-level
+#          likelihood with known standard errors, SMD or MD scale) with
+#          additive or SSVS interaction models.
+# Inputs:  arm-level data.frame (one row per arm) and fitting options
+# Outputs: object of class "bcnma_cont"
+# Depends: R/bcnma_args.R, R/bcnma_prepare_cont.R, R/bcnma_priors.R,
+#          R/bcnma_identifiability.R, R/bcnma_modifiers.R, R/bcnma_fit.R;
+#          rjags + MCMCvis (Suggests)
 
-#' Bayesian Component Network Meta-Analysis for Continuous Outcomes
+#' Bayesian component network meta-analysis for continuous outcomes
 #'
 #' Fits a Bayesian random-effects component NMA (cNMA) for continuous outcomes
-#' using a normal arm-level likelihood in JAGS. Component effects are estimated
-#' on the standardised mean difference (SMD) or raw mean difference (MD) scale.
-#' Supports the same three interaction models as \code{\link{bcnma_bin}}.
+#' with a normal arm-level likelihood (arm standard errors treated as known)
+#' in JAGS. Component effects are on the standardised mean difference (SMD,
+#' Hedges' g) or raw mean difference (MD) scale. Interaction models,
+#' identifiability checks and outputs are as in [bcnma_bin()].
 #' Requires the JAGS system library and the suggested packages rjags and
 #' MCMCvis; an informative error is raised when they are missing.
 #'
-#' @param data                data.frame with one row per arm per study
-#' @param studlab             unquoted column name for study identifier
-#' @param treat               unquoted column name for treatment/component combination string
+#' @inheritParams bcnma_bin
 #' @param mean                unquoted column name for arm mean
 #' @param sd                  unquoted column name for arm standard deviation
-#' @param n                   unquoted column name for arm sample size (integer)
-#' @param components          character vector of component abbreviations
-#' @param component_separator character separating components in \code{treat} (default \code{"+"})
-#' @param reference.group     character: reference component for display (optional)
-#' @param sm                  character: \code{"SMD"} (default) or \code{"MD"}
+#' @param sm                  character: `"SMD"` (default) or `"MD"`. With
+#'   `"MD"`, each study's means are centred on its arm 1 (an exact location
+#'   shift absorbed by the study baseline) and the default priors scale with
+#'   the median within-study pooled SD s: `d[k] ~ N(0, (10 s)^2)` and a
+#'   half-normal prior on tau with SD s.
 #' @param pooled_sd           character: how to compute the within-study SD for
-#'   standardisation when \code{sm = "SMD"}. \code{"within"} (default) pools all
-#'   arms; \code{"control"} uses the reference arm SD only.
-#' @param interactions        character: \code{"none"}, \code{"lasso"} (default),
-#'   or \code{"lasso_informative"}
-#' @param active_components   character vector of components whose pairwise
-#'   interactions are modelled (only used when \code{interactions = "lasso_informative"})
-#' @param lasso_prob          numeric: prior inclusion probability (default 0.5)
-#' @param g                   numeric: spike-slab variance ratio (default 100)
-#' @param tau_prior           numeric \code{c(mean, precision)}: parameters of the
-#'   lognormal prior on tau. Default \code{c(-1.0, 1/0.8^2)} is appropriate for
-#'   SMD heterogeneity in psychological intervention trials.
-#' @param n.chains            integer: MCMC chains (default 3)
-#' @param n.adapt             integer: JAGS adaptation iterations (default 2000)
-#' @param n.burnin            integer: burn-in iterations (default 5000)
-#' @param n.iter              integer: sampling iterations per chain (default 20000)
-#' @param n.thin              integer: thinning interval (default 1)
-#' @param seed                integer or NULL: random seed
-#' @param quiet               logical: suppress progress messages (default FALSE)
-#' @param component_values    optional numeric matrix or data.frame of component
-#'   values (e.g. doses); \code{d[k]} becomes the SMD (or MD) per unit of
-#'   component k. See \code{\link{bcnma_bin}} for the full specification.
-#'   Default \code{NULL} keeps the 0/1 indicators parsed from \code{treat}.
+#'   standardisation when `sm = "SMD"`. `"within"` (default) pools all arms
+#'   (df-weighted); `"control"` uses the SD of arm 1, i.e. the first row of the
+#'   study in `data` (the data order defines the comparator). Arm means and
+#'   SEs are divided by this SD and multiplied by Hedges' correction
+#'   \eqn{J = 1 - 3/(4 df - 1)}, so contrasts are Hedges' g; the pooled SD is
+#'   treated as known. Every arm needs a positive SD and n (otherwise an
+#'   error). Mixing change scores and final values on the SMD scale is not
+#'   handled and is left to the analyst.
+#' @param eta_prior_sd        numeric: SD of the half-normal prior on the
+#'   spike SD `eta` (default `1/sqrt(1000)`); see [bcnma_bin()]. The implied
+#'   slab SD (median about 0.21, 97.5th percentile about 0.71 at the
+#'   defaults) is on the SMD scale, or on the MD scale for `sm = "MD"`, where
+#'   it should be rescaled to the outcome.
+#' @param tau_prior           heterogeneity prior. `NULL` (default) uses the
+#'   outcome default: for `sm = "SMD"` a log-normal prior `c(meanlog = -1.0,
+#'   precision = 1/0.8^2)` on the variance tau^2 (a package default, not from
+#'   a published category; prefer an outcome-specific published prior, e.g.
+#'   Rhodes et al. 2015); for `sm = "MD"` a half-normal prior on the SD tau
+#'   whose SD equals the median within-study pooled SD. Otherwise numeric
+#'   `c(meanlog, precision)` (log-normal on tau^2), `list(family =
+#'   "lognormal_tau2", meanlog, precision)` or `list(family =
+#'   "half_normal_tau", sd)`. The prior used is stored in
+#'   `fit$model_settings$tau_prior`.
+#' @param component_values    optional numeric matrix or data.frame of
+#'   component values (e.g. doses); `d[k]` becomes the SMD (or MD) per unit of
+#'   component k. See [bcnma_bin()] for the full specification.
 #' @param modifiers           optional list of arm-level effect-modifier
-#'   specifications, exactly as in \code{\link{bcnma_bin}}; \code{beta} is then
-#'   the change in the component SMD (or MD) per code unit and \code{d[k]} of a
-#'   modified component is its effect at the center / reference level.
-#'   Modifier effects are identified mainly by between-study variation and are
-#'   observational (ecological) associations. Default \code{NULL}: no modifiers.
+#'   specifications, exactly as in [bcnma_bin()]; `beta` is then the change in
+#'   the component SMD (or MD) per code unit.
 #'
-#' @return object of class \code{bcnma_cont} (a list) with the same elements as
-#'   \code{\link{bcnma_bin}} except that \code{sm} is \code{"SMD"} or \code{"MD"}
-#'   (no \code{ORd} column in summaries) and an additional element
-#'   \code{sigma_pooled} (numeric vector of per-study pooled SDs).
+#' @return object of class `bcnma_cont` with the same elements as
+#'   [bcnma_bin()] except that `sm` is `"SMD"` or `"MD"` (no `ORd` columns),
+#'   plus `pooled_sd` and `sigma_pooled` (per-study pooled SDs).
 #'
 #' @examples
 #' \dontrun{
@@ -74,7 +81,7 @@
 #'   n            = n,
 #'   components   = c("se", "sd", "cr", "th", "sr", "sc"),
 #'   sm           = "SMD",
-#'   interactions = "lasso",
+#'   interactions = "ssvs",
 #'   seed         = 42
 #' )
 #' print(fit)
@@ -84,7 +91,7 @@
 #'   combo2 = c("se"))
 #' }
 #'
-#' @seealso \code{\link{bcnma_bin}} for binary outcomes
+#' @seealso [bcnma_bin()] for binary outcomes
 #' @export
 bcnma_cont <- function(data,
                        studlab,
@@ -94,14 +101,17 @@ bcnma_cont <- function(data,
                        n,
                        components,
                        component_separator = "+",
+                       inactive            = NULL,
                        reference.group     = NULL,
                        sm                  = c("SMD", "MD"),
                        pooled_sd           = c("within", "control"),
-                       interactions        = c("lasso", "none", "lasso_informative"),
+                       interactions        = c("ssvs", "none", "ssvs_informative",
+                                               "lasso", "lasso_informative"),
                        active_components   = NULL,
-                       lasso_prob          = 0.5,
-                       g                   = 100,
-                       tau_prior           = c(-1.0, 1 / 0.8^2),
+                       inclusion_prob      = BCNMA_DEFAULT_INCLUSION_PROB,
+                       g                   = BCNMA_DEFAULT_SLAB_RATIO,
+                       eta_prior_sd        = BCNMA_DEFAULT_ETA_PRIOR_SD,
+                       tau_prior           = NULL,
                        n.chains            = 3,
                        n.adapt             = 2000,
                        n.burnin            = 5000,
@@ -110,171 +120,52 @@ bcnma_cont <- function(data,
                        seed                = NULL,
                        quiet               = FALSE,
                        component_values    = NULL,
-                       modifiers           = NULL) {
-
+                       modifiers           = NULL,
+                       lasso_prob          = NULL) {
   .bcnma_require_mcmc_packages("bcnma_cont")
-  cl <- match.call()
-
-  # ---- Input validation ----
+  call         <- match.call()
   sm           <- match.arg(sm)
   pooled_sd    <- match.arg(pooled_sd)
-  interactions <- match.arg(interactions)
-
-  studlab_col <- gsub('"', '', deparse(substitute(studlab)))
-  treat_col   <- gsub('"', '', deparse(substitute(treat)))
-  mean_col    <- gsub('"', '', deparse(substitute(mean)))
-  sd_col      <- gsub('"', '', deparse(substitute(sd)))
-  n_col       <- gsub('"', '', deparse(substitute(n)))
-
-  for (col in c(studlab_col, treat_col, mean_col, sd_col, n_col)) {
-    if (!col %in% names(data)) {
-      stop(sprintf("Column '%s' not found in data.", col))
-    }
-  }
-
-  if (!is.character(components) || length(components) < 2) {
-    stop("'components' must be a character vector of length >= 2.")
-  }
-
-  if (interactions == "lasso_informative") {
-    if (is.null(active_components)) {
-      stop("'active_components' must be specified when interactions = 'lasso_informative'.")
-    }
-    unknown <- setdiff(active_components, components)
-    if (length(unknown) > 0) {
-      stop("'active_components' contains names not in 'components': ",
-           paste(unknown, collapse = ", "))
-    }
-  }
-
+  interactions <- .normalise_interactions(match.arg(interactions))
+  studlab_col  <- .resolve_column(deparse(substitute(studlab)), data)
+  treat_col    <- .resolve_column(deparse(substitute(treat)), data)
+  mean_col     <- .resolve_column(deparse(substitute(mean)), data)
+  sd_col       <- .resolve_column(deparse(substitute(sd)), data)
+  n_col        <- .resolve_column(deparse(substitute(n)), data)
+  .validate_components(components)
+  ssvs_pairs <- .candidate_interaction_pairs(interactions, active_components, components)
   component_values <- .validate_component_values(component_values, nrow(data), components)
   modifier_specs   <- .normalise_modifier_specs(modifiers, data, components)
 
-  # ---- Data preparation ----
   if (!quiet) message("Preparing data...")
-  prep <- .bcnma_cont_prepare_data(
-    data, studlab_col, treat_col, mean_col, sd_col, n_col,
-    components, component_separator, sm, pooled_sd
+  prep <- .bcnma_cont_prepare_data(data, studlab_col, treat_col, mean_col, sd_col, n_col,
+                                   components, component_separator, sm, pooled_sd,
+                                   as.character(inactive))
+  prep <- .apply_component_values(prep, component_values)
+  identifiability <- .check_identifiability(prep, ssvs_pairs, interactions)
+
+  options <- list(
+    interactions      = interactions,
+    active_components = if (interactions == "ssvs_informative") active_components,
+    ssvs_pairs        = identifiability$ssvs_pairs,
+    identifiability   = identifiability,
+    inclusion_prob    = .resolve_inclusion_prob(inclusion_prob, lasso_prob),
+    slab_ratio        = g,
+    eta_prior_sd      = eta_prior_sd,
+    tau_prior         = .tau_prior_spec(tau_prior, .default_tau_prior_cont(prep)),
+    effect_prior_sd   = .location_prior_sd_cont(prep, "effect"),
+    baseline_prior_sd = .location_prior_sd_cont(prep, "baseline"),
+    component_values  = component_values,
+    modifier_specs    = modifier_specs,
+    modifier_design   = .build_modifier_design(modifier_specs, data, prep),
+    reference_group   = reference.group,
+    mcmc              = .mcmc_settings(n.chains, n.adapt, n.burnin, n.iter, n.thin, seed),
+    quiet             = quiet
   )
-  prep   <- .apply_component_values(prep, component_values)
-  modifier_design <- .build_modifier_design(modifier_specs, data, prep)
-  Ns     <- prep$Ns
-  Nc     <- prep$Nc
-  Ninter <- Nc * (Nc - 1L) / 2L
-
-  # ---- Determine included interactions ----
-  if (interactions == "lasso_informative") {
-    included <- all.interactions(active_components, Nc, components)
-    if (length(included) == 0) {
-      stop("No pairwise interactions found among 'active_components'.")
-    }
-  } else {
-    included <- seq_len(Ninter)
-  }
-
-  # ---- Seed ----
-  if (!is.null(seed)) set.seed(seed)
-
-  # ---- Common JAGS data ----
-  jags_data_base <- list(
-    y  = prep$y,
-    prec = prep$prec,
-    xA = prep$xA,
-    xB = prep$xB,
-    na = prep$na,
-    Ns = Ns,
-    Nc = Nc
-  )
-  # Only wA is added (no Q): the continuous prior block has no ORbeta loop,
-  # and JAGS rejects unused data. Nothing is added without modifiers.
-  if (!is.null(modifier_design)) {
-    jags_data_base <- c(jags_data_base, list(wA = modifier_design$wA))
-  }
-  modifier_priors <- modifier_design$priors
-  mcmc <- list(n.chains = n.chains, n.adapt = n.adapt,
-               n.burnin = n.burnin, n.iter  = n.iter, n.thin = n.thin)
-
-  # ---- Results containers ----
-  samps_lasso      <- NULL
-  summary_lasso    <- NULL
-
-  # =====================================================================
-  # MODEL 1: Additive
-  # =====================================================================
-  if (!quiet) message("\n--- Fitting additive model (no interactions) ---")
-
-  model_add  <- .jags_model_additive_cont(Nc, tau_prior, modifier_priors = modifier_priors)
-  params_add <- .with_modifier_params(c("d", "tau"), modifier_design)
-  fit_add    <- .bcnma_fit_model(model_add, jags_data_base, params_add, mcmc, quiet)
-  summary_additive <- fit_add$summary
-  samps_additive   <- fit_add$samps
-
-  # =====================================================================
-  # MODEL 2: SSVS / LASSO
-  # =====================================================================
-  if (interactions != "none") {
-    if (!quiet) {
-      model_label <- if (interactions == "lasso") "LASSO (equiprobable)" else "LASSO (informative)"
-      message(sprintf("\n--- Fitting %s interaction model ---", model_label))
-      message(sprintf("  %d active interactions out of %d total", length(included), Ninter))
-    }
-
-    # Presence, not dose products, so gamma stays the co-presence effect
-    component_presence <- (prep$xA != 0) * 1L
-    interactions_arr <- .build_interaction_array(component_presence, Ns, prep$max_arms, Nc)
-    jags_data_ssvs   <- c(jags_data_base, list(interactions = interactions_arr))
-
-    model_ssvs <- .jags_model_ssvs_cont(
-      Nc, Ninter,
-      included        = included,
-      prob_active     = lasso_prob,
-      g               = g,
-      tau_prior       = tau_prior,
-      modifier_priors = modifier_priors
-    )
-
-    params_ssvs <- .with_modifier_params(c("d", "gamma", "Ind", "tau", "eta"), modifier_design)
-    fit_ssvs    <- .bcnma_fit_model(model_ssvs, jags_data_ssvs, params_ssvs, mcmc, quiet)
-    summary_lasso <- fit_ssvs$summary
-    samps_lasso   <- fit_ssvs$samps
-
-    interaction_summary <- .extract_interaction_summary(samps_lasso, Ninter, components)
-    inter_incl_prob <- interaction_summary$inclusion_prob
-    inter_effects   <- interaction_summary$effects
-
-  } else {
-    inter_incl_prob <- NULL
-    inter_effects   <- NULL
-  }
-
+  fitted <- .fit_bcnma_models(prep, options)
   if (!quiet) message("\nDone.")
-
-  # ---- Build return object ----
-  result <- c(
-    list(
-      call                       = cl,
-      components                 = components,
-      n_components               = Nc,
-      Ns                         = Ns,
-      Ninter                     = Ninter,
-      sm                         = sm,
-      pooled_sd                  = pooled_sd,
-      sigma_pooled               = prep$sigma_pooled,
-      interactions_model         = interactions,
-      active_components          = if (interactions == "lasso_informative") active_components else NULL,
-      included_interactions      = included,
-      reference.group            = reference.group,
-      summary_additive           = summary_additive,
-      summary_lasso              = summary_lasso,
-      samps_additive             = samps_additive,
-      samps_lasso                = samps_lasso,
-      interaction_inclusion_prob = inter_incl_prob,
-      interaction_effects        = inter_effects,
-      jags_data                  = jags_data_base,
-      mcmc_settings              = mcmc
-    ),
-    .modifier_results(component_values, modifier_specs, modifier_design,
-                      samps_additive, samps_lasso, exponentiate = FALSE)
-  )
-  structure(result, class = "bcnma_cont")
+  fit <- .assemble_bcnma_fit(call, prep, options, fitted, sm = sm)
+  fit$pooled_sd    <- pooled_sd
+  fit$sigma_pooled <- prep$sigma_pooled
+  structure(fit, class = "bcnma_cont")
 }

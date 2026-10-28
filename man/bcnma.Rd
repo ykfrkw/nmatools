@@ -7,11 +7,12 @@
 Bayesian random-effects component NMA (cNMA) for binary and continuous
 outcomes using JAGS, optionally with non-binary component values (doses)
 and arm-level effect modifiers of specific components. Three interaction
-models are available: additive, LASSO (equiprobable SSVS) and LASSO with
-informative priors. These functions were developed as the standalone
-package bcnma (github.com/ykfrkw/bcnma), which is superseded by nmatools;
-existing code keeps working after replacing \code{library(bcnma)} with
-\code{library(nmatools)}.
+models are available: additive, SSVS (spike-and-slab priors on every
+estimable pair) and SSVS restricted to pairs of chosen active components.
+These functions were developed as the standalone package bcnma
+(github.com/ykfrkw/bcnma), which is superseded by nmatools; see NEWS.md
+for the changes made during the methodological review (some results and
+field names differ from bcnma).
 }
 \details{
 Fitting requires the JAGS system library and the suggested packages rjags
@@ -28,7 +29,9 @@ and MCMCvis. They are not needed for anything else in nmatools.
 \code{\link{print.bcnma_bin}}, \code{\link{print.bcnma_cont}},
 \code{\link{forest.bcnma_bin}}, \code{\link{forest.bcnma_cont}},
 \code{\link{plot_interactions}}, \code{\link{summarise_interactions}},
-\code{\link{compare_combinations}}
+\code{\link{compare_combinations}}, \code{\link{check_additivity}},
+\code{\link{component_coverage}}, \code{\link{modifier_equivalence}},
+\code{\link{bcnma_model_code}}
 }
 
 \section{Index helpers}{

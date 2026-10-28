@@ -146,8 +146,9 @@ cinema(load_w2i(), format = "binary", effect_measure = "OR")   # pre-load from R
 SMD or MD) fit Bayesian random-effects component NMA in JAGS: each treatment
 is split into its components (`"se+sd+cr"`) and the effect of each component
 is estimated. Interactions between components are handled by an additive
-model, spike-and-slab (SSVS) "LASSO" priors on every pair, or SSVS on a chosen
-subset (`interactions = "none"`, `"lasso"`, `"lasso_informative"`).
+model, spike-and-slab (SSVS) priors on every estimable pair, or SSVS on a
+chosen subset (`interactions = "none"`, `"ssvs"`, `"ssvs_informative"`; the
+old names `"lasso"` / `"lasso_informative"` are deprecated aliases).
 `compare_combinations()` gives the posterior effect of any combination against
 another; `forest()`, `plot_interactions()` and `summarise_interactions()`
 summarize the fit.
@@ -169,7 +170,8 @@ fit <- bcnma_bin(dat, studlab = study, treat = treatment_component,
                  components = c("se", "sd", "cr", "th", "cw", "sr", "sc", "re",
                                 "pi", "w", "ns", "he", "tg", "ind", "gp", "ff",
                                 "ae"),
-                 interactions = "lasso", seed = 42)
+                 inactive = "dt",   # token in the data that is not a component
+                 interactions = "ssvs", seed = 42)
 print(fit)
 forest(fit)
 compare_combinations(fit, combo1 = c("se", "sd", "cr", "th", "sr", "sc"),
@@ -180,13 +182,14 @@ Two optional arguments extend the model:
 
 - **`component_values`** replaces the 0/1 component indicators with values
   such as the number of sessions, so `d[k]` is the effect per unit of
-  component *k* (linear dose-response).
+  component *k* (linear dose-response through zero: effect = `d[k] * dose`).
+  Interactions and modifiers act on presence, not on the dose.
 - **`modifiers`** adds arm-level effect modifiers of specific components,
-  continuous (centred) or ordinal (cumulative coding, optionally monotone).
-  `d[k]` of a modified component is then its effect **at the center
-  (continuous) or the reference level (ordinal)**, and `beta` is the change
-  per covariate unit or level step; evaluate other values with
-  `compare_combinations(..., at = list(label = value))`.
+  continuous (centred and standardised) or ordinal (cumulative coding,
+  optionally monotone). `d[k]` of a modified component is then its effect
+  **at the center (continuous) or the reference level (ordinal)**, and `beta`
+  is the change per covariate unit (and per SD) or level step; evaluate other
+  values with `compare_combinations(..., at = list(label = value))`.
 
 Modifier effects are identified mainly by **between-study** variation in the
 covariate (for example a provider's proficiency, which is the same in every arm

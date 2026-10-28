@@ -7,12 +7,12 @@
   `compare_combinations()`, `plot_interactions()`,
   `summarise_interactions()`, `place()`, `which.place()`,
   `all.interactions()` and the `print()` / `summary()` / `forest()` methods
-  for `bcnma_bin` and `bcnma_cont` objects keep their names, arguments and
-  results, so existing code works after replacing `library(bcnma)` with
-  `library(nmatools)`.
+  for `bcnma_bin` and `bcnma_cont` objects keep their names; the
+  methodological review below changed some arguments, fields and results
+  (see "Breaking changes / results change").
 * Bayesian random-effects component NMA in JAGS for binary (OR) and
-  continuous (SMD / MD) outcomes, with additive, SSVS-LASSO and informative
-  SSVS-LASSO interaction models; optional `component_values` (doses) and
+  continuous (SMD / MD) outcomes, with additive, SSVS and informative SSVS
+  interaction models; optional `component_values` (doses) and
   arm-level effect `modifiers` (continuous or ordinal, optionally monotone).
   `d[k]` of a modified component is its effect at the center / reference
   level; modifier effects are between-study (ecological) associations.
@@ -24,12 +24,82 @@
   stop with an informative error when rjags or MCMCvis is missing.
 * The CBT-I component NMA example data and worked script are installed under
   `system.file("extdata", "bcnma", package = "nmatools")`.
-* bcnma's testthat suite is included (`tests/testthat/test-bcnma-*.R`),
-  including the backward-compatibility fixture built from bcnma 0.1.0; JAGS
-  tests are skipped when rjags is not installed.
+* bcnma's testthat suite is included (`tests/testthat/test-bcnma-*.R`); the
+  bcnma 0.1.0 fixture now backs numerical equivalence tests (prepared data,
+  `compare_combinations()` arithmetic) instead of byte-identical model
+  strings. JAGS tests are skipped when rjags is not installed.
 * New manual chapter: [17. Bayesian component NMA](docs/manual/17-bayesian-cnma.md).
 * Orestis Efthimiou is credited (role `ths`) for conceptual guidance on
   Bayesian cNMA and SSVS modelling.
+
+### Methodological review: new features
+
+* JAGS models are written in NICE DSU TSD2 notation with `inprod()` over
+  within-study contrasts; `bcnma_model_code(fit, model)` prints the exact
+  additive, SSVS or standard model code (stored in `fit$model_code`).
+* Identifiability check before fitting (`fit$identifiability`).
+* `inactive` argument for treatment tokens that are not components.
+* `eta_prior_sd` exposes the SSVS spike scale; the posterior slab SD is
+  printed.
+* Convergence summaries (max Rhat / min n.eff per parameter group, with
+  warnings) and Monte Carlo SE of inclusion probabilities.
+* Residual deviance (`resdev`) in every model; pD and DIC
+  (`fit$model_fit`, `fit$arm_deviance`).
+* `check_additivity(fit)`: comparison with the standard full-interaction
+  NMA.
+* `compare_combinations()` reports a predictive interval for a new study and
+  flags combinations / component pairs that no arm contains.
+* `component_coverage(fit)` and `fit$priors` for reporting; manual sections
+  on assumptions and a PRISMA-NMA / CINeMA reporting checklist.
+* Spike-and-slab selection of effect modifiers (modifier `selection =
+  "ssvs"`, `inclusion_prob`, `slab_sd`, `spike_sd`): one indicator per
+  modifier x component, with P(modification present), MCSE and Bayes factor
+  in `fit$modifier_selection`.
+* `modifier_equivalence(fit, label, margin)`: region-of-practical-equivalence
+  summary of an effect modifier (difference between the highest and lowest
+  modifier value vs a pre-specified margin, with a verdict).
+* Review guide for methodologists: `docs/review/bcnma-review-guide.md`.
+
+### Breaking changes / results change
+
+Results of fits made with bcnma or earlier development versions of
+nmatools 0.3.0 will not be reproduced exactly:
+
+* **tau -> tau2.** The log-normal heterogeneity prior is now (correctly)
+  placed on the variance: the JAGS node is `tau2` and `tau = sqrt(tau2)`.
+  Before, the same prior was put on the SD, so tau was larger a priori.
+  Both are monitored and printed. `tau_prior` defaults to `NULL` (outcome
+  default) and also accepts list specifications.
+* **seed is now reproducible.** `seed` sets the JAGS RNG of every chain
+  (`.RNG.seed = seed + chain`); `set.seed()` had no effect on JAGS, so old
+  seeded runs will not match (and were not reproducible).
+* **MD fits before this version were biased for large-mean outcomes**: the
+  study baselines had a fixed N(0, 1000) prior, which shrinks baselines of
+  outcomes measured on a large scale (e.g. minutes of sleep). MD means are
+  now centred on arm 1 and the d / u / tau priors scale with the median
+  pooled SD (tau: half-normal).
+* **SMD is now Hedges' g** (small-sample correction J), and a missing or
+  non-positive SD (or n) is an error instead of a warning with SD = 1.
+* **SSVS renames:** `interactions = "lasso"` / `"lasso_informative"` ->
+  `"ssvs"` / `"ssvs_informative"`, `lasso_prob` -> `inclusion_prob` (old
+  names are deprecated aliases with a one-time message); fields
+  `summary_lasso`, `samps_lasso`, `modifier_effects$lasso` ->
+  `summary_ssvs`, `samps_ssvs`, `modifier_effects$ssvs`; `model = "lasso"`
+  in `print()` / `forest()` / `compare_combinations()` -> `"ssvs"`.
+* **Non-estimable interactions are fixed to 0.** Interactions never
+  co-present, with zero within-study contrast, or aliased are left out of the
+  SSVS model (previously they were sampled from their prior) and never
+  reported as selected; non-identifiable main effects are an error.
+* **New modifier defaults:** continuous modifiers are standardised
+  internally and `beta ~ N(0, 1)` per covariate SD (ordinal increments
+  N(0, 1)); the old default was `prior_sd = 10` on the raw code scale.
+  Summary columns changed (`OR*` -> `ratio_of_OR*`, plus per-SD and
+  diagnostic columns).
+* **`inactive` is required** for treatment tokens that are not components
+  (e.g. `"dt"` in the CBT-I example); unknown tokens were silently ignored
+  before and are now an error. Single-arm studies are an error.
+* Residual deviance and DIC add `resdev` to the samples and one more pass of
+  `n.iter` iterations (with >= 2 chains).
 
 ## Bug fixes: figure sizing and trimming
 
