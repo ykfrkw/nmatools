@@ -31,11 +31,14 @@ test_that("prepared binary data equal bcnma 0.1.0", {
   expect_equal(prep$n_arms, old$na)
 })
 
-test_that("prepared continuous data equal bcnma 0.1.0 (SMD scale)", {
+test_that("prepared SMD data equal bcnma 0.1.0 times Hedges' J (R5)", {
   old  <- BACKWARD_COMPAT$jags_data_cont
   prep <- prepare_small_cont(BACKWARD_COMPAT$small_cont_data)
-  expect_equal(prep$outcome$y, old$y)
-  expect_equal(prep$outcome$se^-2, old$prec)
+  # Two arms of 50 per study: df = 98, J = 1 - 3 / (4 * 98 - 1)
+  hedges_j <- 1 - 3 / (4 * 98 - 1)
+  expect_equal(prep$hedges_j, rep(hedges_j, 3))
+  expect_equal(prep$outcome$y, old$y * hedges_j)
+  expect_equal(prep$outcome$se^-2, old$prec / hedges_j^2)
   expect_equal(prep$x_arm, old$xA, ignore_attr = TRUE)
 })
 

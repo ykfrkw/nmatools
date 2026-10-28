@@ -35,7 +35,7 @@
                          source = "MD default: SD = median pooled SD")
 }
 
-#' Prior SD of d[j] ("effect") or u[i] ("baseline") for continuous outcomes
+#' Prior SD of `d[j]` ("effect") or `u[i]` ("baseline"), continuous outcomes
 #' @noRd
 .location_prior_sd_cont <- function(prep, parameter = c("effect", "baseline")) {
   parameter <- match.arg(parameter)

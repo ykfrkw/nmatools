@@ -59,7 +59,13 @@ median within-study pooled SD.}
 
 \item{pooled_sd}{character: how to compute the within-study SD for
 standardisation when \code{sm = "SMD"}. \code{"within"} (default) pools all
-arms; \code{"control"} uses the reference arm SD only.}
+arms (df-weighted); \code{"control"} uses the SD of arm 1, i.e. the first
+row of the study in \code{data} (the data order defines the comparator).
+Arm means and SEs are divided by this SD and multiplied by Hedges'
+correction \eqn{J = 1 - 3/(4 df - 1)}, so contrasts are Hedges' g; the
+pooled SD is treated as known. Every arm needs a positive SD and n
+(otherwise an error). Mixing change scores and final values on the SMD
+scale is not handled and is left to the analyst.}
 
 \item{interactions}{character: \code{"none"}, \code{"lasso"} (default),
 or \code{"lasso_informative"}}

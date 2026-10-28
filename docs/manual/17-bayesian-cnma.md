@@ -126,8 +126,15 @@ fit_cont <- bcnma_cont(
 )
 ```
 
-With `sm = "SMD"`, each study's arm means are divided by the within-study
-pooled SD before fitting, so `d[k]` is on the SMD scale. `sm = "MD"` keeps
+With `sm = "SMD"`, each study's arm means and standard errors are divided by
+the within-study pooled SD and multiplied by Hedges' small-sample correction
+J = 1 − 3/(4 df − 1), so every within-study contrast is Hedges' *g* and
+`d[k]` is on the SMD scale. The pooled SD is treated as known. With
+`pooled_sd = "control"` the SD of **arm 1** — the first row of the study in
+`data` — is used, so the data order defines the comparator. Every arm needs
+a positive SD and *n*; a missing or non-positive SD is an error. Change
+scores and final values are not distinguished: do not mix them on the SMD
+scale without a deliberate choice. `sm = "MD"` keeps
 the raw scale but centres each study's means on its arm 1 (an exact location
 shift that the study baseline absorbs), and scales the default priors by the
 median within-study pooled SD *s*: `d[k] ~ N(0, (10 s)^2)` and a half-normal
