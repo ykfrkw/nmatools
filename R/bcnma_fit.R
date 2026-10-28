@@ -95,6 +95,8 @@
   monitored  <- .monitored_nodes(model, prep$likelihood, !is.null(options$modifier_design))
   posterior  <- .bcnma_run_jags(model_code, jags_data, monitored, options$mcmc, options$quiet)
   if (model == "ssvs") posterior <- .rename_interaction_nodes(posterior, options$ssvs_pairs)
+  posterior$convergence <- .convergence_by_group(posterior$summary)
+  .warn_convergence(posterior$convergence, if (model == "ssvs") "SSVS" else "Additive")
   c(list(model_code = model_code, jags_data = jags_data), posterior)
 }
 
@@ -135,6 +137,8 @@
   pair_count <- prep$n_components * (prep$n_components - 1L) / 2L
   interaction_summary <- if (is.null(fitted$ssvs)) NULL else
     .extract_interaction_summary(fitted$ssvs$samples, prep$components)
+  inclusion_mcse <- if (is.null(fitted$ssvs)) NULL else
+    .inclusion_prob_mcse(fitted$ssvs$samples, fitted$ssvs$summary, pair_count)
   c(
     list(
       call                       = call,
@@ -153,6 +157,9 @@
       samps_ssvs                 = fitted$ssvs$samples,
       interaction_inclusion_prob = interaction_summary$inclusion_prob,
       interaction_effects        = interaction_summary$effects,
+      interaction_inclusion_mcse = inclusion_mcse,
+      convergence                = list(additive = fitted$additive$convergence,
+                                        ssvs     = fitted$ssvs$convergence),
       jags_data                  = fitted$additive$jags_data,
       model_code                 = list(additive = fitted$additive$model_code,
                                         ssvs     = fitted$ssvs$model_code),

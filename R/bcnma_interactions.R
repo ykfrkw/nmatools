@@ -117,7 +117,9 @@ all.interactions <- function(combination, Nc, components = NULL) {
 #' @param threshold  numeric: inclusion probability threshold for "selected"
 #'   label (default 0.5)
 #' @param top_n      integer: how many top interactions to return (default all)
-#' @return data.frame sorted by |median_gamma| descending
+#' @return data.frame sorted by |median_gamma| descending, with the Monte
+#'   Carlo standard error of each inclusion probability and the
+#'   identifiability status of each pair
 #' @export
 summarise_interactions <- function(x, threshold = 0.5, top_n = NULL) {
   if (is.null(x$interaction_inclusion_prob)) {
@@ -133,6 +135,9 @@ summarise_interactions <- function(x, threshold = 0.5, top_n = NULL) {
     inclusion_prob = unname(x$interaction_inclusion_prob),
     stringsAsFactors = FALSE
   )
+  # Monte Carlo error of mean(Ind[m]); NA for pairs fixed to 0
+  summary_table$inclusion_prob_mcse <- if (is.null(x$interaction_inclusion_mcse)) NA_real_ else
+    x$interaction_inclusion_mcse
   status <- x$identifiability$interaction_status$status
   summary_table$status <- if (is.null(status)) BCNMA_INTERACTION_STATUS[["estimable"]] else status
   # Pairs fixed to 0 (not estimable / aliased) are never "selected".

@@ -225,6 +225,13 @@ plot_interactions(fit)           # median gamma vs. inclusion probability
 summarise_interactions(fit)      # data frame of all pairs, sorted by |gamma|
 ```
 
+**Convergence.** For each model, `print()` reports the largest Rhat and the
+smallest effective sample size (n.eff) over the parameter groups `d`,
+`gamma`, `tau2`, `beta` and `eta` (`fit$convergence`), and the fit warns when
+Rhat > 1.05 or n.eff < 400. Rhat needs at least two chains. The posterior
+inclusion probabilities of `summarise_interactions()` come with their Monte
+Carlo standard error (`inclusion_prob_mcse` = sqrt(p(1 − p) / n.eff)).
+
 `forest()` is the `meta::forest()` generic, re-exported by nmatools; the
 `bcnma_bin` and `bcnma_cont` methods return a `ggplot` object invisibly.
 

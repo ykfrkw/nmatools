@@ -102,10 +102,31 @@ simulate_identifiable_network <- function() {
   simulate_proficiency_studies("binary", arm_size = 300, true_beta = 0)
 }
 
-# Warnings expected in short test fits: one-chain runs have no Rhat, and the
-# small networks have aliased interactions (tested explicitly in
+# Warnings expected in short test fits: one-chain runs have no Rhat, short
+# runs fail the convergence thresholds, and the small networks have aliased
+# interactions (tested explicitly in
 # test-bcnma-identifiability.R). Any other warning still surfaces.
-EXPECTED_TEST_WARNINGS <- "Rhat|fixed to gamma = 0"
+EXPECTED_TEST_WARNINGS <- "Rhat|fixed to gamma = 0|convergence"
+# Muffle only the MCMC-length warnings, so that a test can expect another one.
+muffle_mcmc_warnings <- function(expr) {
+  withCallingHandlers(
+    suppressMessages(expr),
+    warning = function(w) {
+      if (grepl("Rhat|convergence", conditionMessage(w))) invokeRestart("muffleWarning")
+    }
+  )
+}
+
+# Muffle everything expected except the convergence warning itself.
+muffle_mcmc_warnings_except_convergence <- function(expr) {
+  withCallingHandlers(
+    suppressMessages(expr),
+    warning = function(w) {
+      if (grepl("fixed to gamma = 0", conditionMessage(w))) invokeRestart("muffleWarning")
+    }
+  )
+}
+
 quietly_fit <- function(expr) {
   withCallingHandlers(
     suppressMessages(expr),

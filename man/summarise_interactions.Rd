@@ -15,7 +15,9 @@ label (default 0.5)}
 \item{top_n}{integer: how many top interactions to return (default all)}
 }
 \value{
-data.frame sorted by |median_gamma| descending
+data.frame sorted by |median_gamma| descending, with the Monte
+Carlo standard error of each inclusion probability and the
+identifiability status of each pair
 }
 \description{
 Summarise interaction results from a bcnma object

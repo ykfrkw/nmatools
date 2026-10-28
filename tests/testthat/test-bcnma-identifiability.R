@@ -67,7 +67,7 @@ test_that("the CBT-I example has design rank 121 of 153", {
 test_that("fixed interactions are stored, absent from SSVS and never selected", {
   skip_if_not_installed("rjags")
   skip_if_not_installed("MCMCvis")
-  expect_warning(fit <- suppressMessages(bcnma_bin(
+  expect_warning(fit <- muffle_mcmc_warnings(bcnma_bin(
     toy_network, study, treat, r, n, components = TOY_COMPONENTS, interactions = "ssvs",
     n.chains = 2, n.adapt = 100, n.burnin = 0, n.iter = 20, seed = 1, quiet = TRUE)),
     "fixed to gamma = 0")

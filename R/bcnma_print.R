@@ -97,6 +97,7 @@ summary.bcnma_cont <- function(object, digits = 3, ...) .summary_bcnma(object, d
   cat(strrep("-", BCNMA_RULE_WIDTH), "\n", sep = "")
   .print_effect_table(x[[paste0("summary_", model)]], x$components, x$sm, digits)
   .print_modifier_table(x$modifier_effects[[model]], digits, x$sm)
+  .print_convergence(x$convergence[[model]])
   cat("\n")
 }
 
@@ -159,11 +160,11 @@ summary.bcnma_cont <- function(object, digits = 3, ...) .summary_bcnma(object, d
   if (nrow(selected) == 0) return(invisible(NULL))
   is_binary <- x$sm == "OR"
   effect_label <- if (is_binary) "median OR" else paste0("median ", x$sm)
-  cat(sprintf("  %-20s  %10s  %8s\n", "Pair", effect_label, "P(incl)"))
+  cat(sprintf("  %-20s  %10s  %8s  %8s\n", "Pair", effect_label, "P(incl)", "MCSE"))
   for (row in seq_len(nrow(selected))) {
     effect <- if (is_binary) selected$OR_interaction[row] else selected$median_gamma[row]
-    cat(sprintf("  %-20s  %10.3f  %8.3f\n", selected$component_pair[row], effect,
-                selected$inclusion_prob[row]))
+    cat(sprintf("  %-20s  %10.3f  %8.3f  %8.3f\n", selected$component_pair[row], effect,
+                selected$inclusion_prob[row], selected$inclusion_prob_mcse[row]))
   }
 }
 
