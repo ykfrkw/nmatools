@@ -107,7 +107,7 @@
 #'
 #' rjags::dic.samples() runs n.iter further iterations and needs at least two
 #' chains; with one chain DIC is not available (NULL).
-#' @return list(deviance, penalty), named by node (e.g. "r[3,2]"), or NULL
+#' @return list(deviance, penalty), named by node (e.g. `r[3,2]`), or NULL
 #' @noRd
 .sample_dic <- function(jags_object, mcmc, quiet) {
   if (mcmc$n.chains < 2) return(NULL)

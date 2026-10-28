@@ -19,7 +19,7 @@ BCNMA_DIAGNOSED_GROUPS <- c("d", "gamma", "tau2", "beta", "eta")
 
 #' Largest Rhat and smallest n.eff per parameter group
 #'
-#' @param posterior_summary MCMCsummary data.frame (rows "d[1]", "tau2", ...)
+#' @param posterior_summary MCMCsummary data.frame (rows `d[1]`, `tau2`, ...)
 #' @return data.frame(group, n_parameters, max_rhat, min_n_eff); Rhat is NA
 #'   with one chain
 #' @noRd
@@ -56,7 +56,7 @@ BCNMA_DIAGNOSED_GROUPS <- c("d", "gamma", "tau2", "beta", "eta")
                   model_label, paste(problems, collapse = "; ")), call. = FALSE)
 }
 
-#' Monte Carlo standard error of each inclusion probability mean(Ind[m])
+#' Monte Carlo standard error of each inclusion probability `mean(Ind[m])`
 #'
 #' MCSE = sqrt(p (1 - p) / n.eff); n.eff of a constant indicator is
 #' undefined, so the number of draws is used instead.

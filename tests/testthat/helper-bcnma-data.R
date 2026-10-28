@@ -4,11 +4,13 @@
 # Contact: furukawa.y.psy@gmail.com
 #
 # File description:
-# Shared test data and helpers: small hand-made networks (binary and
-# continuous), simulated networks whose component C is modified by provider
-# proficiency, and a fitting wrapper that silences the expected one-chain
-# Rhat warning, for the test-bcnma-*.R files. Loaded automatically by
-# testthat before the test files.
+# Purpose: shared test data and helpers for the test-bcnma-*.R files: small
+#          hand-made networks (binary and continuous), simulated networks
+#          whose component C is modified by provider proficiency, and
+#          wrappers that muffle the warnings expected in short MCMC runs.
+# Inputs:  none (data are generated here)
+# Outputs: objects in the test environment (loaded before the test files)
+# Depends: nmatools internals (.bcnma_*_prepare_data, .apply_component_values)
 
 SIM_SEED       <- 20261028
 SIM_COMPONENTS <- c("A", "B", "C")

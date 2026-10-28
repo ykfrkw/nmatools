@@ -146,8 +146,11 @@ BCNMA_MODIFIER_INCLUSION_PROB <- 0.5
   if (spec$monotone != "none") {
     stop(sprintf("Modifier '%s': 'monotone' applies to ordinal modifiers only.", spec$label))
   }
-  is_valid_center <- is.null(spec$center) || (is.numeric(spec$center) && length(spec$center) == 1)
-  if (!is_valid_center) stop(sprintf("Modifier '%s': 'center' must be a single number.", spec$label))
+  is_valid_center <- is.null(spec$center) ||
+    (is.numeric(spec$center) && length(spec$center) == 1)
+  if (!is_valid_center) {
+    stop(sprintf("Modifier '%s': 'center' must be a single number.", spec$label))
+  }
   spec
 }
 

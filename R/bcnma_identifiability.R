@@ -95,7 +95,8 @@ BCNMA_INTERACTION_STATUS <- c(
   status[checked_pairs[dependent]] <- BCNMA_INTERACTION_STATUS[["aliased"]]
 
   n_studies_contrast <- vapply(seq_along(status), function(pair_index) {
-    .count_studies_with_contrast(co_presence[, , pair_index], prep$n_arms)
+    .count_studies_with_contrast(matrix(co_presence[, , pair_index], nrow = prep$n_studies),
+                                 prep$n_arms)
   }, numeric(1))
   interaction_status <- data.frame(
     index = seq_along(status), component_pair = .interaction_pair_names(prep$components),

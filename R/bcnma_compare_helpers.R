@@ -68,12 +68,12 @@
 }
 
 # Convert a combination (names, indices, or named values) into a numeric
-# vector of component values aligned with `comps`.
-.combo_to_values <- function(combo, comps) {
-  values <- stats::setNames(numeric(length(comps)), comps)
+# vector of component values aligned with `components`.
+.combo_to_values <- function(combo, components) {
+  values <- stats::setNames(numeric(length(components)), components)
   if (length(combo) == 0) return(values)
   if (is.numeric(combo) && !is.null(names(combo))) {
-    unknown <- setdiff(names(combo), comps)
+    unknown <- setdiff(names(combo), components)
     if (length(unknown) > 0 || anyNA(combo)) {
       stop("Named numeric combination must use known component names and no NA. Unknown: ",
            paste(unknown, collapse = ", "))
@@ -82,32 +82,33 @@
     return(values)
   }
   if (is.character(combo)) {
-    unknown <- setdiff(combo, comps)
+    unknown <- setdiff(combo, components)
     if (length(unknown) > 0) {
       stop("Unknown components: ", paste(unknown, collapse = ", "),
-           "\nAvailable: ", paste(comps, collapse = ", "))
+           "\nAvailable: ", paste(components, collapse = ", "))
     }
-    values[comps %in% combo] <- 1
+    values[components %in% combo] <- 1
     return(values)
   }
-  idx <- as.integer(combo)
-  if (any(idx < 1 | idx > length(comps))) {
-    stop("Component indices out of range [1, ", length(comps), "]")
+  component_index <- as.integer(combo)
+  if (any(component_index < 1 | component_index > length(components))) {
+    stop("Component indices out of range [1, ", length(components), "]")
   }
-  values[idx] <- 1
+  values[component_index] <- 1
   values
 }
 
-# Labels for printing; non-unit values are shown as "comp=value".
-.combo_labels <- function(combo, values, comps) {
+# Labels for printing; non-unit values are shown as "component=value".
+.combo_labels <- function(combo, values, components) {
   if (is.character(combo)) return(combo)
   present <- which(values != 0)
-  unname(ifelse(values[present] == 1, comps[present], paste0(comps[present], "=", values[present])))
+  unname(ifelse(values[present] == 1, components[present],
+                paste0(components[present], "=", values[present])))
 }
 
 # Fetch "<prefix>[index]" from the sample data frame or fail loudly.
-.sample_column <- function(samps, prefix, index) {
-  col <- paste0(prefix, "[", index, "]")
-  if (!col %in% colnames(samps)) stop("Column '", col, "' not found in MCMC samples.")
-  samps[[col]]
+.sample_column <- function(samples, prefix, index) {
+  column <- paste0(prefix, "[", index, "]")
+  if (!column %in% colnames(samples)) stop("Column '", column, "' not found in MCMC samples.")
+  samples[[column]]
 }

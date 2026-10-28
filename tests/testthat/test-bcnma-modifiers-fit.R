@@ -4,10 +4,14 @@
 # Contact: furukawa.y.psy@gmail.com
 #
 # File description:
-# End-to-end tests with JAGS: recovery of a simulated modifier effect for
-# binary and continuous outcomes, monotone ordinal increments in the SSVS
-# model, component values in a fit, print/summary/compare_combinations output.
-# Each fit is a short single chain on 30 two-arm studies (a few seconds).
+# Purpose: end-to-end tests with JAGS: recovery of a simulated modifier
+#          effect for binary and continuous outcomes, monotone ordinal
+#          increments in the SSVS model, component values in a fit,
+#          print/summary/compare_combinations output. Each fit is a short
+#          single chain on 30 two-arm studies (a few seconds).
+# Inputs:  simulate_proficiency_studies(), small_cont_data, dose_values
+# Outputs: none (testthat expectations)
+# Depends: rjags + MCMCvis (skipped otherwise)
 
 proficiency_modifier <- list(list(column = "proficiency", components = "C", type = "continuous",
                                   center = PROFICIENCY_CENTER))

@@ -4,9 +4,13 @@
 # Contact: furukawa.y.psy@gmail.com
 #
 # File description:
-# Design-level tests for component values (doses) and arm-level effect
-# modifiers (no JAGS needed): row alignment, ordinal cumulative coding, NA
-# handling, non-identifiability warning, JAGS model text, `at` codes.
+# Purpose: design-level tests for component values (doses) and arm-level
+#          effect modifiers (no JAGS needed): row alignment, ordinal
+#          cumulative coding, standardised continuous codes, NA handling,
+#          non-identifiability warning, beta summaries, `at` codes.
+# Inputs:  small_bin_data, small_cont_data, dose_values (helper-bcnma-data.R)
+# Outputs: none (testthat expectations)
+# Depends: nothing beyond nmatools internals
 
 ORDINAL_LEVELS <- c("low", "mid", "high")
 ordinal_spec <- list(list(column = "level", components = "C", type = "ordinal",
@@ -22,14 +26,18 @@ test_that("component_values stay aligned with their rows after study re-ordering
     expect_equal(prep$x_arm[3, , 3], c(0, 7))     # S3: rows 4 then 6
     expect_equal(prep$x_arm[, 1, 2], c(0, 0, 1, 1))
   }
-  expect_error(.validate_component_values(dose_values[, 3:1], SMALL_ROW_COUNT, SIM_COMPONENTS), "exactly")
-  expect_error(.validate_component_values(dose_values[1:5, ], SMALL_ROW_COUNT, SIM_COMPONENTS), "rows")
+  expect_error(.validate_component_values(dose_values[, 3:1], SMALL_ROW_COUNT, SIM_COMPONENTS),
+               "exactly")
+  expect_error(.validate_component_values(dose_values[1:5, ], SMALL_ROW_COUNT, SIM_COMPONENTS),
+               "rows")
   expect_error(.validate_component_values(replace(dose_values, 1, NA), SMALL_ROW_COUNT,
                                           SIM_COMPONENTS), "NA")
   expect_warning(
-    expect_warning(prepare_small_bin(values = cbind(dose_values[, 1:2], C = 0)), "zero in every arm"),
+    expect_warning(prepare_small_bin(values = cbind(dose_values[, 1:2], C = 0)),
+                   "zero in every arm"),
     "disagree on presence")
-  expect_warning(prepare_small_cont(values = cbind(dose_values[, 1:2], C = c(1, rep(0, SMALL_ROW_COUNT - 1)))),
+  one_extra_dose <- c(1, rep(0, SMALL_ROW_COUNT - 1))
+  expect_warning(prepare_small_cont(values = cbind(dose_values[, 1:2], C = one_extra_dose)),
                  "disagree on presence")
 })
 
@@ -37,7 +45,8 @@ test_that("ordinal modifiers use cumulative (incremental) coding for both outcom
   for (case in list(list(data = small_bin_data, prepare = prepare_small_bin),
                     list(data = small_cont_data, prepare = prepare_small_cont))) {
     specs  <- .normalise_modifier_specs(ordinal_spec, case$data, SIM_COMPONENTS)
-    design <- suppressMessages(.build_modifier_design(specs, case$data, case$prepare(case$data)))
+    design <- suppressMessages(.build_modifier_design(specs, case$data,
+                                                      case$prepare(case$data)))
     expect_equal(design$Q, 2)
     expect_equal(design$terms$term, c("skill(low->mid):C", "skill(mid->high):C"))
     expect_equal(design$code_arm[, 2, 1], c(1, 1, 0, 0))  # S1 mid, S2 high, S3 low
@@ -45,12 +54,14 @@ test_that("ordinal modifiers use cumulative (incremental) coding for both outcom
     expect_equal(design$code_arm[, 1, ], matrix(0, 4, 2))
   }
   bad_data <- transform(small_bin_data, level = c(NA, NA, "expert", NA, "mid", "low", NA, NA))
-  expect_error(.build_modifier_design(.normalise_modifier_specs(ordinal_spec, bad_data, SIM_COMPONENTS),
-                                      bad_data, prepare_small_bin(bad_data)), "not in 'levels'")
+  bad_specs <- .normalise_modifier_specs(ordinal_spec, bad_data, SIM_COMPONENTS)
+  expect_error(.build_modifier_design(bad_specs, bad_data, prepare_small_bin(bad_data)),
+               "not in 'levels'")
 })
 
 test_that("modifier specs are validated", {
-  expect_error(.normalise_modifier_specs(list(column = "nope", components = "C", type = "continuous"),
+  expect_error(.normalise_modifier_specs(list(column = "nope", components = "C",
+                                              type = "continuous"),
                                          small_bin_data, SIM_COMPONENTS), "not found")
   expect_error(.normalise_modifier_specs(list(column = "level", components = "Z", type = "ordinal",
                                               levels = ORDINAL_LEVELS),

@@ -4,12 +4,15 @@
 # Contact: furukawa.y.psy@gmail.com
 #
 # File description:
-# Overview help topic (?bcnma) for the Bayesian component NMA functions that
-# were merged into nmatools from the standalone bcnma package (0.2.0), and
-# the re-export of meta::forest(). bcnma defined its own forest() generic;
-# nmatools registers the bcnma_bin / bcnma_cont methods on meta::forest
-# instead, and re-exports that generic so that forest(fit) keeps working
-# after library(bcnma) is replaced by library(nmatools).
+# Purpose: overview help topic (?bcnma) for the Bayesian component NMA
+#          functions merged into nmatools from the standalone bcnma package
+#          (0.2.0), and the re-export of meta::forest(): nmatools registers
+#          the bcnma_bin / bcnma_cont methods on meta::forest so that
+#          forest(fit) keeps working after library(bcnma) is replaced by
+#          library(nmatools).
+# Inputs:  none
+# Outputs: Rd topic "bcnma"; re-exported forest()
+# Depends: meta
 
 #' Bayesian component network meta-analysis (bcnma)
 #'

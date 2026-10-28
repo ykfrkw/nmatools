@@ -109,9 +109,9 @@ compare_combinations.bcnma_bin <- function(x,
   if (!is.null(prediction)) prediction <- back_transform(prediction)
 
   .print_comparison_header(core)
-  est <- stats::quantile(effect, probs)
+  estimate <- stats::quantile(effect, probs)
   cat(sprintf("  %s: %.3f [%.3f; %.3f]\n", if (exponentiate) "OR" else "log-OR",
-              est[2], est[1], est[3]))
+              estimate[2], estimate[1], estimate[3]))
   comparison <- .finish_comparison(x, core, effect, prediction, probs)
   invisible(c(comparison, list(exponentiate = exponentiate)))
 }
@@ -132,8 +132,8 @@ compare_combinations.bcnma_cont <- function(x,
   prediction <- .predictive_effect_samples(core$effect, core$tau2, x$seed)
 
   .print_comparison_header(core)
-  est <- stats::quantile(core$effect, probs)
-  cat(sprintf("  %s: %.3f [%.3f; %.3f]\n", x$sm, est[2], est[1], est[3]))
+  estimate <- stats::quantile(core$effect, probs)
+  cat(sprintf("  %s: %.3f [%.3f; %.3f]\n", x$sm, estimate[2], estimate[1], estimate[3]))
   comparison <- .finish_comparison(x, core, core$effect, prediction, probs)
   invisible(c(comparison, list(sm = x$sm)))
 }
@@ -143,39 +143,38 @@ compare_combinations.bcnma_cont <- function(x,
 # Posterior draws of combination A minus combination B on the linear-predictor
 # scale (log-OR, SMD or MD), plus the labels and modifier codes used.
 .combination_effect_samples <- function(x, combo1, combo2, model, at) {
-  comps <- x$components
-  Nc    <- x$n_components
-
-  values1 <- .combo_to_values(combo1, comps)
-  values2 <- .combo_to_values(combo2, comps)
+  components <- x$components
+  values1 <- .combo_to_values(combo1, components)
+  values2 <- .combo_to_values(combo2, components)
   if (all(values1 == 0)) stop("'combo1' must contain at least one component.")
 
   if (model == "ssvs" && is.null(x$samps_ssvs)) {
     warning("SSVS samples not available; falling back to additive model.")
     model <- "additive"
   }
-  samps <- if (model == "ssvs") x$samps_ssvs else x$samps_additive
-  if (is.null(samps)) stop("No MCMC samples available for model = '", model, "'.")
+  samples <- if (model == "ssvs") x$samps_ssvs else x$samps_additive
+  if (is.null(samples)) stop("No MCMC samples available for model = '", model, "'.")
 
-  effect   <- numeric(nrow(samps))
+  effect   <- numeric(nrow(samples))
   present1 <- which(values1 != 0)
   present2 <- which(values2 != 0)
 
   # ---- Main effects (d per unit of component value) ----
   # Added then subtracted in this order so that 0/1 input reproduces the
   # bcnma 0.1.0 results bit for bit.
-  for (j in present1) effect <- effect + .sample_column(samps, "d", j) * values1[[j]]
-  for (j in present2) effect <- effect - .sample_column(samps, "d", j) * values2[[j]]
+  for (j in present1) effect <- effect + .sample_column(samples, "d", j) * values1[[j]]
+  for (j in present2) effect <- effect - .sample_column(samples, "d", j) * values2[[j]]
 
   # ---- Interaction effects (SSVS model only; defined on presence) ----
+  # Pairs fixed to 0 have no gamma column and contribute nothing.
   if (model == "ssvs") {
-    for (k in all.interactions(present1, Nc)) {
-      col <- paste0("gamma[", k, "]")
-      if (col %in% colnames(samps)) effect <- effect + samps[[col]]
+    for (pair in all.interactions(present1, x$n_components)) {
+      column <- paste0("gamma[", pair, "]")
+      if (column %in% colnames(samples)) effect <- effect + samples[[column]]
     }
-    for (k in all.interactions(present2, Nc)) {
-      col <- paste0("gamma[", k, "]")
-      if (col %in% colnames(samps)) effect <- effect - samps[[col]]
+    for (pair in all.interactions(present2, x$n_components)) {
+      column <- paste0("gamma[", pair, "]")
+      if (column %in% colnames(samples)) effect <- effect - samples[[column]]
     }
   }
 
@@ -185,10 +184,10 @@ compare_combinations.bcnma_cont <- function(x,
     modifier_codes <- .modifier_codes_at(x, at)
     terms <- x$modifier_terms
     for (q in terms$q) {
-      component_index   <- match(terms$component[q], comps)
+      component_index   <- match(terms$component[q], components)
       presence_contrast <- (values1[[component_index]] != 0) - (values2[[component_index]] != 0)
       weight <- modifier_codes[q] * presence_contrast
-      if (weight != 0) effect <- effect + .sample_column(samps, "beta", q) * weight
+      if (weight != 0) effect <- effect + .sample_column(samples, "beta", q) * weight
     }
   } else if (!is.null(at)) {
     warning("'at' ignored: the model has no effect modifiers.")
@@ -196,13 +195,14 @@ compare_combinations.bcnma_cont <- function(x,
 
   list(
     effect         = effect,
-    tau2           = samps$tau2,
+    tau2           = samples$tau2,
     values1        = values1,
     values2        = values2,
     model          = model,
     modifier_codes = modifier_codes,
-    combo1_names   = .combo_labels(combo1, values1, comps),
-    combo2_names   = if (length(combo2) == 0) "baseline" else .combo_labels(combo2, values2, comps)
+    combo1_names   = .combo_labels(combo1, values1, components),
+    combo2_names   = if (length(combo2) == 0) "baseline" else
+      .combo_labels(combo2, values2, components)
   )
 }
 
