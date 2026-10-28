@@ -65,7 +65,7 @@
 #'   (required, lowest first) and `monotone` (`"none"`, `"increasing"`,
 #'   `"decreasing"`); cumulative coding, so `beta_l` is the increment from level
 #'   l to l+1. `NA` is allowed only in arms where the modified component is
-#'   absent. The term `beta_q * (wA[i,k,q] - wA[i,1,q])` is added to the
+#'   absent. The term `beta_q * (z[i,k,q] - z[i,1,q])` is added to the
 #'   consistency equation, so `d[k]` of a modified component is its effect at
 #'   the center (continuous) or reference level (ordinal). Modifier effects are
 #'   identified mainly by between-study variation and are observational
@@ -123,197 +123,62 @@
 #'
 #' @export
 bcnma_bin <- function(data,
-                  studlab,
-                  treat,
-                  event,
-                  n,
-                  components,
-                  component_separator = "+",
-                  reference.group     = NULL,
-                  interactions        = c("lasso", "none", "lasso_informative"),
-                  active_components   = NULL,
-                  lasso_prob          = 0.5,
-                  g                   = 100,
-                  tau_prior           = c(-1.67, 1 / 1.472^2),
-                  n.chains            = 3,
-                  n.adapt             = 2000,
-                  n.burnin            = 5000,
-                  n.iter              = 20000,
-                  n.thin              = 1,
-                  seed                = NULL,
-                  quiet               = FALSE,
-                  component_values    = NULL,
-                  modifiers           = NULL) {
-
+                      studlab,
+                      treat,
+                      event,
+                      n,
+                      components,
+                      component_separator = "+",
+                      reference.group     = NULL,
+                      interactions        = c("lasso", "none", "lasso_informative"),
+                      active_components   = NULL,
+                      lasso_prob          = BCNMA_DEFAULT_INCLUSION_PROB,
+                      g                   = BCNMA_DEFAULT_SLAB_RATIO,
+                      tau_prior           = BCNMA_TAU2_PRIOR_BIN,
+                      n.chains            = 3,
+                      n.adapt             = 2000,
+                      n.burnin            = 5000,
+                      n.iter              = 20000,
+                      n.thin              = 1,
+                      seed                = NULL,
+                      quiet               = FALSE,
+                      component_values    = NULL,
+                      modifiers           = NULL) {
   .bcnma_require_mcmc_packages("bcnma_bin")
-  cl <- match.call()
-
-  # ---- Input validation ----
+  call         <- match.call()
   interactions <- match.arg(interactions)
-
-  studlab_col <- deparse(substitute(studlab))
-  treat_col   <- deparse(substitute(treat))
-  event_col   <- deparse(substitute(event))
-  n_col       <- deparse(substitute(n))
-
-  # Allow quoted or unquoted column names
-  for (col in c(studlab_col, treat_col, event_col, n_col)) {
-    col_clean <- gsub('"', '', col)
-    if (!col_clean %in% names(data)) {
-      stop(sprintf("Column '%s' not found in data.", col_clean))
-    }
-  }
-  studlab_col <- gsub('"', '', studlab_col)
-  treat_col   <- gsub('"', '', treat_col)
-  event_col   <- gsub('"', '', event_col)
-  n_col       <- gsub('"', '', n_col)
-
-  if (!is.character(components) || length(components) < 2) {
-    stop("'components' must be a character vector of length >= 2.")
-  }
-
-  if (interactions == "lasso_informative") {
-    if (is.null(active_components)) {
-      stop("'active_components' must be specified when interactions = 'lasso_informative'.")
-    }
-    unknown <- setdiff(active_components, components)
-    if (length(unknown) > 0) {
-      stop("'active_components' contains names not in 'components': ",
-           paste(unknown, collapse = ", "))
-    }
-  }
-
+  studlab_col  <- .resolve_column(deparse(substitute(studlab)), data)
+  treat_col    <- .resolve_column(deparse(substitute(treat)), data)
+  event_col    <- .resolve_column(deparse(substitute(event)), data)
+  n_col        <- .resolve_column(deparse(substitute(n)), data)
+  .validate_components(components)
+  ssvs_pairs <- .candidate_interaction_pairs(interactions, active_components, components)
   component_values <- .validate_component_values(component_values, nrow(data), components)
   modifier_specs   <- .normalise_modifier_specs(modifiers, data, components)
 
-  # ---- Data preparation ----
   if (!quiet) message("Preparing data...")
   prep <- .bcnma_bin_prepare_data(data, studlab_col, treat_col, event_col, n_col,
-                               components, component_separator)
-  prep     <- .apply_component_values(prep, component_values)
-  modifier_design <- .build_modifier_design(modifier_specs, data, prep)
-  Ns       <- prep$Ns
-  Nc       <- prep$Nc
-  Ninter   <- Nc * (Nc - 1L) / 2L
+                                  components, component_separator)
+  prep <- .apply_component_values(prep, component_values)
 
-  # ---- Determine included interactions ----
-  if (interactions == "lasso_informative") {
-    included <- all.interactions(active_components, Nc, components)
-    if (length(included) == 0) {
-      stop("No pairwise interactions found among 'active_components'. ",
-           "Need at least 2 active components.")
-    }
-  } else {
-    included <- seq_len(Ninter)
-  }
-
-  # ---- Seed: one JAGS RNG stream per chain, reproducible from `seed` ----
-  seed <- .resolve_seed(seed)
-
-  # ---- Common JAGS data ----
-  jags_data_base <- list(
-    r  = prep$r,
-    n  = prep$n,
-    xA = prep$xA,
-    xB = prep$xB,
-    na = prep$na,
-    Ns = Ns,
-    Nc = Nc
+  options <- list(
+    interactions      = interactions,
+    active_components = if (interactions == "lasso_informative") active_components,
+    ssvs_pairs        = ssvs_pairs,
+    inclusion_prob    = lasso_prob,
+    slab_ratio        = g,
+    eta_prior_sd      = BCNMA_DEFAULT_ETA_PRIOR_SD,
+    tau_prior         = .tau_prior_spec(tau_prior, "binary default"),
+    effect_prior_sd   = BCNMA_EFFECT_PRIOR_SD_BIN,
+    baseline_prior_sd = BCNMA_BASELINE_PRIOR_SD_BIN,
+    component_values  = component_values,
+    modifier_specs    = modifier_specs,
+    modifier_design   = .build_modifier_design(modifier_specs, data, prep),
+    reference_group   = reference.group,
+    mcmc              = .mcmc_settings(n.chains, n.adapt, n.burnin, n.iter, n.thin, seed),
+    quiet             = quiet
   )
-  # wA/Q are added only with modifiers so that the data stay identical otherwise
-  if (!is.null(modifier_design)) {
-    jags_data_base <- c(jags_data_base, list(wA = modifier_design$wA, Q = modifier_design$Q))
-  }
-  modifier_priors <- modifier_design$priors
-  mcmc <- list(n.chains = n.chains, n.adapt = n.adapt,
-               n.burnin = n.burnin, n.iter  = n.iter, n.thin = n.thin,
-               seed = seed, inits = .build_chain_inits(seed, n.chains))
-
-  # ---- Results containers ----
-  samps_lasso      <- NULL
-  summary_lasso    <- NULL
-
-  # =====================================================================
-  # MODEL 1: Additive (always fitted when interactions = "none";
-  #          also fitted alongside LASSO models for comparison)
-  # =====================================================================
-  if (!quiet) message("\n--- Fitting additive model (no interactions) ---")
-
-  model_add <- .jags_model_additive(Nc, tau_prior, modifier_priors = modifier_priors)
-  params_add <- .with_modifier_params(c("d", "ORd", "tau", "tau2"), modifier_design)
-  fit_add <- .bcnma_fit_model(model_add, jags_data_base, params_add, mcmc, quiet)
-  summary_additive <- fit_add$summary
-  samps_additive   <- fit_add$samps
-
-  # =====================================================================
-  # MODEL 2: SSVS / LASSO (interactions = "lasso" or "lasso_informative")
-  # =====================================================================
-  if (interactions != "none") {
-    if (!quiet) {
-      model_label <- if (interactions == "lasso") "LASSO (equiprobable)" else "LASSO (informative)"
-      message(sprintf("\n--- Fitting %s interaction model ---", model_label))
-      message(sprintf("  %d active interactions out of %d total", length(included), Ninter))
-    }
-
-    # Presence, not dose products, so gamma stays the co-presence log-OR
-    component_presence <- (prep$xA != 0) * 1L
-    interactions_arr <- .build_interaction_array(component_presence, Ns, prep$max_arms, Nc)
-
-    jags_data_ssvs <- c(jags_data_base, list(interactions = interactions_arr))
-
-    model_ssvs <- .jags_model_ssvs(
-      Nc, Ninter,
-      included        = included,
-      prob_active     = lasso_prob,
-      g               = g,
-      tau_prior       = tau_prior,
-      modifier_priors = modifier_priors
-    )
-
-    # Always sample gamma and Ind; eta only when all are active
-    params_ssvs <- .with_modifier_params(c("d", "ORd", "gamma", "Ind", "tau", "tau2", "eta"),
-                                         modifier_design)
-    fit_ssvs <- .bcnma_fit_model(model_ssvs, jags_data_ssvs, params_ssvs, mcmc, quiet)
-    summary_lasso <- fit_ssvs$summary
-    samps_lasso   <- fit_ssvs$samps
-
-    interaction_summary <- .extract_interaction_summary(samps_lasso, Ninter, components)
-    inter_incl_prob <- interaction_summary$inclusion_prob
-    inter_effects   <- interaction_summary$effects
-
-  } else {
-    inter_incl_prob <- NULL
-    inter_effects   <- NULL
-  }
-
+  fitted <- .fit_bcnma_models(prep, options)
   if (!quiet) message("\nDone.")
-
-  # ---- Build return object ----
-  result <- c(
-    list(
-      call                       = cl,
-      components                 = components,
-      n_components               = Nc,
-      Ns                         = Ns,
-      Ninter                     = Ninter,
-      sm                         = "OR",
-      interactions_model         = interactions,
-      active_components          = if (interactions == "lasso_informative") active_components else NULL,
-      included_interactions      = included,
-      reference.group            = reference.group,
-      summary_additive           = summary_additive,
-      summary_lasso              = summary_lasso,
-      samps_additive             = samps_additive,
-      samps_lasso                = samps_lasso,
-      interaction_inclusion_prob = inter_incl_prob,
-      interaction_effects        = inter_effects,
-      jags_data                  = jags_data_base,
-      mcmc_settings              = mcmc,
-      seed                       = seed,
-      inits                      = mcmc$inits
-    ),
-    .modifier_results(component_values, modifier_specs, modifier_design,
-                      samps_additive, samps_lasso, exponentiate = TRUE)
-  )
-  structure(result, class = "bcnma_bin")
+  structure(.assemble_bcnma_fit(call, prep, options, fitted, sm = "OR"), class = "bcnma_bin")
 }

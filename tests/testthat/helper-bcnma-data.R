@@ -16,6 +16,10 @@ TRUE_BETA_BIN  <- 0.5
 TRUE_BETA_CONT <- 0.3
 PROFICIENCY_CENTER <- 3
 SHORT_MCMC <- list(n.chains = 1, n.adapt = 500, n.burnin = 1000, n.iter = 3000)
+# Two-arm designs whose within-study contrasts (C; A; B + C - A) identify
+# all three main effects.
+SIM_DESIGNS <- list(c("A", "A+C"), c("B", "A+B"), c("A", "B+C"))
+SIM_COMPONENT_EFFECTS <- c(A = 0.2, B = 0.3, C = 0.4)
 TINY_MCMC  <- list(n.chains = 1, n.adapt = 100, n.burnin = 0, n.iter = 10)
 
 small_bin_data <- data.frame(
@@ -49,19 +53,19 @@ prepare_small_cont <- function(data = small_cont_data, values = NULL) {
   .apply_component_values(prep, values)
 }
 
-# 30 two-arm studies; C is present only in the active arm and its effect
-# changes by `true_beta` per unit of the study's provider proficiency.
-# outcome = "binary" gives r / n; "continuous" gives mean / sd / n (SD = 1,
-# so MD and SMD coincide approximately).
+# 30 two-arm studies (SIM_DESIGNS); the effect of C changes by `true_beta`
+# per unit of the study's provider proficiency. outcome = "binary" gives
+# r / n; "continuous" gives mean / sd / n (SD = 1, so MD and SMD coincide
+# approximately).
 simulate_proficiency_studies <- function(outcome = c("binary", "continuous"),
-                                         n_studies = 30, arm_size = 150) {
+                                         n_studies = 30, arm_size = 150,
+                                         true_beta = NULL) {
   outcome <- match.arg(outcome)
-  true_beta <- if (outcome == "binary") TRUE_BETA_BIN else TRUE_BETA_CONT
+  if (is.null(true_beta)) true_beta <- if (outcome == "binary") TRUE_BETA_BIN else TRUE_BETA_CONT
   set.seed(SIM_SEED)
-  designs <- list(c("A", "A+C"), c("B", "B+C"), c("A", "B+C"))
-  component_effect <- c(A = 0.2, B = 0.3, C = 0.4)
+  component_effect <- SIM_COMPONENT_EFFECTS
   arm_rows <- lapply(seq_len(n_studies), function(study_number) {
-    design      <- designs[[(study_number - 1) %% 3 + 1]]
+    design      <- SIM_DESIGNS[[(study_number - 1) %% length(SIM_DESIGNS) + 1]]
     proficiency <- stats::runif(1, min = 1, max = 5)
     baseline    <- stats::rnorm(1, mean = -0.5, sd = 0.3)
     linear_predictor <- vapply(design, function(treat_label) {
@@ -84,6 +88,12 @@ simulate_proficiency_studies <- function(outcome = c("binary", "continuous"),
     arms
   })
   do.call(rbind, arm_rows)
+}
+
+# Binary network without modifier effect and with large arms, for the
+# comparison with netmeta::discomb().
+simulate_identifiable_network <- function() {
+  simulate_proficiency_studies("binary", arm_size = 300, true_beta = 0)
 }
 
 # One-chain test runs make MCMCsummary warn that Rhat is unavailable; muffle

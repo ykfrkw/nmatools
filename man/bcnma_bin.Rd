@@ -15,9 +15,9 @@ bcnma_bin(
   reference.group = NULL,
   interactions = c("lasso", "none", "lasso_informative"),
   active_components = NULL,
-  lasso_prob = 0.5,
-  g = 100,
-  tau_prior = c(-1.67, 1/1.472^2),
+  lasso_prob = BCNMA_DEFAULT_INCLUSION_PROB,
+  g = BCNMA_DEFAULT_SLAB_RATIO,
+  tau_prior = BCNMA_TAU2_PRIOR_BIN,
   n.chains = 3,
   n.adapt = 2000,
   n.burnin = 5000,
@@ -96,7 +96,7 @@ component is present); the code is \code{value - center}. Ordinal: \code{levels}
 (required, lowest first) and \code{monotone} (\code{"none"}, \code{"increasing"},
 \code{"decreasing"}); cumulative coding, so \code{beta_l} is the increment from level
 l to l+1. \code{NA} is allowed only in arms where the modified component is
-absent. The term \code{beta_q * (wA[i,k,q] - wA[i,1,q])} is added to the
+absent. The term \code{beta_q * (z[i,k,q] - z[i,1,q])} is added to the
 consistency equation, so \code{d[k]} of a modified component is its effect at
 the center (continuous) or reference level (ordinal). Modifier effects are
 identified mainly by between-study variation and are observational

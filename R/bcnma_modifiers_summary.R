@@ -8,17 +8,6 @@
 # arm-level effect modifiers (see R/bcnma_modifiers.R for the design). Shared
 # by bcnma_bin (log-OR scale) and bcnma_cont (SMD / MD scale).
 
-#' Restore the index of a single beta term
-#'
-#' coda drops the index of length-1 vector nodes (`"beta"` instead of `"beta[1]"`);
-#' renaming keeps downstream code able to address `beta[q]` uniformly.
-#' @noRd
-.index_single_beta <- function(fit) {
-  colnames(fit$samps)[colnames(fit$samps) == "beta"]     <- "beta[1]"
-  rownames(fit$summary)[rownames(fit$summary) == "beta"] <- "beta[1]"
-  fit
-}
-
 #' Posterior median and 95% CrI of beta per modifier term
 #'
 #' @param samps        data.frame of combined MCMC samples (or NULL)

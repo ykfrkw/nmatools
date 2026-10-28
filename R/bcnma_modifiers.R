@@ -4,20 +4,21 @@
 # Contact: furukawa.y.psy@gmail.com
 #
 # File description:
-# Non-binary component values (doses) and arm-level effect modifiers of
-# specific components, shared by bcnma_bin() and bcnma_cont(). Builds the
-# modifier design array
-#   wA[i, k, q] = presence(component c_q in arm k) * code_q(covariate of arm k)
-# that enters the linear predictor as sum_q beta_q (wA[i,k,q] - wA[i,1,q]).
-# The logic is likelihood-independent: it only needs prep$xA, prep$data
-# (with row_id and arm), prep$studies, prep$na and prep$max_arms.
-# Posterior summaries / printing / compare_combinations() codes live in
-# R/bcnma_modifiers_summary.R.
+# Purpose: non-binary component values (doses) and arm-level effect
+#          modifiers of specific components, shared by bcnma_bin() and
+#          bcnma_cont(). Builds the modifier code array
+#            code_arm[i, k, q] = presence(component c_q in arm k) * code_q(arm k)
+#          whose within-study contrast z[i,k,q] enters the JAGS linear
+#          predictor as inprod(beta[], z[i,k,]).
+# Inputs:  `modifiers` / `component_values` arguments, user data, `prep`
+#          (x_arm, arm_table with row_id / study_index / arm, n_arms)
+# Outputs: validated values, updated prep, modifier design list
+# Depends: R/bcnma_constants.R; summaries / printing / compare_combinations()
+#          codes live in R/bcnma_modifiers_summary.R
 
 BCNMA_MODIFIER_TYPES     <- c("continuous", "ordinal")
 BCNMA_MONOTONE_OPTIONS   <- c("none", "increasing", "decreasing")
 BCNMA_DEFAULT_PRIOR_SD   <- 10   # precision 0.01 (the binary model's vague prior on d[k])
-BCNMA_ZERO_TOLERANCE     <- 1e-12
 
 # ---- Component values (doses) ----
 
@@ -51,21 +52,20 @@ BCNMA_ZERO_TOLERANCE     <- 1e-12
   component_values
 }
 
-#' Replace the 0/1 indicators in xA (and xB) with user-supplied values
+#' Replace the 0/1 indicators in x_arm with user-supplied values
 #'
-#' Rows are matched through prep$data$row_id because the data preparation
-#' helpers (.bcnma_bin_prepare_data() / .bcnma_cont_prepare_data()) sort arms
-#' by study.
+#' Rows are matched through prep$arm_table$row_id because the data
+#' preparation (.parse_arm_structure()) sorts arms by study.
 #' @noRd
 .apply_component_values <- function(prep, component_values) {
   if (is.null(component_values)) return(prep)
-  arm_rows    <- prep$data
-  value_array <- array(0, dim = dim(prep$xA))
+  arm_rows    <- prep$arm_table
+  value_array <- array(0, dim = dim(prep$x_arm))
   for (row in seq_len(nrow(arm_rows))) {
-    study_index <- match(arm_rows$study[row], prep$studies)
-    value_array[study_index, arm_rows$arm[row], ] <- component_values[arm_rows$row_id[row], ]
+    value_array[arm_rows$study_index[row], arm_rows$arm[row], ] <-
+      component_values[arm_rows$row_id[row], ]
   }
-  n_disagreeing <- sum((value_array != 0) != (prep$xA != 0))
+  n_disagreeing <- sum((value_array != 0) != (prep$x_arm != 0))
   if (n_disagreeing > 0) {
     warning(n_disagreeing, " arm-component cell(s) where 'component_values' (non-zero) ",
             "and the 'treat' label disagree on presence; 'component_values' is used.")
@@ -75,8 +75,7 @@ BCNMA_ZERO_TOLERANCE     <- 1e-12
     warning("'component_values' is zero in every arm for: ",
             paste(prep$components[is_all_zero], collapse = ", "))
   }
-  prep$xA <- value_array
-  prep$xB <- array(value_array[, 1, ], dim = c(prep$Ns, prep$Nc))
+  prep$x_arm <- value_array
   prep
 }
 
@@ -131,21 +130,22 @@ BCNMA_ZERO_TOLERANCE     <- 1e-12
 
 # ---- Modifier design array ----
 
-#' Build wA, the term table and the beta priors from normalised specs
+#' Build code_arm, the term table and the beta priors from normalised specs
 #'
-#' @return NULL when there are no specs; otherwise list(wA, Q, terms, priors)
+#' @return NULL when there are no specs; otherwise list(code_arm, Q, terms,
+#'   priors)
 #' @noRd
 .build_modifier_design <- function(specs, data, prep) {
   if (length(specs) == 0) return(NULL)
-  arm_rows    <- prep$data
-  study_index <- match(arm_rows$study, prep$studies)
+  arm_rows    <- prep$arm_table
+  study_index <- arm_rows$study_index
   term_rows   <- list()
   code_list   <- list()
   for (spec in specs) {
     raw_values <- data[[spec$column]][arm_rows$row_id]
     for (component in spec$components) {
       component_index <- match(component, prep$components)
-      is_present <- prep$xA[cbind(study_index, arm_rows$arm, component_index)] != 0
+      is_present <- prep$x_arm[cbind(study_index, arm_rows$arm, component_index)] != 0
       .check_modifier_missing(raw_values, is_present, arm_rows, spec, component)
       coded <- if (spec$type == "continuous") {
         .code_continuous(raw_values, is_present, spec, component)
@@ -159,15 +159,15 @@ BCNMA_ZERO_TOLERANCE     <- 1e-12
   terms   <- do.call(rbind, term_rows)
   terms$q <- seq_len(nrow(terms))
   terms   <- terms[, c("q", setdiff(names(terms), "q"))]
-  wA <- array(0, dim = c(prep$Ns, prep$max_arms, nrow(terms)))
-  for (q in terms$q) wA[cbind(study_index, arm_rows$arm, q)] <- code_list[[q]]
-  .check_modifier_identifiability(wA, prep$na, terms)
+  code_arm <- array(0, dim = c(prep$n_studies, prep$max_arms, nrow(terms)))
+  for (q in terms$q) code_arm[cbind(study_index, arm_rows$arm, q)] <- code_list[[q]]
+  .check_modifier_identifiability(code_arm, prep$n_arms, terms)
   message("Note: modifier effects (beta) are identified mainly by between-study variation ",
           "in the covariate; interpret them as observational (ecological) associations.")
   priors <- data.frame(precision  = 1 / terms$prior_sd^2,
                        truncation = ifelse(terms$monotone == "increasing", "T(0,)",
                                     ifelse(terms$monotone == "decreasing", "T(,0)", "")))
-  list(wA = wA, Q = nrow(terms), terms = terms, priors = priors)
+  list(code_arm = code_arm, Q = nrow(terms), terms = terms, priors = priors)
 }
 
 .check_modifier_missing <- function(raw_values, is_present, arm_rows, spec, component) {
@@ -217,9 +217,12 @@ BCNMA_ZERO_TOLERANCE     <- 1e-12
   list(codes = codes, terms = terms)
 }
 
-.check_modifier_identifiability <- function(wA, na, terms) {
+.check_modifier_identifiability <- function(code_arm, n_arms, terms) {
   for (q in terms$q) {
-    contrasts <- unlist(lapply(seq_along(na), function(i) wA[i, seq_len(na[i]), q] - wA[i, 1, q]))
+    contrasts <- unlist(lapply(seq_along(n_arms), function(study_index) {
+      arms <- seq_len(n_arms[study_index])
+      code_arm[study_index, arms, q] - code_arm[study_index, 1, q]
+    }))
     if (all(abs(contrasts) < BCNMA_ZERO_TOLERANCE)) {
       warning(sprintf("Modifier term '%s' is not identifiable: its within-study contrast is zero ",
                       terms$term[q]),

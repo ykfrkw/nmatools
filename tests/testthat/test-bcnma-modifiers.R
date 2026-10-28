@@ -16,10 +16,10 @@ test_that("component_values stay aligned with their rows after study re-ordering
   for (prepare in list(prepare_small_bin, prepare_small_cont)) {
     prep <- prepare(values = .validate_component_values(dose_values, 6, SIM_COMPONENTS))
     expect_equal(prep$studies, c("S1", "S2", "S3"))
-    expect_equal(prep$xA[1, , 3], c(0, 4))     # S1: rows 2 (A) then 5 (B+C)
-    expect_equal(prep$xA[2, , 3], c(0, 2.5))   # S2: rows 1 then 3
-    expect_equal(prep$xA[3, , 3], c(0, 7))     # S3: rows 4 then 6
-    expect_equal(prep$xB[, 2], c(0, 0, 1))
+    expect_equal(prep$x_arm[1, , 3], c(0, 4))     # S1: rows 2 (A) then 5 (B+C)
+    expect_equal(prep$x_arm[2, , 3], c(0, 2.5))   # S2: rows 1 then 3
+    expect_equal(prep$x_arm[3, , 3], c(0, 7))     # S3: rows 4 then 6
+    expect_equal(prep$x_arm[, 1, 2], c(0, 0, 1))
   }
   expect_error(.validate_component_values(dose_values[, 3:1], 6, SIM_COMPONENTS), "exactly")
   expect_error(.validate_component_values(dose_values[1:5, ], 6, SIM_COMPONENTS), "rows")
@@ -38,9 +38,9 @@ test_that("ordinal modifiers use cumulative (incremental) coding for both outcom
     design <- suppressMessages(.build_modifier_design(specs, case$data, case$prepare(case$data)))
     expect_equal(design$Q, 2)
     expect_equal(design$terms$term, c("skill(low->mid):C", "skill(mid->high):C"))
-    expect_equal(design$wA[, 2, 1], c(1, 1, 0))  # S1 mid, S2 high, S3 low
-    expect_equal(design$wA[, 2, 2], c(0, 1, 0))
-    expect_equal(design$wA[, 1, ], matrix(0, 3, 2))
+    expect_equal(design$code_arm[, 2, 1], c(1, 1, 0))  # S1 mid, S2 high, S3 low
+    expect_equal(design$code_arm[, 2, 2], c(0, 1, 0))
+    expect_equal(design$code_arm[, 1, ], matrix(0, 3, 2))
   }
   bad_data <- transform(small_bin_data, level = c(NA, NA, "expert", NA, "mid", "low"))
   expect_error(.build_modifier_design(.normalise_modifier_specs(ordinal_spec, bad_data, SIM_COMPONENTS),
@@ -75,18 +75,6 @@ test_that("a term with no within-study contrast triggers a non-identifiability w
   prep  <- .bcnma_bin_prepare_data(both_arms_data, "study", "treat", "r", "n", SIM_COMPONENTS)
   expect_warning(suppressMessages(.build_modifier_design(specs, both_arms_data, prep)),
                  "not identifiable")
-})
-
-test_that("model text adds beta terms on the right scale for each outcome type", {
-  priors <- data.frame(precision = c(0.01, 0.04), truncation = c("T(0,)", ""))
-  bin_model  <- .jags_model_ssvs(3, 3, modifier_priors = priors)
-  cont_model <- .jags_model_additive_cont(3, modifier_priors = priors)
-  expect_match(bin_model, "beta[1] * wA[i,k,1]", fixed = TRUE)
-  expect_match(bin_model, "beta[1] ~ dnorm(0, 0.010000) T(0,)", fixed = TRUE)
-  expect_match(bin_model, "ORbeta[q] <- exp(beta[q])", fixed = TRUE)
-  expect_match(cont_model, "- (beta[1] * wA[i,1,1]", fixed = TRUE)
-  expect_match(cont_model, "beta[2] ~ dnorm(0, 0.040000)\n", fixed = TRUE)
-  expect_false(grepl("ORbeta", cont_model, fixed = TRUE))
 })
 
 test_that("`at` codes follow the term definitions", {

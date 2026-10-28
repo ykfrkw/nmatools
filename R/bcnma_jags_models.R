@@ -1,213 +1,172 @@
 # © 2026 Yuki Furukawa. All rights reserved.
 # Author: Yuki Furukawa
-# Date: 2026-03-09
+# Date: 2026-03-09 (rewritten 2026-10-28)
 # Contact: furukawa.y.psy@gmail.com
 #
 # File description:
-# Dynamic JAGS model string builders for Bayesian cNMA.
-# Models use 3D component arrays (xA, xB) instead of per-component matrices,
-# making them reusable for any number of components.
-# Effect-modifier blocks (beta terms) come from R/bcnma_jags_modifiers.R;
-# continuous-outcome builders are in R/bcnma_jags_models_cont.R.
+# Purpose: assemble the JAGS code of every bcnma model from a few small
+#          blocks, written in NICE DSU TSD2 notation (Dias et al.) so that a
+#          reader of TSD2 can check them line by line:
+#            likelihood (binomial / normal)  x  linear predictor
+#            (additive / ssvs / standard)  +  priors.
+#          Within-study contrasts are passed as data (x, xint, z: arm k minus
+#          arm 1), so the consistency equation is one line of inprod() terms.
+#          Optional blocks (interactions, modifiers) are added only when
+#          present because JAGS cannot loop over an empty range of a data
+#          array.
+# Inputs:  `model_settings` list built by .bcnma_model_settings()
+#          (R/bcnma_fit.R)
+# Outputs: character JAGS model code; bcnma_model_code() prints it
+# Depends: base R only
 
-# ---- Internal helpers ----
-
-# Build the component main-effect sum for the consistency equation.
-# Returns strings for arm k ("A") and reference arm ("B").
-# e.g. for Nc=3: "d[1]*xA[i,k,1] + d[2]*xA[i,k,2] + d[3]*xA[i,k,3]"
-.jags_component_sum <- function(Nc) {
-  A_terms <- paste0("d[", 1:Nc, "] * xA[i,k,", 1:Nc, "]")
-  B_terms <- paste0("d[", 1:Nc, "] * xB[i,",   1:Nc, "]")
-  list(
-    A = paste(A_terms, collapse = " +\n                      "),
-    B = paste(B_terms, collapse = " +\n                      ")
+#' JAGS code of one bcnma model
+#'
+#' @param model          "additive", "ssvs" or "standard"
+#' @param model_settings list(likelihood, effect_prior_sd, baseline_prior_sd,
+#'   tau_prior, modifier_priors, ssvs) from .bcnma_model_settings()
+#' @return character JAGS model code
+#' @noRd
+.build_jags_model_code <- function(model, model_settings) {
+  paste0(
+    "model {\n",
+    .jags_study_loop(model, model_settings),
+    .jags_heterogeneity_block(model_settings$tau_prior),
+    .jags_effect_block(model, model_settings),
+    .jags_modifier_block(model_settings$modifier_priors, model),
+    if (model == "ssvs") .jags_ssvs_block(model_settings$ssvs) else "",
+    "}\n"
   )
 }
 
-# Build the interaction effect sum for the consistency equation.
-# Returns strings for arm k ("A") and reference arm ("B").
-.jags_interaction_sum <- function(Ninter) {
-  A_terms <- paste0("gamma[", 1:Ninter, "] * interactions[i,k,", 1:Ninter, "]")
-  B_terms <- paste0("gamma[", 1:Ninter, "] * interactions[i,1,",  1:Ninter, "]")
-  list(
-    A = paste(A_terms, collapse = " +\n                      "),
-    B = paste(B_terms, collapse = " +\n                      ")
+# Study loop: likelihood, random effects with the TSD2 multi-arm correction,
+# and the consistency equation of the chosen model.
+.jags_study_loop <- function(model, model_settings) {
+  paste0(
+    "  for (i in 1:Ns) {\n",
+    "    w[i,1]     <- 0\n",
+    "    delta[i,1] <- 0\n",
+    sprintf("    u[i] ~ dnorm(0, %s)    # study baseline (arm 1)\n",
+            .format_precision(model_settings$baseline_prior_sd)),
+    "    for (k in 1:na[i]) {\n",
+    .jags_likelihood_lines(model_settings$likelihood),
+    "    }\n",
+    "    for (k in 2:na[i]) {\n",
+    "      delta[i,k] ~ dnorm(md[i,k], precd[i,k])    # trial-specific effect\n",
+    "      md[i,k]    <- mean[i,k] + sw[i,k]\n",
+    "      w[i,k]     <- delta[i,k] - mean[i,k]\n",
+    "      sw[i,k]    <- sum(w[i,1:(k-1)]) / (k-1)    # multi-arm correction\n",
+    "      precd[i,k] <- prec * 2 * (k-1) / k\n",
+    .jags_consistency_line(model, model_settings),
+    "    }\n",
+    "  }\n"
   )
 }
 
-# Build the SSVS/LASSO prior block for gamma interaction terms.
-# - included:     integer vector of interaction indices to model stochastically
-# - not_included: remaining indices forced to gamma = 0
-# - prob_active:  prior P(included) for active interactions
-# Uses explicit per-index JAGS code for JAGS compatibility.
-.jags_ssvs_prior_block <- function(Ninter, included, prob_active) {
-  not_included <- setdiff(seq_len(Ninter), included)
-
-  lines <- character(Ninter)
-  for (k in seq_len(Ninter)) {
-    if (k %in% included) {
-      lines[k] <- sprintf(
-        paste0(
-          "  ## interaction %d: stochastic (SSVS)\n",
-          "  IndA[%d] ~ dcat(Pind_active[])\n",
-          "  Ind[%d]  <- IndA[%d] - 1\n",
-          "  gamma[%d] ~ dnorm(0, tauCov[IndA[%d]])"
-        ),
-        k, k, k, k, k, k
-      )
-    } else {
-      lines[k] <- sprintf(
-        paste0(
-          "  ## interaction %d: excluded (fixed to 0)\n",
-          "  gamma[%d] <- 0\n",
-          "  Ind[%d]   <- 0"
-        ),
-        k, k, k
-      )
-    }
+.jags_likelihood_lines <- function(likelihood) {
+  if (likelihood == "binomial") {
+    return(paste0(
+      "      r[i,k] ~ dbin(p[i,k], n[i,k])\n",
+      "      logit(p[i,k]) <- u[i] + delta[i,k]\n"
+    ))
   }
-
   paste0(
-    paste(lines, collapse = "\n"),
-    "\n\n",
-    sprintf(
-      "  Pind_active[1] <- %.4f  ## P(not included)\n  Pind_active[2] <- %.4f  ## P(included)",
-      1 - prob_active, prob_active
-    )
+    "      y[i,k] ~ dnorm(theta[i,k], pow(se[i,k], -2))\n",
+    "      theta[i,k] <- u[i] + delta[i,k]\n"
   )
 }
 
-# ---- Public JAGS model builders ----
+# mean[i,k]: expected effect of arm k vs arm 1 of study i.
+.jags_consistency_line <- function(model, model_settings) {
+  if (model == "standard") {
+    return("      mean[i,k]  <- dcomb[t[i,k]] - dcomb[t[i,1]]\n")
+  }
+  terms <- "inprod(d[], x[i,k,])"
+  if (model == "ssvs") terms <- c(terms, "inprod(gamma[], xint[i,k,])")
+  if (!is.null(model_settings$modifier_priors)) terms <- c(terms, "inprod(beta[], z[i,k,])")
+  paste0("      mean[i,k]  <- ", paste(terms, collapse = "\n                    + "), "\n")
+}
 
-#' Build JAGS model string: additive cNMA (no interactions)
-#'
-#' Random-effects Bayesian cNMA with binomial likelihood and log-normal
-#' heterogeneity prior. Component effects are additive (no interaction terms).
-#'
-#' @param Nc        integer number of components
-#' @param tau_prior numeric c(meanlog, precision) of the dlnorm prior on tau2
-#' @param modifier_priors data.frame (precision, truncation) per beta term, or NULL
-#'                  for no effect modifiers (then wA and Q are not needed in the data)
-#' @return character JAGS model string
-#' @noRd
-.jags_model_additive <- function(Nc, tau_prior = c(-1.67, 1 / 1.472^2),
-                                 modifier_priors = NULL) {
-  cs <- .jags_component_sum(Nc)
-
+.jags_heterogeneity_block <- function(tau_prior) {
   paste0(
-    'model {\n',
-    '  for (i in 1:Ns) {\n',
-    '    w[i,1]     <- 0\n',
-    '    theta[i,1] <- 0\n',
-    '    for (k in 1:na[i]) { r[i,k] ~ dbin(p[i,k], n[i,k]) }\n',
-    '    logit(p[i,1]) <- u[i]\n',
-    '    for (k in 2:na[i]) {\n',
-    '      logit(p[i,k]) <- u[i] + theta[i,k]\n',
-    '      theta[i,k]    ~ dnorm(md[i,k], precd[i,k])\n',
-    '      md[i,k]       <- mean[i,k] + sw[i,k]\n',
-    '      w[i,k]        <- theta[i,k] - mean[i,k]\n',
-    '      sw[i,k]       <- sum(w[i,1:(k-1)]) / (k-1)\n',
-    '      precd[i,k]    <- prec * 2 * (k-1) / k\n',
-    '      ## Consistency: arm k effect minus reference arm effect\n',
-    '      mean[i,k]     <- (', cs$A, ')\n',
-    '                      - (', cs$B, ')\n',
-    .jags_modifier_lines(modifier_priors, BCNMA_INDENT_BIN),
-    '    }\n',
-    '  }\n',
-    '\n',
-    '  ## Baseline log-odds\n',
-    '  for (i in 1:Ns) { u[i] ~ dnorm(0, 0.01) }\n',
-    '\n',
-    '  ## Heterogeneity: log-normal prior on the variance tau2 (Turner et al. 2015)\n',
-    '  prec <- 1 / tau2\n',
-    '  tau  <- sqrt(tau2)\n',
-    '  tau2 ~ dlnorm(', sprintf("%.6f", tau_prior[1]), ', ', sprintf("%.6f", tau_prior[2]), ')\n',
-    '\n',
-    '  ## Component log-OR effects\n',
-    '  for (k in 1:Nc) { d[k]   ~ dnorm(0, 0.01) }\n',
-    '  for (k in 1:Nc) { ORd[k] <- exp(d[k]) }\n',
-    .jags_modifier_prior_block(modifier_priors),
-    '}'
+    "\n  # Heterogeneity: ", tau_prior$label, "\n",
+    sprintf("  tau2 ~ dlnorm(%s, %s)\n", .format_number(tau_prior$meanlog),
+            .format_number(tau_prior$precision)),
+    "  tau  <- sqrt(tau2)\n",
+    "  prec <- 1 / tau2\n"
   )
 }
 
-#' Build JAGS model string: SSVS cNMA (with pairwise interaction penalisation)
-#'
-#' Random-effects Bayesian cNMA with spike-and-slab (SSVS) priors on all
-#' pairwise interaction terms. The spike forces near-zero interactions to zero;
-#' the slab allows large interactions to be estimated freely. The scale is
-#' estimated from data via the global parameter eta.
-#'
-#' For `interactions = "lasso"`: all Ninter terms are modelled stochastically.
-#' For `interactions = "lasso_informative"`: only `included` terms are
-#' stochastic; the remainder are fixed to gamma = 0.
-#'
-#' @param Nc          integer number of components
-#' @param Ninter      integer number of pairwise interactions (= Nc*(Nc-1)/2)
-#' @param included    integer vector of interaction indices to model (default all)
-#' @param prob_active numeric prior P(included) for active interactions (default 0.5)
-#' @param g           numeric spike-slab variance ratio (slab variance = spike variance * g)
-#' @param tau_prior   numeric c(meanlog, precision) of the dlnorm prior on tau2
-#' @param modifier_priors data.frame (precision, truncation) per beta term, or NULL
-#'                  for no effect modifiers (then wA and Q are not needed in the data)
-#' @return character JAGS model string
-#' @noRd
-.jags_model_ssvs <- function(Nc, Ninter,
-                              included    = seq_len(Ninter),
-                              prob_active = 0.5,
-                              g           = 100,
-                              tau_prior   = c(-1.67, 1 / 1.472^2),
-                              modifier_priors = NULL) {
-  cs    <- .jags_component_sum(Nc)
-  is_   <- .jags_interaction_sum(Ninter)
-  ssvs  <- .jags_ssvs_prior_block(Ninter, included, prob_active)
-
+# Component effects d[j] (or one node per combination for the standard model).
+.jags_effect_block <- function(model, model_settings) {
+  effect_precision <- .format_precision(model_settings$effect_prior_sd)
+  if (model == "standard") {
+    return(paste0(
+      "\n  # One effect per observed combination; combination 1 is the reference\n",
+      "  dcomb[1] <- 0\n",
+      sprintf("  for (c in 2:Ncomb) { dcomb[c] ~ dnorm(0, %s) }\n", effect_precision)
+    ))
+  }
   paste0(
-    'model {\n',
-    '  for (i in 1:Ns) {\n',
-    '    w[i,1]     <- 0\n',
-    '    theta[i,1] <- 0\n',
-    '    for (k in 1:na[i]) { r[i,k] ~ dbin(p[i,k], n[i,k]) }\n',
-    '    logit(p[i,1]) <- u[i]\n',
-    '    for (k in 2:na[i]) {\n',
-    '      logit(p[i,k]) <- u[i] + theta[i,k]\n',
-    '      theta[i,k]    ~ dnorm(md[i,k], precd[i,k])\n',
-    '      md[i,k]       <- mean[i,k] + sw[i,k]\n',
-    '      w[i,k]        <- theta[i,k] - mean[i,k]\n',
-    '      sw[i,k]       <- sum(w[i,1:(k-1)]) / (k-1)\n',
-    '      precd[i,k]    <- prec * 2 * (k-1) / k\n',
-    '      ## Consistency with interactions\n',
-    '      mean[i,k]     <- (', cs$A, ')\n',
-    '                      - (', cs$B, ')\n',
-    '                      + (', is_$A, ')\n',
-    '                      - (', is_$B, ')\n',
-    .jags_modifier_lines(modifier_priors, BCNMA_INDENT_BIN),
-    '    }\n',
-    '  }\n',
-    '\n',
-    '  ## Baseline log-odds\n',
-    '  for (i in 1:Ns) { u[i] ~ dnorm(0, 0.01) }\n',
-    '\n',
-    '  ## Heterogeneity: log-normal prior on the variance tau2 (Turner et al. 2015)\n',
-    '  prec <- 1 / tau2\n',
-    '  tau  <- sqrt(tau2)\n',
-    '  tau2 ~ dlnorm(', sprintf("%.6f", tau_prior[1]), ', ', sprintf("%.6f", tau_prior[2]), ')\n',
-    '\n',
-    '  ## Component log-OR effects\n',
-    '  for (k in 1:Nc) { d[k]   ~ dnorm(0, 0.01) }\n',
-    '  for (k in 1:Nc) { ORd[k] <- exp(d[k]) }\n',
-    .jags_modifier_prior_block(modifier_priors),
-    '\n',
-    '  ## Spike-and-slab scale (learned from data)\n',
-    '  ## tauCov[1] = spike precision (near 0 effect when NOT included)\n',
-    sprintf('  ## tauCov[2] = slab precision (g = %.0f; allows large effect when included)\n', g),
-    '  zeta      <- pow(eta, -2)\n',
-    '  eta       ~ dnorm(0, 1000)I(0,)\n',
-    '  tauCov[1] <- zeta\n',
-    sprintf('  tauCov[2] <- zeta * %.6f  ## slab = spike / g\n', 1 / g),
-    '\n',
-    '  ## SSVS: Ind[k] = 1 => included (slab), Ind[k] = 0 => not included (spike)\n',
-    ssvs, '\n',
-    '}'
+    "\n  # Component effects (per unit of component value)\n",
+    sprintf("  for (j in 1:Nc) { d[j] ~ dnorm(0, %s) }\n", effect_precision),
+    if (model_settings$likelihood == "binomial") "  for (j in 1:Nc) { ORd[j] <- exp(d[j]) }\n"
+    else ""
   )
+}
+
+# beta[q]: change in the effect of a modified component per code unit. One
+# line per term because priors (and monotone truncation) differ by term.
+.jags_modifier_block <- function(modifier_priors, model) {
+  if (is.null(modifier_priors) || model == "standard") return("")
+  truncation <- ifelse(modifier_priors$truncation == "", "",
+                       paste0(" ", modifier_priors$truncation))
+  prior_lines <- sprintf("  beta[%d] ~ dnorm(0, %s)%s\n", seq_len(nrow(modifier_priors)),
+                         .format_number(modifier_priors$precision), truncation)
+  paste0("\n  # Effect modifiers\n", paste(prior_lines, collapse = ""))
+}
+
+# Spike-and-slab (George & McCulloch 1993): Ind[m] = 1 puts gamma[m] in the
+# slab (SD eta * sqrt(g)), Ind[m] = 0 in the spike (SD eta).
+.jags_ssvs_block <- function(ssvs_settings) {
+  paste0(
+    "\n  # SSVS interactions\n",
+    "  for (m in 1:Nint) {\n",
+    "    IndA[m]  ~ dcat(p_incl[])\n",
+    "    Ind[m]   <- IndA[m] - 1\n",
+    "    gamma[m] ~ dnorm(0, prec_gamma[IndA[m]])\n",
+    "  }\n",
+    sprintf("  p_incl[1] <- %s\n", .format_number(1 - ssvs_settings$inclusion_prob)),
+    sprintf("  p_incl[2] <- %s\n", .format_number(ssvs_settings$inclusion_prob)),
+    sprintf("  eta ~ dnorm(0, %s) T(0,)\n", .format_precision(ssvs_settings$eta_prior_sd)),
+    "  prec_gamma[1] <- pow(eta, -2)    # spike\n",
+    sprintf("  prec_gamma[2] <- pow(eta, -2) / %s    # slab = g x spike variance\n",
+            .format_number(ssvs_settings$slab_ratio))
+  )
+}
+
+# Numbers are printed with up to 6 significant digits so that the code reads
+# like hand-written JAGS (0.01, not 0.010000).
+.format_number <- function(value) as.character(signif(value, 6))
+.format_precision <- function(prior_sd) .format_number(1 / prior_sd^2)
+
+#' Print the JAGS code of a fitted bcnma model
+#'
+#' Shows the exact model text that was compiled (stored in
+#' `fit$model_code`). For `model = "standard"` the full-interaction
+#' (standard NMA) model, one effect per observed combination, is built
+#' from the fit.
+#'
+#' @param fit   a `bcnma_bin` or `bcnma_cont` object
+#' @param model `"additive"`, `"ssvs"` or `"standard"`
+#' @return the model code, invisibly
+#' @export
+bcnma_model_code <- function(fit, model = c("additive", "ssvs", "standard")) {
+  model <- match.arg(model)
+  model_code <- fit$model_code[[model]]
+  if (is.null(model_code) && model == "standard") {
+    model_code <- .build_jags_model_code("standard", fit$model_settings)
+  }
+  if (is.null(model_code)) stop("No '", model, "' model in this fit.")
+  cat(model_code)
+  invisible(model_code)
 }
