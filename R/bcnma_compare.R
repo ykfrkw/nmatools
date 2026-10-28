@@ -22,7 +22,9 @@
 #' @param x            fitted \code{bcnma_bin} or \code{bcnma_cont} object
 #' @param combo1       combination A: character vector of component names,
 #'   integer indices (value 1 each), or a named numeric vector (names =
-#'   components, values = component values, e.g. doses, as in
+#'   components, values = component values, e.g. doses; main effects are
+#'   linear through zero, d * dose, while interactions and modifiers act on
+#'   presence; as in
 #'   \code{component_values})
 #' @param combo2       combination B, same forms as \code{combo1}. Use
 #'   \code{character(0)} or \code{integer(0)} to compare against "no

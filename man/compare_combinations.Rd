@@ -36,7 +36,9 @@ compare_combinations(x, ...)
 
 \item{combo1}{combination A: character vector of component names,
 integer indices (value 1 each), or a named numeric vector (names =
-components, values = component values, e.g. doses, as in
+components, values = component values, e.g. doses; main effects are
+linear through zero, d * dose, while interactions and modifiers act on
+presence; as in
 \code{component_values})}
 
 \item{combo2}{combination B, same forms as \code{combo1}. Use

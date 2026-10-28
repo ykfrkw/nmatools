@@ -182,13 +182,14 @@ Two optional arguments extend the model:
 
 - **`component_values`** replaces the 0/1 component indicators with values
   such as the number of sessions, so `d[k]` is the effect per unit of
-  component *k* (linear dose-response).
+  component *k* (linear dose-response through zero: effect = `d[k] * dose`).
+  Interactions and modifiers act on presence, not on the dose.
 - **`modifiers`** adds arm-level effect modifiers of specific components,
-  continuous (centred) or ordinal (cumulative coding, optionally monotone).
-  `d[k]` of a modified component is then its effect **at the center
-  (continuous) or the reference level (ordinal)**, and `beta` is the change
-  per covariate unit or level step; evaluate other values with
-  `compare_combinations(..., at = list(label = value))`.
+  continuous (centred and standardised) or ordinal (cumulative coding,
+  optionally monotone). `d[k]` of a modified component is then its effect
+  **at the center (continuous) or the reference level (ordinal)**, and `beta`
+  is the change per covariate unit (and per SD) or level step; evaluate other
+  values with `compare_combinations(..., at = list(label = value))`.
 
 Modifier effects are identified mainly by **between-study** variation in the
 covariate (for example a provider's proficiency, which is the same in every arm

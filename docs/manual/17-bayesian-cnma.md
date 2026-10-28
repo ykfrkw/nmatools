@@ -274,14 +274,17 @@ which.place(k, components)
 ## Component values (doses) and effect modifiers
 
 Two optional arguments extend the linear predictor. With both left at `NULL`
-the model is exactly the plain cNMA above (identical to bcnma 0.1.0). For arm
-*k* of study *i* (arm 1 is the comparator):
+the model is the plain cNMA above. For arm *k* of study *i* (arm 1 is the
+comparator):
 
 ```
-mean[i,k] = sum_j d[j]    * (x[i,k,j] - x[i,1,j])
-          + sum_q beta[q] * (w[i,k,q] - w[i,1,q])
-          [+ SSVS interaction terms gamma]
+mean[i,k] = sum_j d[j]     * (x[i,k,j] - x[i,1,j])
+          + sum_q beta[q]  * (z[i,k,q] - z[i,1,q])
+          [+ sum_m gamma[m] * (xint[i,k,m] - xint[i,1,m])   SSVS model only]
 ```
+
+so a component with value *x* (dose) and modifier code *z* contributes
+`d[j] * x + beta * z` to an arm (`x` = 1 for plain presence).
 
 ### `component_values`
 
@@ -289,10 +292,12 @@ A numeric matrix (or data frame) with `nrow(data)` rows in the order of
 `data` and column names exactly equal to `components` — for example the
 number of sessions of each component. It replaces the 0/1 indicators parsed
 from `treat`, so `d[j]` becomes the effect **per unit** of component *j*
-(linear dose-response). The `treat` column is still required; a warning is
-given when a column is zero in every arm or when the values and the `treat`
-label disagree on presence. SSVS interactions are always defined on presence
-(value ≠ 0).
+(linear dose-response **through zero**: the effect of value *x* is
+`d[j] * x`, with no separate effect of presence). The `treat` column is still
+required; a warning is given when a column is zero in every arm or when the
+values and the `treat` label disagree on presence. SSVS interactions and
+effect modifiers act on **presence** (value ≠ 0), not on the dose; a
+dose × modifier option is not available.
 
 ### `modifiers`
 
