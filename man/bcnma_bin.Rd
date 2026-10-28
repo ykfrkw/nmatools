@@ -55,8 +55,11 @@ are modelled (only used when \code{interactions = "lasso_informative"})}
 
 \item{g}{numeric: spike-slab variance ratio; slab variance = g * spike variance (default 100)}
 
-\item{tau_prior}{numeric c(mean, precision): parameters of lognormal prior on tau (default
-c(-1.67, 1/1.472^2) following Turner et al. 2015)}
+\item{tau_prior}{numeric c(meanlog, precision): log-normal prior on the
+between-study variance tau^2 (JAGS node \code{tau2}; \code{tau = sqrt(tau2)} is the
+SD). Default c(-1.67, 1/1.472^2), a log-normal predictive distribution
+of the Turner et al. (2015) type (see the review guide for the open
+question on its exact category).}
 
 \item{n.chains}{integer: number of MCMC chains (default 3)}
 

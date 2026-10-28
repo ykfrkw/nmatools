@@ -83,7 +83,6 @@ print.bcnma_cont <- function(x, digits = 2,
 .print_cont_table <- function(smry, components, sm, digits) {
   Nc     <- length(components)
   d_rows <- smry[paste0("d[", seq_len(Nc), "]"), , drop = FALSE]
-  tau_row <- smry["tau", , drop = FALSE]
 
   fmt <- function(m, lo, hi) sprintf("%.*f [%.*f; %.*f]",
                                       digits, m, digits, lo, digits, hi)
@@ -95,10 +94,7 @@ print.bcnma_cont <- function(x, digits = 2,
                 components[k],
                 fmt(d_rows[k, "50%"], d_rows[k, "2.5%"], d_rows[k, "97.5%"])))
   }
-  if (!is.null(tau_row) && nrow(tau_row) > 0) {
-    cat(sprintf("  %-8s  %-28s\n", "tau",
-                fmt(tau_row[1, "50%"], tau_row[1, "2.5%"], tau_row[1, "97.5%"])))
-  }
+  .print_heterogeneity_rows(smry, digits, label_width = 8)
 }
 
 # ---- summary ----

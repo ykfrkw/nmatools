@@ -6,7 +6,8 @@
 # File description:
 # Purpose: check that `seed` makes bcnma fits reproducible (review item R1):
 #          per-chain JAGS RNG initial values are built from the seed, stored
-#          in the fit, and identical seeds give identical posterior samples.
+#          in the fit, and identical seeds give identical posterior samples;
+#          and that the heterogeneity node is the variance tau2 (R2).
 # Inputs:  small_bin_data (helper-bcnma-data.R)
 # Outputs: none (testthat expectations)
 # Depends: rjags + MCMCvis for the fitting test (skipped otherwise)
@@ -34,4 +35,16 @@ test_that("identical seeds give identical samples; the seed is stored", {
   expect_identical(fit_twice[[1]]$samps_additive, fit_twice[[2]]$samps_additive)
   expect_equal(fit_twice[[1]]$seed, 99L)
   expect_length(fit_twice[[1]]$inits, 2)
+})
+
+test_that("the heterogeneity node is the variance tau2 and tau is its root (R2)", {
+  skip_if_not_installed("rjags")
+  skip_if_not_installed("MCMCvis")
+  fit <- quietly_fit(bcnma_bin(
+    small_bin_data, study, treat, r, n, components = SIM_COMPONENTS,
+    interactions = "none", n.chains = 1, n.adapt = 100, n.burnin = 0,
+    n.iter = 20, seed = 1, quiet = TRUE))
+  expect_equal(fit$samps_additive$tau, sqrt(fit$samps_additive$tau2))
+  expect_output(print(fit), "tau \\(SD\\)")
+  expect_output(print(fit), "tau2 \\(variance\\)")
 })

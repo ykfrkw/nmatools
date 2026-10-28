@@ -85,7 +85,7 @@
 #' heterogeneity prior. Component effects are additive (no interaction terms).
 #'
 #' @param Nc        integer number of components
-#' @param tau_prior numeric c(mean, precision) for dlnorm prior on tau
+#' @param tau_prior numeric c(meanlog, precision) of the dlnorm prior on tau2
 #' @param modifier_priors data.frame (precision, truncation) per beta term, or NULL
 #'                  for no effect modifiers (then wA and Q are not needed in the data)
 #' @return character JAGS model string
@@ -118,9 +118,10 @@
     '  ## Baseline log-odds\n',
     '  for (i in 1:Ns) { u[i] ~ dnorm(0, 0.01) }\n',
     '\n',
-    '  ## Heterogeneity (informative log-normal prior)\n',
-    '  prec <- 1 / tau\n',
-    '  tau  ~ dlnorm(', sprintf("%.6f", tau_prior[1]), ', ', sprintf("%.6f", tau_prior[2]), ')\n',
+    '  ## Heterogeneity: log-normal prior on the variance tau2 (Turner et al. 2015)\n',
+    '  prec <- 1 / tau2\n',
+    '  tau  <- sqrt(tau2)\n',
+    '  tau2 ~ dlnorm(', sprintf("%.6f", tau_prior[1]), ', ', sprintf("%.6f", tau_prior[2]), ')\n',
     '\n',
     '  ## Component log-OR effects\n',
     '  for (k in 1:Nc) { d[k]   ~ dnorm(0, 0.01) }\n',
@@ -146,7 +147,7 @@
 #' @param included    integer vector of interaction indices to model (default all)
 #' @param prob_active numeric prior P(included) for active interactions (default 0.5)
 #' @param g           numeric spike-slab variance ratio (slab variance = spike variance * g)
-#' @param tau_prior   numeric c(mean, precision) for dlnorm prior on tau
+#' @param tau_prior   numeric c(meanlog, precision) of the dlnorm prior on tau2
 #' @param modifier_priors data.frame (precision, truncation) per beta term, or NULL
 #'                  for no effect modifiers (then wA and Q are not needed in the data)
 #' @return character JAGS model string
@@ -187,9 +188,10 @@
     '  ## Baseline log-odds\n',
     '  for (i in 1:Ns) { u[i] ~ dnorm(0, 0.01) }\n',
     '\n',
-    '  ## Heterogeneity (informative log-normal prior)\n',
-    '  prec <- 1 / tau\n',
-    '  tau  ~ dlnorm(', sprintf("%.6f", tau_prior[1]), ', ', sprintf("%.6f", tau_prior[2]), ')\n',
+    '  ## Heterogeneity: log-normal prior on the variance tau2 (Turner et al. 2015)\n',
+    '  prec <- 1 / tau2\n',
+    '  tau  <- sqrt(tau2)\n',
+    '  tau2 ~ dlnorm(', sprintf("%.6f", tau_prior[1]), ', ', sprintf("%.6f", tau_prior[2]), ')\n',
     '\n',
     '  ## Component log-OR effects\n',
     '  for (k in 1:Nc) { d[k]   ~ dnorm(0, 0.01) }\n',

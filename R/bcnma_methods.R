@@ -89,8 +89,6 @@ print.bcnma_bin <- function(x, digits = 2, model = c("both", "additive", "lasso"
   d_rows  <- smry[paste0("d[",   seq_len(Nc), "]"), , drop = FALSE]
   or_rows <- smry[paste0("ORd[", seq_len(Nc), "]"), , drop = FALSE]
 
-  tau_row <- smry["tau", , drop = FALSE]
-
   fmt <- function(m, lo, hi) sprintf("%.*f [%.*f; %.*f]",
                                       digits, m, digits, lo, digits, hi)
 
@@ -103,9 +101,19 @@ print.bcnma_bin <- function(x, digits = 2, model = c("both", "additive", "lasso"
                 fmt(or_rows[k, "50%"], or_rows[k, "2.5%"], or_rows[k, "97.5%"])
     ))
   }
-  if (!is.null(tau_row) && nrow(tau_row) > 0) {
-    cat(sprintf("  %-8s  %-26s\n", "tau",
-                fmt(tau_row[1, "50%"], tau_row[1, "2.5%"], tau_row[1, "97.5%"])))
+  .print_heterogeneity_rows(smry, digits, label_width = 8)
+}
+
+# Internal: tau (SD) and tau2 (variance) rows; the prior is placed on tau2
+.print_heterogeneity_rows <- function(smry, digits, label_width) {
+  fmt <- function(m, lo, hi) sprintf("%.*f [%.*f; %.*f]",
+                                      digits, m, digits, lo, digits, hi)
+  heterogeneity_rows <- c("tau (SD)" = "tau", "tau2 (variance)" = "tau2")
+  for (label in names(heterogeneity_rows)) {
+    node <- heterogeneity_rows[[label]]
+    if (!node %in% rownames(smry)) next
+    cat(sprintf("  %-*s  %s\n", label_width, label,
+                fmt(smry[node, "50%"], smry[node, "2.5%"], smry[node, "97.5%"])))
   }
 }
 

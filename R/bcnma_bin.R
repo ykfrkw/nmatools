@@ -32,8 +32,11 @@
 #'                            are modelled (only used when `interactions = "lasso_informative"`)
 #' @param lasso_prob          numeric: prior inclusion probability for active interactions (default 0.5)
 #' @param g                   numeric: spike-slab variance ratio; slab variance = g * spike variance (default 100)
-#' @param tau_prior           numeric c(mean, precision): parameters of lognormal prior on tau (default
-#'                            c(-1.67, 1/1.472^2) following Turner et al. 2015)
+#' @param tau_prior           numeric c(meanlog, precision): log-normal prior on the
+#'   between-study variance tau^2 (JAGS node `tau2`; `tau = sqrt(tau2)` is the
+#'   SD). Default c(-1.67, 1/1.472^2), a log-normal predictive distribution
+#'   of the Turner et al. (2015) type (see the review guide for the open
+#'   question on its exact category).
 #' @param n.chains            integer: number of MCMC chains (default 3)
 #' @param n.adapt             integer: JAGS adaptation iterations (default 2000)
 #' @param n.burnin            integer: additional burn-in iterations after adaptation (default 5000)
@@ -237,7 +240,7 @@ bcnma_bin <- function(data,
   if (!quiet) message("\n--- Fitting additive model (no interactions) ---")
 
   model_add <- .jags_model_additive(Nc, tau_prior, modifier_priors = modifier_priors)
-  params_add <- .with_modifier_params(c("d", "ORd", "tau"), modifier_design)
+  params_add <- .with_modifier_params(c("d", "ORd", "tau", "tau2"), modifier_design)
   fit_add <- .bcnma_fit_model(model_add, jags_data_base, params_add, mcmc, quiet)
   summary_additive <- fit_add$summary
   samps_additive   <- fit_add$samps
@@ -268,7 +271,7 @@ bcnma_bin <- function(data,
     )
 
     # Always sample gamma and Ind; eta only when all are active
-    params_ssvs <- .with_modifier_params(c("d", "ORd", "gamma", "Ind", "tau", "eta"),
+    params_ssvs <- .with_modifier_params(c("d", "ORd", "gamma", "Ind", "tau", "tau2", "eta"),
                                          modifier_design)
     fit_ssvs <- .bcnma_fit_model(model_ssvs, jags_data_ssvs, params_ssvs, mcmc, quiet)
     summary_lasso <- fit_ssvs$summary

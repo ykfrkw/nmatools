@@ -67,9 +67,9 @@ interactions are modelled (only used when \code{interactions = "lasso_informativ
 
 \item{g}{numeric: spike-slab variance ratio (default 100)}
 
-\item{tau_prior}{numeric \code{c(mean, precision)}: parameters of the
-lognormal prior on tau. Default \code{c(-1.0, 1/0.8^2)} is appropriate for
-SMD heterogeneity in psychological intervention trials.}
+\item{tau_prior}{numeric \code{c(meanlog, precision)}: log-normal
+prior on the between-study variance tau^2 (JAGS node \code{tau2};
+\code{tau = sqrt(tau2)} is the SD). Default \code{c(-1.0, 1/0.8^2)}.}
 
 \item{n.chains}{integer: MCMC chains (default 3)}
 

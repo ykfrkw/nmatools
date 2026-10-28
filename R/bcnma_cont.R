@@ -34,9 +34,9 @@
 #'   interactions are modelled (only used when \code{interactions = "lasso_informative"})
 #' @param lasso_prob          numeric: prior inclusion probability (default 0.5)
 #' @param g                   numeric: spike-slab variance ratio (default 100)
-#' @param tau_prior           numeric \code{c(mean, precision)}: parameters of the
-#'   lognormal prior on tau. Default \code{c(-1.0, 1/0.8^2)} is appropriate for
-#'   SMD heterogeneity in psychological intervention trials.
+#' @param tau_prior           numeric \code{c(meanlog, precision)}: log-normal
+#'   prior on the between-study variance tau^2 (JAGS node \code{tau2};
+#'   \code{tau = sqrt(tau2)} is the SD). Default \code{c(-1.0, 1/0.8^2)}.
 #' @param n.chains            integer: MCMC chains (default 3)
 #' @param n.adapt             integer: JAGS adaptation iterations (default 2000)
 #' @param n.burnin            integer: burn-in iterations (default 5000)
@@ -206,7 +206,7 @@ bcnma_cont <- function(data,
   if (!quiet) message("\n--- Fitting additive model (no interactions) ---")
 
   model_add  <- .jags_model_additive_cont(Nc, tau_prior, modifier_priors = modifier_priors)
-  params_add <- .with_modifier_params(c("d", "tau"), modifier_design)
+  params_add <- .with_modifier_params(c("d", "tau", "tau2"), modifier_design)
   fit_add    <- .bcnma_fit_model(model_add, jags_data_base, params_add, mcmc, quiet)
   summary_additive <- fit_add$summary
   samps_additive   <- fit_add$samps
@@ -235,7 +235,7 @@ bcnma_cont <- function(data,
       modifier_priors = modifier_priors
     )
 
-    params_ssvs <- .with_modifier_params(c("d", "gamma", "Ind", "tau", "eta"), modifier_design)
+    params_ssvs <- .with_modifier_params(c("d", "gamma", "Ind", "tau", "tau2", "eta"), modifier_design)
     fit_ssvs    <- .bcnma_fit_model(model_ssvs, jags_data_ssvs, params_ssvs, mcmc, quiet)
     summary_lasso <- fit_ssvs$summary
     samps_lasso   <- fit_ssvs$samps

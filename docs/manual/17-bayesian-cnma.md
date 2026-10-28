@@ -149,7 +149,7 @@ additive and the LASSO estimates side by side.
 | `active_components` | `NULL` | Required for `"lasso_informative"`. |
 | `lasso_prob` | `0.5` | Prior probability that an interaction is included. |
 | `g` | `100` | Spike-slab variance ratio (slab variance = `g` × spike variance). |
-| `tau_prior` | `c(-1.67, 1/1.472^2)` (binary), `c(-1.0, 1/0.8^2)` (continuous) | Log-normal prior on tau (binary default from Turner et al. 2015). |
+| `tau_prior` | `c(-1.67, 1/1.472^2)` (binary), `c(-1.0, 1/0.8^2)` (continuous) | Log-normal prior `c(meanlog, precision)` on the between-study **variance** τ² (JAGS node `tau2`); `tau = sqrt(tau2)` is reported as the SD. |
 | `n.chains`, `n.adapt`, `n.burnin`, `n.iter`, `n.thin` | `3`, `2000`, `5000`, `20000`, `1` | MCMC settings (4 chains are advisable for LASSO models). |
 | `seed` | `NULL` | Random seed for reproducibility. |
 | `component_values` | `NULL` | Optional component values (doses); see below. |
@@ -171,8 +171,9 @@ summarise_interactions(fit)      # data frame of all pairs, sorted by |gamma|
 
 Each component row is the effect of that component against "component
 absent", pooled over the network: log-OR and OR with 95% credible interval
-(CrI) for `bcnma_bin()`, SMD or MD for `bcnma_cont()`; `tau` is the
-between-study SD. For interactions, `inclusion_prob` is the posterior
+(CrI) for `bcnma_bin()`, SMD or MD for `bcnma_cont()`; `tau (SD)` is the
+between-study standard deviation and `tau2 (variance)` its square (the prior
+is placed on `tau2`). For interactions, `inclusion_prob` is the posterior
 probability that the interaction is non-negligible (values ≥ 0.5 are
 conventionally "selected"), and `median_gamma` its size and direction:
 negative means the combination works less well than the sum of its parts,
@@ -202,7 +203,7 @@ compare_combinations(fit, combo1 = c("se", "sd", "cr", "th"), combo2 = "se",
 
 The full posterior draws are returned in `$effect_samples`; the raw samples
 are in `fit$samps_additive` and `fit$samps_lasso` (columns `d[k]`, `ORd[k]`,
-`gamma[k]`, `Ind[k]`, `tau`, ...). `place()`, `which.place()` and
+`gamma[k]`, `Ind[k]`, `tau`, `tau2`, ...). `place()`, `which.place()` and
 `all.interactions()` map component pairs to interaction indices:
 
 ```r

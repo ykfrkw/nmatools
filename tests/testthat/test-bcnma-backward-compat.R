@@ -11,19 +11,9 @@
 
 BACKWARD_COMPAT <- readRDS(test_path("fixtures", "bcnma_backward_compat.rds"))
 
-test_that("binary model strings are unchanged without modifiers", {
-  expect_identical(.jags_model_additive(4), BACKWARD_COMPAT$model_additive_bin_4)
-  expect_identical(.jags_model_ssvs(4, 6), BACKWARD_COMPAT$model_ssvs_bin_4_6)
-  expect_identical(.jags_model_ssvs(4, 6, included = c(1, 6), prob_active = 0.8),
-                   BACKWARD_COMPAT$model_ssvs_bin_4_6_partial)
-})
-
-test_that("continuous model strings are unchanged without modifiers", {
-  expect_identical(.jags_model_additive_cont(4), BACKWARD_COMPAT$model_additive_cont_4)
-  expect_identical(.jags_model_ssvs_cont(4, 6), BACKWARD_COMPAT$model_ssvs_cont_4_6)
-  expect_identical(.jags_model_ssvs_cont(4, 6, included = c(1, 6), prob_active = 0.8, g = 50),
-                   BACKWARD_COMPAT$model_ssvs_cont_4_6_partial)
-})
+# The byte-identity tests of the model strings were retired by review item
+# R2 (the heterogeneity node is now the variance tau2); R3 replaces them with
+# numerical equivalence tests.
 
 test_that("prepared JAGS data are unchanged (no JAGS needed)", {
   prep_bin <- prepare_small_bin(BACKWARD_COMPAT$small_bin_data)
