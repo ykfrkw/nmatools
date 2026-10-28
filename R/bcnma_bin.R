@@ -102,17 +102,23 @@
 #' Each specification is a list with `column` (arm-level column of `data`),
 #' `components` (components whose effect is modified; one term per component
 #' and level step), `type` (`"continuous"` or `"ordinal"`) and optionally
-#' `label` (default `column`) and `prior_sd` (default 10; `beta ~ N(0,
-#' prior_sd^2)`). Continuous: `center` (default: mean over arms where the
-#' component is present); the code is `value - center`. Ordinal: `levels`
-#' (required, lowest first) and `monotone` (`"none"`, `"increasing"`,
-#' `"decreasing"`); cumulative coding, so `beta_l` is the increment from level
-#' l to l+1. `NA` is allowed only in arms where the modified component is
-#' absent. The term `beta_q * (z[i,k,q] - z[i,1,q])` is added to the
-#' consistency equation, so `d[k]` of a modified component is its effect at the
-#' center (continuous) or reference level (ordinal). Modifier effects are
+#' `label` (default `column`) and `prior_sd` (default 1; `beta ~ N(0,
+#' prior_sd^2)` on the code scale). Continuous: `center` (default: mean over
+#' arms where the component is present); the code is `(value - center) / s`
+#' with `s` the SD of the covariate over those arms, so `beta` is sampled per
+#' covariate SD and reported both per SD and per original unit. Ordinal:
+#' `levels` (required, lowest first) and `monotone` (`"none"`,
+#' `"increasing"`, `"decreasing"`); cumulative coding, so `beta_l` is the
+#' increment from level l to l+1. `NA` is allowed only in arms where the
+#' modified component is absent. The term `beta_q * (z[i,k,q] - z[i,1,q])` is
+#' added to the consistency equation, so `d[k]` of a modified component is
+#' its effect at the center (continuous) or reference level (ordinal), and
+#' modifiers act on presence, not on the dose. Modifier effects are
 #' identified mainly by between-study variation and are observational
-#' (ecological) associations.
+#' (ecological) associations: the output reports the number of studies
+#' informing each `beta` and warns when its posterior SD exceeds half its
+#' prior SD (prior-dominated). For binary outcomes `exp(beta)` is a ratio of
+#' ORs per unit.
 #'
 #' @return object of class `bcnma_bin` (a list) with elements including:
 #' \describe{

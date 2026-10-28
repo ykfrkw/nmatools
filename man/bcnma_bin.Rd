@@ -170,16 +170,22 @@ MCMCvis; an informative error is raised when they are missing.
 Each specification is a list with \code{column} (arm-level column of \code{data}),
 \code{components} (components whose effect is modified; one term per component
 and level step), \code{type} (\code{"continuous"} or \code{"ordinal"}) and optionally
-\code{label} (default \code{column}) and \code{prior_sd} (default 10; \code{beta ~ N(0, prior_sd^2)}). Continuous: \code{center} (default: mean over arms where the
-component is present); the code is \code{value - center}. Ordinal: \code{levels}
-(required, lowest first) and \code{monotone} (\code{"none"}, \code{"increasing"},
-\code{"decreasing"}); cumulative coding, so \code{beta_l} is the increment from level
-l to l+1. \code{NA} is allowed only in arms where the modified component is
-absent. The term \code{beta_q * (z[i,k,q] - z[i,1,q])} is added to the
-consistency equation, so \code{d[k]} of a modified component is its effect at the
-center (continuous) or reference level (ordinal). Modifier effects are
+\code{label} (default \code{column}) and \code{prior_sd} (default 1; \code{beta ~ N(0, prior_sd^2)} on the code scale). Continuous: \code{center} (default: mean over
+arms where the component is present); the code is \code{(value - center) / s}
+with \code{s} the SD of the covariate over those arms, so \code{beta} is sampled per
+covariate SD and reported both per SD and per original unit. Ordinal:
+\code{levels} (required, lowest first) and \code{monotone} (\code{"none"},
+\code{"increasing"}, \code{"decreasing"}); cumulative coding, so \code{beta_l} is the
+increment from level l to l+1. \code{NA} is allowed only in arms where the
+modified component is absent. The term \code{beta_q * (z[i,k,q] - z[i,1,q])} is
+added to the consistency equation, so \code{d[k]} of a modified component is
+its effect at the center (continuous) or reference level (ordinal), and
+modifiers act on presence, not on the dose. Modifier effects are
 identified mainly by between-study variation and are observational
-(ecological) associations.
+(ecological) associations: the output reports the number of studies
+informing each \code{beta} and warns when its posterior SD exceeds half its
+prior SD (prior-dominated). For binary outcomes \code{exp(beta)} is a ratio of
+ORs per unit.
 }
 
 \examples{

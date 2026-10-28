@@ -305,7 +305,7 @@ modifiers = list(
        components = c("th", "cr"),      # one term per component (and level step)
        type       = "continuous",
        center     = 3,                  # default: mean over arms with the component
-       prior_sd   = 10,                 # beta ~ N(0, prior_sd^2); default 10
+       prior_sd   = 1,                  # beta ~ N(0, prior_sd^2) per covariate SD; default 1
        label      = "prof"),            # name in outputs and in `at` (default: column)
   list(column     = "therapist_level",
        components = "th",
@@ -318,24 +318,37 @@ modifiers = list(
 
 | Type | Terms per component | Code where the component is present | Meaning of `beta` |
 |---|---|---|---|
-| continuous | 1 | value − `center` | Change in the component effect per covariate unit. |
+| continuous | 1 | (value − `center`) / *s* | Change in the component effect per covariate SD (sampled); reported per original unit and per SD. |
 | ordinal (*L* levels) | *L* − 1 | term *l*: 1 if level ≥ *l* + 1 (cumulative coding) | Increment from level *l* to *l* + 1. |
 
-`monotone = "increasing"` gives every ordinal increment a half-normal prior
-(`"decreasing"` the mirror image). `NA` in the covariate is allowed only in
-arms where the modified component is absent.
+Continuous covariates are **standardised internally**: *s* is the SD of the
+covariate over the arms where the component is present, so the default prior
+`beta ~ N(0, 1)` means "a change of about one log-OR (or one SMD) per covariate
+SD is plausible but large", whatever the covariate's unit. Ordinal increments
+also get `N(0, 1)` by default. `monotone = "increasing"` gives every ordinal
+increment a half-normal prior (`"decreasing"` the mirror image). `NA` in the
+covariate is allowed only in arms where the modified component is absent.
+
+For every term the output reports the number of studies whose within-study
+contrast informs `beta` (`studies`), and a warning is given when the
+posterior SD of `beta` exceeds half its prior SD (the result is then mostly
+prior; it is also marked "prior-dominated" in the table).
 
 ### Interpretation
 
 - **`d[c]` of a modified component is its effect at the center** (continuous)
   **or at the reference, lowest level** (ordinal), not an average over the
-  covariate. The effect at value *v* is `d[c] + beta * (v - center)`; at
-  ordinal level *m* it is `d[c]` plus the increments below *m*.
-- `beta` is on the log-OR scale for `bcnma_bin()` (an OR column is also
-  printed) and on the SMD / MD scale for `bcnma_cont()`.
-- Results are in `fit$modifier_terms` (term definitions) and
-  `fit$modifier_effects$additive` / `$ssvs` (posterior median and 95% CrI);
-  `print()` and `summary()` show both.
+  covariate. The effect at value *v* is `d[c] + beta_unit * (v - center)`
+  (`beta_unit` = beta per original unit); at ordinal level *m* it is `d[c]`
+  plus the increments below *m*.
+- `beta` is on the log-OR scale for `bcnma_bin()` — `exp(beta)` is printed as
+  a **ratio of ORs per unit** — and on the SMD / MD scale for `bcnma_cont()`
+  (not exponentiated).
+- Results are in `fit$modifier_terms` (term definitions, center, scale,
+  studies informing each term) and `fit$modifier_effects$additive` / `$ssvs`
+  (per unit and per SD posterior median and 95% CrI, posterior / prior SD,
+  prior-dominance flag); `print()` shows them with a caveat line under every
+  modifier table, and `summary()` adds the term definitions.
 - `compare_combinations()` accepts named numeric combinations (component
   values, e.g. `c(th = 2, se = 1)`) and evaluates modified components at
   `at = list(label = value)`. Both combinations use the same `at`; modifiers

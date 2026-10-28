@@ -79,6 +79,41 @@ test_that("a term with no within-study contrast triggers a non-identifiability w
                  "not identifiable")
 })
 
+test_that("continuous codes are standardised; default priors are 1 (R10)", {
+  continuous_spec <- list(column = "r", components = "C", type = "continuous")
+  specs  <- .normalise_modifier_specs(continuous_spec, small_bin_data, SIM_COMPONENTS)
+  prep   <- prepare_small_bin()
+  design <- suppressMessages(.build_modifier_design(specs, small_bin_data, prep))
+  present_values <- c(14, 15, 18)   # r of the arms containing C
+  expect_equal(design$terms$center, mean(present_values))
+  expect_equal(design$terms$scale, stats::sd(present_values))
+  expect_equal(design$terms$prior_sd, 1)
+  expect_equal(design$code_arm[1, 2, 1], (14 - mean(present_values)) / stats::sd(present_values))
+  expect_equal(design$terms$n_studies_contrast, 3)   # S1, S2, S3 contain C in arm 2
+  fit <- list(modifier_terms = design$terms, modifier_specs = specs)
+  expect_equal(.modifier_codes_at(fit, list(r = 20)),
+               (20 - mean(present_values)) / stats::sd(present_values))
+  ordinal_design <- suppressMessages(.build_modifier_design(
+    .normalise_modifier_specs(ordinal_spec, small_bin_data, SIM_COMPONENTS), small_bin_data, prep))
+  expect_equal(ordinal_design$terms$prior_sd, c(1, 1))
+})
+
+test_that("beta summaries back-transform and flag prior-dominated terms (R10)", {
+  terms <- data.frame(q = 1:2, term = c("x:C", "lvl(a->b):C"), type = c("continuous", "ordinal"),
+                      scale = c(2, 1), prior_sd = 1, n_studies_contrast = c(5, 1))
+  set.seed(1)
+  samples <- data.frame(`beta[1]` = rnorm(4000, 0.4, 0.1), `beta[2]` = rnorm(4000, 0, 0.9),
+                        check.names = FALSE)
+  effects <- .summarise_modifier_effects(samples, terms, exponentiate = TRUE)
+  expect_equal(effects$median[1], effects$median_per_sd[1] / 2)
+  expect_true(is.na(effects$median_per_sd[2]))
+  expect_equal(effects$is_prior_dominated, c(FALSE, TRUE))
+  expect_equal(effects$ratio_of_OR[1], exp(effects$median[1]))
+  expect_warning(.warn_prior_dominated(effects, "Additive"), "lvl\\(a->b\\):C")
+  expect_output(.print_modifier_table(effects, 2, "OR"), "ratio of ORs per unit")
+  expect_output(.print_modifier_table(effects, 2, "SMD"), "Caveat")
+})
+
 test_that("`at` codes follow the term definitions", {
   specs  <- .normalise_modifier_specs(ordinal_spec, small_bin_data, SIM_COMPONENTS)
   design <- suppressMessages(.build_modifier_design(specs, small_bin_data, prepare_small_bin()))

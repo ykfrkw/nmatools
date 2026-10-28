@@ -24,13 +24,20 @@ test_that("simulated continuous proficiency effect is recovered (binary outcome)
   effect <- fit$modifier_effects$additive
   expect_equal(nrow(effect), 1)
   expect_true(effect$lower < TRUE_BETA_BIN && TRUE_BETA_BIN < effect$upper)
-  expect_true(all(c("OR", "OR_lower", "OR_upper") %in% names(effect)))
+  expect_true(all(c("ratio_of_OR", "ratio_of_OR_lower", "ratio_of_OR_upper") %in%
+                    names(effect)))
+  # R10: beta is sampled per covariate SD and reported per original unit too
+  proficiency_sd <- fit$modifier_terms$scale
+  expect_equal(effect$median_per_sd, effect$median * proficiency_sd)
+  expect_equal(effect$n_studies_contrast, 15)   # designs 1 and 3 contain C in one arm
+  expect_output(print(fit), "Caveat: beta is identified mainly by between-study variation")
   expect_output(print(fit), "Effect modifiers")
   expect_output(summary(fit), "Modifier terms")
   capture.output(result <- compare_combinations(
     fit, combo1 = c(A = 1, C = 1), combo2 = c(A = 1), model = "additive",
     exponentiate = FALSE, at = list(proficiency = PROFICIENCY_CENTER + 1)))
-  expected_shift <- fit$samps_additive[["d[3]"]] + fit$samps_additive[["beta[1]"]]
+  expected_shift <- fit$samps_additive[["d[3]"]] +
+    fit$samps_additive[["beta[1]"]] / fit$modifier_terms$scale
   expect_equal(result$effect_samples, expected_shift)
   expect_message(capture.output(compare_combinations(fit, "C", model = "additive")), "center")
 })
@@ -64,14 +71,14 @@ test_that("simulated proficiency effect is recovered (continuous outcome, SSVS f
     n.burnin = SHORT_MCMC$n.burnin, n.iter = SHORT_MCMC$n.iter, seed = SIM_SEED, quiet = TRUE))
   for (effect in fit$modifier_effects) {
     expect_true(effect$lower < TRUE_BETA_CONT && TRUE_BETA_CONT < effect$upper)
-    expect_false("OR" %in% names(effect))
+    expect_false("ratio_of_OR" %in% names(effect))
   }
   expect_null(fit$jags_data$Q)
-  expect_output(print(fit), "change in component MD per code unit")
+  expect_output(print(fit), "change in component MD")
   expect_output(summary(fit), "Modifier terms")
   capture.output(result <- compare_combinations(
     fit, combo1 = "C", model = "ssvs", at = list(proficiency = PROFICIENCY_CENTER - 1)))
-  expected <- fit$samps_ssvs[["d[3]"]] - fit$samps_ssvs[["beta[1]"]]
+  expected <- fit$samps_ssvs[["d[3]"]] - fit$samps_ssvs[["beta[1]"]] / fit$modifier_terms$scale
   expect_equal(result$effect_samples, expected)
   expect_equal(result$sm, "MD")
 })
