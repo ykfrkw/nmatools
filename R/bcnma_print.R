@@ -72,7 +72,7 @@ summary.bcnma_cont <- function(object, digits = 3, ...) .summary_bcnma(object, d
 
 .print_header <- function(x) {
   is_binary <- x$sm == "OR"
-  cat("Bayesian Component NMA (bcnma)", if (!is_binary) "— continuous outcome", "\n")
+  cat("Bayesian Component NMA (bcnma)", if (!is_binary) "\u2014 continuous outcome", "\n")
   cat(strrep("-", BCNMA_RULE_WIDTH), "\n", sep = "")
   .cat_field("Components", x$n_components)
   .cat_field("Studies", x$Ns)
@@ -93,7 +93,7 @@ summary.bcnma_cont <- function(object, digits = 3, ...) .summary_bcnma(object, d
 }
 
 .print_model_section <- function(x, model, title, digits) {
-  cat("Component effects — ", title, "\n", sep = "")
+  cat("Component effects \u2014 ", title, "\n", sep = "")
   cat(strrep("-", BCNMA_RULE_WIDTH), "\n", sep = "")
   .print_effect_table(x[[paste0("summary_", model)]], x$components, x$sm, digits)
   .print_modifier_table(x$modifier_effects[[model]], digits, x$sm)
