@@ -4,12 +4,15 @@
 # Contact: furukawa.y.psy@gmail.com
 #
 # File description:
-# compare_combinations() generic and its methods for bcnma_bin and bcnma_cont.
-# Both methods share .combination_effect_samples(): posterior draws of
-# combination A minus combination B (main effects per unit of component
-# value, SSVS interactions on presence, effect modifiers at `at`). Moved out of
-# methods.R / methods_cont.R of bcnma (2026-10-28) when component values and effect
-# modifiers were added.
+# Purpose: compare_combinations() generic and its methods for bcnma_bin and
+#          bcnma_cont. Both share .combination_effect_samples(): posterior
+#          draws of combination A minus combination B (main effects per unit
+#          of component value, SSVS interactions on presence, effect
+#          modifiers at `at`), plus a predictive interval for a new study and
+#          flags for combinations or pairs that no arm has observed.
+# Inputs:  fitted bcnma object, two combinations
+# Outputs: printed estimate; list of quantiles and draws (invisible)
+# Depends: R/bcnma_compare_helpers.R, R/bcnma_modifiers_summary.R
 
 #' Compare posterior treatment effects for two component combinations
 #'
@@ -41,9 +44,23 @@
 #'   has no effect modifiers.
 #' @param ...          further arguments (unused)
 #'
+#' The predictive interval for a new study adds one draw of the
+#' between-study heterogeneity, N(0, tau^2), to every posterior draw of the
+#' effect (common heterogeneity across contrasts); its draws use R's RNG
+#' seeded with `x$seed` (the global RNG state is restored). A combination
+#' that no arm of the data contains is flagged "extrapolated under
+#' additivity", and pairs of its components that never occur together in an
+#' arm are listed: such comparisons rest on the additivity assumption.
+#'
 #' @return named list (invisible):
 #' \describe{
 #'   \item{estimate}{named numeric: posterior quantiles}
+#'   \item{prediction}{named numeric: quantiles of the predictive
+#'     distribution for a new study (NULL when tau2 was not sampled)}
+#'   \item{is_extrapolated}{logical c(combo1, combo2): combination observed in
+#'     no arm}
+#'   \item{never_copresent_pairs}{character: component pairs in either
+#'     combination that never occur together in an arm}
 #'   \item{combo1}{character: combination A component names}
 #'   \item{combo2}{character: combination B component names (or "baseline")}
 #'   \item{model}{character: model used}
@@ -52,6 +69,7 @@
 #'   \item{n_mcmc}{integer: number of posterior samples used}
 #'   \item{modifier_codes}{numeric: code of each modifier term used (NULL if none)}
 #'   \item{effect_samples}{numeric vector: full posterior sample (for further use)}
+#'   \item{prediction_samples}{numeric vector: predictive draws (or NULL)}
 #' }
 #'
 #' @examples
@@ -84,25 +102,18 @@ compare_combinations.bcnma_bin <- function(x,
   model <- .normalise_model_name(match.arg(model))
   if (!inherits(x, "bcnma_bin")) stop("'x' must be a bcnma_bin object.")
 
-  core   <- .combination_effect_samples(x, combo1, combo2, model, at)
-  effect <- core$effect
-  if (exponentiate) effect <- exp(effect)
+  core <- .combination_effect_samples(x, combo1, combo2, model, at)
+  back_transform <- if (exponentiate) exp else identity
+  effect     <- back_transform(core$effect)
+  prediction <- .predictive_effect_samples(core$effect, core$tau2, x$seed)
+  if (!is.null(prediction)) prediction <- back_transform(prediction)
 
   .print_comparison_header(core)
-  cat(sprintf("  %s: ", if (exponentiate) "OR" else "log-OR"))
   est <- stats::quantile(effect, probs)
-  cat(sprintf("%.3f [%.3f; %.3f]\n", est[2], est[1], est[3]))
-
-  invisible(list(
-    estimate       = est,
-    combo1         = core$combo1_names,
-    combo2         = core$combo2_names,
-    model          = core$model,
-    exponentiate   = exponentiate,
-    n_mcmc         = length(effect),
-    modifier_codes = core$modifier_codes,
-    effect_samples = effect
-  ))
+  cat(sprintf("  %s: %.3f [%.3f; %.3f]\n", if (exponentiate) "OR" else "log-OR",
+              est[2], est[1], est[3]))
+  comparison <- .finish_comparison(x, core, effect, prediction, probs)
+  invisible(c(comparison, list(exponentiate = exponentiate)))
 }
 
 #' @rdname compare_combinations
@@ -117,23 +128,14 @@ compare_combinations.bcnma_cont <- function(x,
   model <- .normalise_model_name(match.arg(model))
   if (!inherits(x, "bcnma_cont")) stop("'x' must be a bcnma_cont object.")
 
-  core   <- .combination_effect_samples(x, combo1, combo2, model, at)
-  effect <- core$effect
+  core <- .combination_effect_samples(x, combo1, combo2, model, at)
+  prediction <- .predictive_effect_samples(core$effect, core$tau2, x$seed)
 
   .print_comparison_header(core)
-  est <- stats::quantile(effect, probs)
+  est <- stats::quantile(core$effect, probs)
   cat(sprintf("  %s: %.3f [%.3f; %.3f]\n", x$sm, est[2], est[1], est[3]))
-
-  invisible(list(
-    estimate       = est,
-    combo1         = core$combo1_names,
-    combo2         = core$combo2_names,
-    model          = core$model,
-    sm             = x$sm,
-    n_mcmc         = length(effect),
-    modifier_codes = core$modifier_codes,
-    effect_samples = effect
-  ))
+  comparison <- .finish_comparison(x, core, core$effect, prediction, probs)
+  invisible(c(comparison, list(sm = x$sm)))
 }
 
 # ---- Shared internals ----
@@ -194,6 +196,9 @@ compare_combinations.bcnma_cont <- function(x,
 
   list(
     effect         = effect,
+    tau2           = samps$tau2,
+    values1        = values1,
+    values2        = values2,
     model          = model,
     modifier_codes = modifier_codes,
     combo1_names   = .combo_labels(combo1, values1, comps),
@@ -208,47 +213,27 @@ compare_combinations.bcnma_cont <- function(x,
               core$model))
 }
 
-# Convert a combination (names, indices, or named values) into a numeric
-# vector of component values aligned with `comps`.
-.combo_to_values <- function(combo, comps) {
-  values <- stats::setNames(numeric(length(comps)), comps)
-  if (length(combo) == 0) return(values)
-  if (is.numeric(combo) && !is.null(names(combo))) {
-    unknown <- setdiff(names(combo), comps)
-    if (length(unknown) > 0 || anyNA(combo)) {
-      stop("Named numeric combination must use known component names and no NA. Unknown: ",
-           paste(unknown, collapse = ", "))
-    }
-    values[names(combo)] <- combo
-    return(values)
+# Predictive interval, extrapolation flags and the returned list, shared by
+# both methods (effect and prediction are on the reported scale).
+.finish_comparison <- function(x, core, effect, prediction, probs) {
+  prediction_quantiles <- if (is.null(prediction)) NULL else stats::quantile(prediction, probs)
+  if (!is.null(prediction_quantiles)) {
+    cat(sprintf("  Predictive interval (new study): [%.3f; %.3f]\n",
+                prediction_quantiles[1], prediction_quantiles[length(probs)]))
   }
-  if (is.character(combo)) {
-    unknown <- setdiff(combo, comps)
-    if (length(unknown) > 0) {
-      stop("Unknown components: ", paste(unknown, collapse = ", "),
-           "\nAvailable: ", paste(comps, collapse = ", "))
-    }
-    values[comps %in% combo] <- 1
-    return(values)
-  }
-  idx <- as.integer(combo)
-  if (any(idx < 1 | idx > length(comps))) {
-    stop("Component indices out of range [1, ", length(comps), "]")
-  }
-  values[idx] <- 1
-  values
-}
-
-# Labels for printing; non-unit values are shown as "comp=value".
-.combo_labels <- function(combo, values, comps) {
-  if (is.character(combo)) return(combo)
-  present <- which(values != 0)
-  unname(ifelse(values[present] == 1, comps[present], paste0(comps[present], "=", values[present])))
-}
-
-# Fetch "<prefix>[index]" from the sample data frame or fail loudly.
-.sample_column <- function(samps, prefix, index) {
-  col <- paste0(prefix, "[", index, "]")
-  if (!col %in% colnames(samps)) stop("Column '", col, "' not found in MCMC samples.")
-  samps[[col]]
+  flags <- .combination_flags(x, core$values1, core$values2)
+  .print_comparison_notes(flags, core)
+  list(
+    estimate              = stats::quantile(effect, probs),
+    prediction            = prediction_quantiles,
+    combo1                = core$combo1_names,
+    combo2                = core$combo2_names,
+    model                 = core$model,
+    n_mcmc                = length(effect),
+    modifier_codes        = core$modifier_codes,
+    is_extrapolated       = flags$is_extrapolated,
+    never_copresent_pairs = flags$never_copresent_pairs,
+    effect_samples        = effect,
+    prediction_samples    = prediction
+  )
 }

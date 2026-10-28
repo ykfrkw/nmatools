@@ -32,7 +32,15 @@ compare_combinations(x, ...)
 \arguments{
 \item{x}{fitted \code{bcnma_bin} or \code{bcnma_cont} object}
 
-\item{...}{further arguments (unused)}
+\item{...}{further arguments (unused)
+
+The predictive interval for a new study adds one draw of the
+between-study heterogeneity, N(0, tau^2), to every posterior draw of the
+effect (common heterogeneity across contrasts); its draws use R's RNG
+seeded with \code{x$seed} (the global RNG state is restored). A combination
+that no arm of the data contains is flagged "extrapolated under
+additivity", and pairs of its components that never occur together in an
+arm are listed: such comparisons rest on the additivity assumption.}
 
 \item{combo1}{combination A: character vector of component names,
 integer indices (value 1 each), or a named numeric vector (names =
@@ -63,6 +71,12 @@ has no effect modifiers.}
 named list (invisible):
 \describe{
 \item{estimate}{named numeric: posterior quantiles}
+\item{prediction}{named numeric: quantiles of the predictive
+distribution for a new study (NULL when tau2 was not sampled)}
+\item{is_extrapolated}{logical c(combo1, combo2): combination observed in
+no arm}
+\item{never_copresent_pairs}{character: component pairs in either
+combination that never occur together in an arm}
 \item{combo1}{character: combination A component names}
 \item{combo2}{character: combination B component names (or "baseline")}
 \item{model}{character: model used}
@@ -71,6 +85,7 @@ named list (invisible):
 \item{n_mcmc}{integer: number of posterior samples used}
 \item{modifier_codes}{numeric: code of each modifier term used (NULL if none)}
 \item{effect_samples}{numeric vector: full posterior sample (for further use)}
+\item{prediction_samples}{numeric vector: predictive draws (or NULL)}
 }
 }
 \description{

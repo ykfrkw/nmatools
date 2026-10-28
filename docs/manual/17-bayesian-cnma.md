@@ -276,6 +276,15 @@ compare_combinations(fit, combo1 = c("se", "sd", "cr", "th"), combo2 = "se",
                      model = "additive")
 ```
 
+Each comparison also prints a **predictive interval for a new study** —
+every posterior draw of the effect plus one draw from N(0, tau²), i.e. the
+common heterogeneity (`$prediction`, `$prediction_samples`; seeded with the
+fit's seed) — and two notes when they apply: a combination that **no arm of
+the data contains** is "extrapolated under additivity" (`$is_extrapolated`),
+and component pairs that **never occur together in an arm** are listed
+(`$never_copresent_pairs`). Such comparisons rest entirely on the additivity
+assumption (and, for the SSVS model, on the interaction prior).
+
 The full posterior draws are returned in `$effect_samples`; the raw samples
 are in `fit$samps_additive` and `fit$samps_ssvs` (columns `d[k]`, `ORd[k]`,
 `gamma[k]`, `Ind[k]`, `tau`, `tau2`, ...). `place()`, `which.place()` and
