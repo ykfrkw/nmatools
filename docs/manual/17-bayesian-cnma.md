@@ -9,6 +9,9 @@
 > handling of mean differences, reproducibility of `seed`) and outputs may
 > change without notice. Do not use them for published analyses yet. The
 > frequentist NMA tools in this package are not affected.
+>
+> Methodologists: the model equations, notation, review items and open
+> questions are in the [review guide](../review/bcnma-review-guide.md).
 
 A component network meta-analysis (cNMA) splits each treatment into the
 components it is made of — for example the elements of a CBT-I package — and
