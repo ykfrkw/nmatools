@@ -61,7 +61,8 @@ not components — a placebo, waitlist or other label meaning "no active
 component", or a label you deliberately do not model — go in `inactive`; any
 token in neither `components` nor `inactive` is an error (earlier versions
 silently ignored it). Arm 1 of each study (its first row in `data`) is the
-within-study comparator.
+within-study comparator, and every study needs at least two arms (a study
+with a single row is an error).
 
 | study | treatment_component | r | n |
 |---|---|---|---|

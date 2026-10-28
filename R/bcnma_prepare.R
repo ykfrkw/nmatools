@@ -42,6 +42,7 @@
   arm_table$study_index <- match(arm_table$study, studies)
   arm_table$arm <- stats::ave(arm_table$row_id, arm_table$study_index, FUN = seq_along)
   n_arms <- as.integer(tabulate(arm_table$study_index, nbins = length(studies)))
+  .check_arm_counts(n_arms, studies)
 
   tokens <- lapply(strsplit(arm_table$treat, component_separator, fixed = TRUE), trimws)
   .check_treatment_tokens(tokens, components, inactive)
@@ -55,6 +56,13 @@
   list(arm_table = arm_table, x_arm = x_arm, n_arms = n_arms, max_arms = max(n_arms),
        studies = studies, n_studies = length(studies),
        components = components, n_components = length(components))
+}
+
+.check_arm_counts <- function(n_arms, studies) {
+  has_one_arm <- n_arms < 2
+  if (!any(has_one_arm)) return(invisible(NULL))
+  stop("Every study needs at least 2 arms (rows); single-arm studies: ",
+       paste(studies[has_one_arm], collapse = ", "), call. = FALSE)
 }
 
 .check_treatment_tokens <- function(tokens, components, inactive) {

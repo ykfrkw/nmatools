@@ -5,7 +5,8 @@
 #
 # File description:
 # Purpose: input checks of the arm-level data: unknown treatment tokens
-#          and the `inactive` argument (review item R8).
+#          and the `inactive` argument (review item R8), single-arm studies
+#          (R16) and the deprecated lasso names (R9).
 # Inputs:  small_bin_data (helper-bcnma-data.R)
 # Outputs: none (testthat expectations)
 # Depends: nothing beyond nmatools internals (no JAGS)
@@ -31,6 +32,13 @@ test_that("inactive tokens are accepted and mean no active component", {
   expect_error(.bcnma_bin_prepare_data(with_placebo, "study", "treat", "r", "n",
                                        SIM_COMPONENTS, inactive = c("placebo", "A")),
                "both 'components' and 'inactive': A")
+})
+
+test_that("single-arm studies are an error naming them (R16)", {
+  single_arm <- rbind(small_bin_data, data.frame(study = "S9", treat = "A", r = 3, n = 20,
+                                                 level = NA, stringsAsFactors = FALSE))
+  expect_error(.bcnma_bin_prepare_data(single_arm, "study", "treat", "r", "n", SIM_COMPONENTS),
+               "at least 2 arms.*: S9")
 })
 
 test_that("deprecated lasso names map to SSVS with a one-time message (R9)", {
