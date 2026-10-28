@@ -5,7 +5,8 @@ R package providing one-stop wrappers for network meta-analysis (NMA) using the
 set of results and publication-ready figures to disk, a suite of publication
 visualizations, and an interactive CINeMA + ROB-MEN Shiny GUI for rating
 confidence in the results. It also fits Bayesian component network
-meta-analysis (cNMA) in JAGS, formerly the separate `bcnma` package.
+meta-analysis (cNMA) in JAGS, formerly the separate `bcnma` package
+(**under development**; see below).
 
 ## Documentation
 
@@ -63,7 +64,7 @@ below.
 
 | Chapter | Topic |
 |---|---|
-| [17. Bayesian component NMA](docs/manual/17-bayesian-cnma.md) | `bcnma_bin()` / `bcnma_cont()`, component values, effect modifiers |
+| [17. Bayesian component NMA](docs/manual/17-bayesian-cnma.md) (under development) | `bcnma_bin()` / `bcnma_cont()`, component values, effect modifiers |
 
 ## Install
 
@@ -132,6 +133,14 @@ cinema(load_w2i(), format = "binary", effect_measure = "OR")   # pre-load from R
 ![The CINeMA report summary table](docs/manual/images/gui_13_report_summary.png)
 
 ## Bayesian component NMA (formerly bcnma)
+
+> [!WARNING]
+> **The Bayesian component NMA functions (`bcnma_bin()`, `bcnma_cont()` and
+> related helpers) are under active development.** A methodological review is
+> in progress; defaults (priors, labelling of the heterogeneity parameter,
+> handling of mean differences, reproducibility of `seed`) and outputs may
+> change without notice. Do not use them for published analyses yet. The
+> frequentist NMA tools in this package are not affected.
 
 `bcnma_bin()` (binary outcomes, OR) and `bcnma_cont()` (continuous outcomes,
 SMD or MD) fit Bayesian random-effects component NMA in JAGS: each treatment
