@@ -86,14 +86,18 @@
   paste0("      mean[i,k]  <- ", paste(terms, collapse = "\n                    + "), "\n")
 }
 
+# The stochastic node is the parameter the prior is defined on: tau2 for
+# log-normal (Turner-type) priors, tau for half-normal priors.
 .jags_heterogeneity_block <- function(tau_prior) {
-  paste0(
-    "\n  # Heterogeneity: ", tau_prior$label, "\n",
-    sprintf("  tau2 ~ dlnorm(%s, %s)\n", .format_number(tau_prior$meanlog),
-            .format_number(tau_prior$precision)),
-    "  tau  <- sqrt(tau2)\n",
-    "  prec <- 1 / tau2\n"
-  )
+  prior_lines <- if (tau_prior$family == "half_normal_tau") {
+    paste0(sprintf("  tau  ~ dnorm(0, %s) T(0,)\n", .format_precision(tau_prior$sd)),
+           "  tau2 <- pow(tau, 2)\n")
+  } else {
+    paste0(sprintf("  tau2 ~ dlnorm(%s, %s)\n", .format_number(tau_prior$meanlog),
+                   .format_number(tau_prior$precision)),
+           "  tau  <- sqrt(tau2)\n")
+  }
+  paste0("\n  # Heterogeneity: ", tau_prior$label, "\n", prior_lines, "  prec <- 1 / tau2\n")
 }
 
 # Component effects d[j] (or one node per combination for the standard model).

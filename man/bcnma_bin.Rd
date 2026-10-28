@@ -17,7 +17,7 @@ bcnma_bin(
   active_components = NULL,
   lasso_prob = BCNMA_DEFAULT_INCLUSION_PROB,
   g = BCNMA_DEFAULT_SLAB_RATIO,
-  tau_prior = BCNMA_TAU2_PRIOR_BIN,
+  tau_prior = NULL,
   n.chains = 3,
   n.adapt = 2000,
   n.burnin = 5000,

@@ -127,8 +127,15 @@ fit_cont <- bcnma_cont(
 ```
 
 With `sm = "SMD"`, each study's arm means are divided by the within-study
-pooled SD before fitting, so `d[k]` is on the SMD scale; `sm = "MD"` keeps
-the raw scale.
+pooled SD before fitting, so `d[k]` is on the SMD scale. `sm = "MD"` keeps
+the raw scale but centres each study's means on its arm 1 (an exact location
+shift that the study baseline absorbs), and scales the default priors by the
+median within-study pooled SD *s*: `d[k] ~ N(0, (10 s)^2)` and a half-normal
+prior on the SD tau with scale *s* (instead of the log-normal prior on tau²
+used for SMD and OR). Supply `tau_prior = list(family = "half_normal_tau",
+sd = ...)` or `list(family = "lognormal_tau2", meanlog = ..., precision =
+...)` to override it; the prior used is stored in
+`fit$model_settings$tau_prior`.
 
 ### Interaction models
 

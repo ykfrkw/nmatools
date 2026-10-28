@@ -20,10 +20,18 @@ BCNMA_BASELINE_PRIOR_SD_BIN <- 10
 BCNMA_EFFECT_PRIOR_SD_SMD   <- sqrt(1000)
 BCNMA_BASELINE_PRIOR_SD_SMD <- sqrt(1000)
 
-# ---- Heterogeneity priors (on the variance tau^2) --------------------------
-# c(meanlog, precision) of a log-normal prior on tau^2.
+# Continuous outcomes on the MD scale: priors scale with the outcome, in
+# multiples of the median (over studies) within-study pooled SD.
+BCNMA_EFFECT_PRIOR_SD_PER_SD_MD   <- 10
+BCNMA_BASELINE_PRIOR_SD_PER_SD_MD <- 100
+
+# ---- Heterogeneity priors --------------------------------------------------
+# c(meanlog, precision) of a log-normal prior on the variance tau^2.
 BCNMA_TAU2_PRIOR_BIN <- c(-1.67, 1 / 1.472^2)
 BCNMA_TAU2_PRIOR_SMD <- c(-1.0, 1 / 0.8^2)
+# MD: half-normal prior on the SD tau with SD = this x median pooled SD.
+BCNMA_TAU_PRIOR_SD_PER_SD_MD <- 1
+BCNMA_TAU_PRIOR_FAMILIES <- c("lognormal_tau2", "half_normal_tau")
 
 # ---- SSVS (spike-and-slab) interaction priors -----------------------------
 BCNMA_DEFAULT_INCLUSION_PROB <- 0.5

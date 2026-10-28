@@ -108,8 +108,7 @@ test_that("additive fit agrees with netmeta::discomb on a simulated network", {
     stats::median(fit$samps_additive[[paste0("d[", component_index, "]")]])
   }, numeric(1))
   frequentist_estimate <- frequentist$Comp.random[match(SIM_COMPONENTS, frequentist$comps)]
-  expect_equal(bayesian_median, frequentist_estimate,
-               tolerance = NETMETA_TOLERANCE)
+  expect_true(all(abs(bayesian_median - frequentist_estimate) < NETMETA_TOLERANCE))
   expect_output(bcnma_model_code(fit, "additive"), "inprod(d[], x[i,k,])", fixed = TRUE)
   capture.output(printed_code <- bcnma_model_code(fit))
   expect_identical(printed_code, fit$model_code$additive)

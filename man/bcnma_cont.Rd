@@ -20,7 +20,7 @@ bcnma_cont(
   active_components = NULL,
   lasso_prob = BCNMA_DEFAULT_INCLUSION_PROB,
   g = BCNMA_DEFAULT_SLAB_RATIO,
-  tau_prior = BCNMA_TAU2_PRIOR_SMD,
+  tau_prior = NULL,
   n.chains = 3,
   n.adapt = 2000,
   n.burnin = 5000,
@@ -51,7 +51,11 @@ bcnma_cont(
 
 \item{reference.group}{character: reference component for display (optional)}
 
-\item{sm}{character: \code{"SMD"} (default) or \code{"MD"}}
+\item{sm}{character: \code{"SMD"} (default) or \code{"MD"}.
+With \code{"MD"}, each study's means are centred on its arm 1 (an exact
+location shift absorbed by the study baseline) and the priors on
+\code{d} (normal, SD = 10 x median pooled SD) and tau scale with the
+median within-study pooled SD.}
 
 \item{pooled_sd}{character: how to compute the within-study SD for
 standardisation when \code{sm = "SMD"}. \code{"within"} (default) pools all
@@ -67,9 +71,15 @@ interactions are modelled (only used when \code{interactions = "lasso_informativ
 
 \item{g}{numeric: spike-slab variance ratio (default 100)}
 
-\item{tau_prior}{numeric \code{c(meanlog, precision)}: log-normal
-prior on the between-study variance tau^2 (JAGS node \code{tau2};
-\code{tau = sqrt(tau2)} is the SD). Default \code{c(-1.0, 1/0.8^2)}.}
+\item{tau_prior}{heterogeneity prior. \code{NULL} (default) uses
+the outcome default: for \code{sm = "SMD"} a log-normal prior
+\code{c(meanlog = -1.0, precision = 1/0.8^2)} on the variance tau^2; for
+\code{sm = "MD"} a half-normal prior on the SD tau whose SD equals the
+median within-study pooled SD (the MD prior must follow the outcome's
+scale). Otherwise numeric \code{c(meanlog, precision)} (log-normal on
+tau^2), \code{list(family = "lognormal_tau2", meanlog, precision)} or
+\code{list(family = "half_normal_tau", sd)} (half-normal on tau). The
+prior used is stored in \code{fit$model_settings$tau_prior}.}
 
 \item{n.chains}{integer: MCMC chains (default 3)}
 

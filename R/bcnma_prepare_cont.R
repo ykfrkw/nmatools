@@ -5,7 +5,8 @@
 #
 # File description:
 # Purpose: continuous-outcome data preparation for bcnma_cont(): arm means
-#          y[i, k] and their standard errors se[i, k] on the SMD or MD scale.
+#          y[i, k] and their standard errors se[i, k] on the SMD or MD scale
+#          (MD means centred on arm 1 of each study).
 # Inputs:  user data.frame and column names (resolved by bcnma_cont())
 # Outputs: a `prep` list (R/bcnma_prepare.R) with `likelihood = "normal"`
 #          and `outcome = list(y, se)`
@@ -15,15 +16,18 @@
 #'
 #' With `sm = "SMD"` each study's arm means and standard errors are divided
 #' by the study's pooled SD, so every `d[j]` is on the SMD scale. With
-#' `sm = "MD"` the raw scale is kept.
+#' `sm = "MD"` the raw scale is kept, but each study's means are centred on
+#' the observed mean of arm 1: an exact location shift that the study
+#' baseline `u[i]` absorbs, so that the baseline prior does not need to cover
+#' the outcome's absolute level (e.g. a mean of 360 minutes).
 #'
 #' @param data,studlab_col,treat_col,components,component_separator see
 #'   .parse_arm_structure()
 #' @param mean_col,sd_col,n_col character: arm mean, SD and sample size columns
 #' @param sm        character: "SMD" or "MD"
 #' @param pooled_sd character: "within" (pool all arms) or "control" (arm 1)
-#' @return `prep` list with `outcome = list(y, se)`, `sm` and the per-study
-#'   `sigma_pooled` (NA for MD)
+#' @return `prep` list with `outcome = list(y, se)`, `sm`, the per-study
+#'   `sigma_pooled` and `median_pooled_sd` (scales the MD priors)
 #' @noRd
 .bcnma_cont_prepare_data <- function(data, studlab_col, treat_col,
                                      mean_col, sd_col, n_col,
@@ -35,19 +39,21 @@
   arm_sd   <- .arm_matrix(as.numeric(data[[sd_col]]), prep)
   arm_size <- .arm_matrix(floor(as.numeric(data[[n_col]])), prep)
   standard_error <- arm_sd / sqrt(arm_size)
+  sigma_pooled   <- .pooled_sd_by_study(arm_sd, arm_size, prep$n_arms, pooled_sd,
+                                        prep$studies)
 
-  sigma_pooled <- rep(NA_real_, prep$n_studies)
   if (sm == "SMD") {
-    sigma_pooled   <- .pooled_sd_by_study(arm_sd, arm_size, prep$n_arms, pooled_sd,
-                                          prep$studies)
     arm_mean       <- arm_mean / sigma_pooled
     standard_error <- standard_error / sigma_pooled
+  } else {
+    arm_mean <- arm_mean - arm_mean[, 1]
   }
 
-  prep$likelihood   <- "normal"
-  prep$outcome      <- list(y = arm_mean, se = standard_error)
-  prep$sm           <- sm
-  prep$sigma_pooled <- sigma_pooled
+  prep$likelihood       <- "normal"
+  prep$outcome          <- list(y = arm_mean, se = standard_error)
+  prep$sm               <- sm
+  prep$sigma_pooled     <- sigma_pooled
+  prep$median_pooled_sd <- stats::median(sigma_pooled)
   prep
 }
 
